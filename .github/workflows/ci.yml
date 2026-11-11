@@ -45,8 +45,8 @@ jobs:
       - name: ESLint Verification
         run: pnpm lint
 
-      - name: Vitest Unit Test Suite
-        run: pnpm test:unit
+      - name: Automated Test Suite (Unit & DB)
+        run: pnpm test
 
       - name: Production Build Check
         run: pnpm build
