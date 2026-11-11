@@ -24,7 +24,7 @@
 | Phase | Phase Name | Category | Internal Code Status | External Config Status | Phase Gate Status | Git Commit / Deliverable |
 |---|---|---|---|---|---|---|
 | **Phase 1** | **Engineering Environment, Repository & CI/CD Baseline** | Foundation | **COMPLETED** | **COMPLETED** | **PASSED & SIGNED OFF** | Commit `7e901a5` / Next.js 15.5.29, Vercel Live, Better Stack Verified |
-| **Phase 2** | **Database Architecture, Composite Tenancy & Vector Foundation** | Foundation | **IN PROGRESS** | **AWAITING SUPABASE CONFIG** | **ACTIVE GATE** | 28 Supabase tables, `pgvector`, Composite Foreign Keys, RLS, Hybrid RRF |
+| **Phase 2** | **Database Architecture, Composite Tenancy & Vector Foundation** | Foundation | **IN PROGRESS** | **AWAITING SUPABASE CONFIG** | **ACTIVE GATE** | Commit `035b9f7` / 28 Supabase tables, `pgvector`, Composite FKs, RLS |
 | **Phase 3** | Authentication, Clerk Organization Sync & RBAC Infrastructure | Foundation | Pending Phase 2 Sign-Off | Pending Phase 2 Sign-Off | LOCKED | Clerk Production Org sync, Svix webhook, 22-permission RBAC |
 | **Phase 4** | Shared Application Infrastructure & Reusable Core Services | Foundation | Pending Phase 3 Sign-Off | Pending Phase 3 Sign-Off | LOCKED | Cloudflare R2 presigned service, SHA-256 audit ledger, Resend |
 | **Phase 5** | Durable Background Processing (Inngest) & Central Gemini Engine | Foundation | Pending Phase 4 Sign-Off | Pending Phase 4 Sign-Off | LOCKED | Inngest queue, Central Gemini wrapper, Golden 50 corpus seed |
