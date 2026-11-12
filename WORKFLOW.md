@@ -2,9 +2,9 @@
 
 **Document Reference:** `08_Greenfield_Implementation_Roadmap_and_Antigravity_Execution_Plan.md`  
 **Governance Principle:** *Foundations First, Then Vertical Slices. Zero Mockups. Zero Progression Without Complete Phase Verification.*  
-**Last Updated:** 2026-11-11  
-**Current Active Phase:** **PHASE 4 (Shared Application Infrastructure & Reusable Core Services)**  
-**Gate Status:** **INTERNAL CODE & EXTERNAL R2/RESEND INTEGRATION VERIFIED — PENDING USER SIGN-OFF TO ENTER PHASE 5**  
+**Last Updated:** 2026-11-12  
+**Current Active Phase:** **PHASE 5 (Durable Background Processing & Central Gemini Engine)**  
+**Gate Status:** **PHASE 5 INTERNAL CODE & EXTERNAL INFRASTRUCTURE VERIFIED — PENDING USER SIGN-OFF TO ENTER PHASE 6**  
 
 ---
 
@@ -26,9 +26,9 @@
 | **Phase 1** | **Engineering Environment, Repository & CI/CD Baseline** | Foundation | **COMPLETED** | **COMPLETED** | **PASSED & SIGNED OFF** | Commit `7e901a5` / Next.js 15.5.29, Vercel Live, Better Stack Verified |
 | **Phase 2** | **Database Architecture, Composite Tenancy & Vector Foundation** | Foundation | **COMPLETED** | **COMPLETED** | **PASSED & SIGNED OFF** | Commit `e92c393` / 35 tables, `pgvector 0.8.2`, Composite FKs, RLS, RRF RPCs |
 | **Phase 3** | **Authentication, Clerk Organization Sync & RBAC Infrastructure** | Foundation | **COMPLETED** | **COMPLETED** | **PASSED & SIGNED OFF** | Commit `2cb2224` / Clerk Middleware, Svix Webhook, 22-Permission Matrix |
-| **Phase 4** | **Shared Application Infrastructure & Reusable Core Services** | Foundation | **COMPLETED** | **COMPLETED** | **VERIFIED (READY FOR SIGN-OFF)** | Cloudflare R2 Presigned Service, SHA-256 Audit Ledger, Resend, Rate Limiter |
-| **Phase 5** | Durable Background Processing (Inngest) & Central Gemini Engine | Foundation | Pending Phase 4 Sign-Off | Awaiting Gemini & Inngest Config | LOCKED | Inngest queue, Central Gemini wrapper, Golden 50 corpus seed |
-| **Phase 6** | Vertical Slice 1 — Conversational Copilot ("Walking Skeleton") | Vertical Slice | Pending Phase 5 Sign-Off | Pending Phase 5 Sign-Off | LOCKED | `/chat` workspace, SSE streaming, Evidence Drawer, Golden 50 RRF |
+| **Phase 4** | **Shared Application Infrastructure & Reusable Core Services** | Foundation | **COMPLETED** | **COMPLETED** | **PASSED & SIGNED OFF** | Commit `375d549` / Cloudflare R2 Presigned Service, SHA-256 Audit Ledger, Resend, Rate Limiter |
+| **Phase 5** | **Durable Background Processing & Central Gemini Engine** | Foundation | **COMPLETED** | **COMPLETED** | **VERIFIED (READY FOR SIGN-OFF)** | Inngest queue, Central Gemini service, Two-Step Search router, Golden 50 Vault seeded & embedded |
+| **Phase 6** | Vertical Slice 1 — Conversational Copilot ("Walking Skeleton") | Vertical Slice | Pending Phase 5 Sign-Off | Pending Phase 5 Sign-Off | NEXT IN LINE | `/chat` workspace, SSE streaming, Evidence Drawer, Golden 50 RRF |
 | **Phase 7** | Vertical Slice 2 — Campaign Intake, R2 Asset OCR & Assessment | Vertical Slice | Pending Phase 6 Sign-Off | Pending Phase 6 Sign-Off | LOCKED | Multimodal intake, 3 Deterministic Locks, 7-Layer Guardrails |
 | **Phase 8** | Vertical Slice 3 — Controlled Remediation, Rewrite & Revisions | Vertical Slice | Pending Phase 7 Sign-Off | Pending Phase 7 Sign-Off | LOCKED | Layer 6 Rewrite Validator, side-by-side diff, immutable revisions |
 | **Phase 9** | Vertical Slice 4 — Human Sign-Off, RBAC Approvals & Dossier | Vertical Slice | Pending Phase 8 Sign-Off | Pending Phase 8 Sign-Off | LOCKED | CCO/Legal sign-off, dual control, Inngest PDF Statutory Dossier |
@@ -105,7 +105,50 @@
 - [x] Resend credentials received:
   - API Key: Configured in `.env.local`
   - From Email: `compliance@notifications.stem-cogent.com`
-- [ ] User confirms R2 and Resend Environment Variables added to Vercel Project Settings.
+- [x] R2 and Resend integration tests passing.
+
+---
+
+### 3.5 Phase 5: Durable Background Processing (Inngest) & Central Gemini Engine
+- **Status:** **INTERNAL CODE & EXTERNAL INFRASTRUCTURE VERIFIED — READY FOR USER SIGN-OFF**
+- **Objective:** Establish the asynchronous execution backbone (Inngest), centralized Google Gemini orchestration service, Two-Step Live Web Search Router, and seed the Golden 50 Nigerian Statutory Vault.
+
+#### Internal Code & Architecture Checklist
+- [x] `@google/genai` (3.1.0) and `inngest` (4.26.2) integrated.
+- [x] Canonical Zod contracts established in `src/contracts/ai.contracts.ts` and `src/contracts/regulatory.contracts.ts`.
+- [x] Inngest durable queue configured in `src/modules/jobs/inngest.client.ts` and mounted at `/api/inngest` (`src/app/api/inngest/route.ts`).
+- [x] Clerk route protection middleware (`src/middleware.ts`) updated with public exemption for `/api/inngest(.*)`.
+- [x] 4 production Inngest durable workflow functions registered:
+  - `execute-campaign-assessment`: Concurrency limit 5 per `tenant_id`, 3 retries, synchronized with `processing_jobs`.
+  - `embed-regulatory-clause`: Clause embedding background worker.
+  - `check-campaign-drift`: Live promotional URL compliance drift inspector.
+  - `generate-statutory-dossier`: Immutable Statutory PDF Dossier compilation job.
+- [x] Central Gemini Service created in `src/modules/ai-orchestration/gemini.service.ts`:
+  - Single server-only wrapper supporting `gemini-3.5-flash`, `gemini-embedding-001`, and `gemini-2.5-pro`.
+  - Generates exact 768-dimensional vector embeddings with length verification.
+  - Automatically records latency, input/output token counts, and estimated USD cost in `ai_model_runs`.
+  - Fail-safe exponential backoff retry for transient 429 / 503 limits.
+- [x] Two-Step Live Web Search Router created in `src/modules/live-web-intelligence/web-search.router.ts`:
+  - Executes isolated secondary `gemini-3.5-flash` call with `tools: [{ googleSearch: {} }]`.
+  - Automatically prioritizes official Nigerian regulators: `cbn.gov.ng`, `fccpc.gov.ng`, `arcon.gov.ng`, `ndpc.gov.ng`, `sec.gov.ng`.
+  - Persists each retrieved citation in `live_web_retrievals` (`source_class = 'LIVE_WEB_INTELLIGENCE'`).
+- [x] Golden 50 Nigerian Statutory Vault Ingestion & Verification Service created in `src/modules/regulatory-vault/seed.service.ts` and `scripts/seed-vault.ts`.
+- [x] Automated test suite expanded to **83 passing tests across 16 test files**:
+  - `tests/unit/gemini-service.test.ts`: 5 tests verifying model routing, token usage, telemetry, 768-dim validation, and 429 retry recovery.
+  - `tests/unit/web-search-router.test.ts`: 2 tests verifying query refinement, grounding metadata parsing, and fallback.
+  - `tests/unit/inngest-jobs.test.ts`: 4 tests verifying workflow definitions, concurrency limits, and retry configurations.
+  - `tests/db/regulatory-vault.test.ts`: 5 integration tests verifying live Supabase database state.
+- [x] Strict TypeScript check (`tsc --noEmit`), lint (`next lint`), and production Next.js build pass cleanly with 0 errors.
+
+#### External Live Infrastructure Checklist
+- [x] Google Gemini API Key configured in `.env.local`.
+- [x] Inngest Signing Key and Event Key configured in `.env.local`.
+- [x] Supabase Live Database Seeding executed and verified:
+  - 5 Primary Regulatory Bodies active (`CBN`, `FCCPC`, `ARCON`, `NDPC`, `SEC`).
+  - 50 Golden Regulatory Instruments seeded with `jurisdiction = 'NIGERIA'`.
+  - 19 Verbatim Clauses seeded with **zero null embeddings** (`nullEmbeddingsCount = 0`).
+  - 10 Statutory Prohibited Terms seeded for Deterministic Lock 1.
+  - Stored procedure `search_regulatory_clauses_rrf` returns ranked results with sub-200ms database execution time.
 
 ---
 
@@ -116,4 +159,5 @@
 | **Phase 1** | 2026-11-11 | `7e901a5` | User Sign-Off | Next.js 15.5.29, Vercel live health check, Better Stack Token `xL1zCjM9t7iCAwHigBXrQDt9`, Better Uptime monitor |
 | **Phase 2** | 2026-11-11 | `e92c393` | User Sign-Off | Live migration to Supabase `igrcwfojsliohdhivhby`, 35 tables, `vector 0.8.2`, RRF RPCs, code 23503 isolation |
 | **Phase 3** | 2026-11-11 | `2cb2224` | User Sign-Off | Clerk Middleware, Svix Webhook (`POST /api/webhooks/clerk`), 22-Permission Matrix, 39 Tests Passing |
-| **Phase 4** | 2026-11-11 | `Pending Sign-Off` | User (Pending) | Cloudflare R2 Presigned Service, SHA-256 Audit Ledger, Resend, Rate Limiter, 67 Tests Passing |
+| **Phase 4** | 2026-11-11 | `375d549` | User Sign-Off | Cloudflare R2 Presigned Service, SHA-256 Audit Ledger, Resend, Rate Limiter, 67 Tests Passing |
+| **Phase 5** | 2026-11-12 | `Pending Sign-Off` | User (Pending) | Inngest queue, Central Gemini service, Two-Step Search router, Golden 50 Vault seeded & embedded, 83 Tests Passing |

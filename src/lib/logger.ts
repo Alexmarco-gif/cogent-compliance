@@ -65,7 +65,20 @@ class BetterStackLogger {
       try {
         const endpoint =
           process.env.BETTER_STACK_ENDPOINT || "https://in.logs.betterstack.com";
-        this.logtail = new Logtail(token, { endpoint });
+        const client = new Logtail(token, { endpoint });
+        // Fail-safe wrapper around internal background sync to ensure HTTP 401 / network drops never crash the app
+        const internalClient = client as unknown as { _sync: (logs: unknown[]) => Promise<unknown[]> };
+        if (typeof internalClient._sync === "function") {
+          const originalSync = internalClient._sync.bind(internalClient);
+          internalClient._sync = async (logs: unknown[]) => {
+            try {
+              return await originalSync(logs);
+            } catch {
+              return logs;
+            }
+          };
+        }
+        this.logtail = client;
       } catch (err) {
         console.warn("[Logger] Failed to initialize Logtail client:", err);
       }
@@ -123,13 +136,13 @@ class BetterStackLogger {
     if (this.logtail) {
       try {
         if (level === "error") {
-          this.logtail.error(message, redactedContext);
+          this.logtail.error(message, redactedContext).catch(() => {});
         } else if (level === "warn") {
-          this.logtail.warn(message, redactedContext);
+          this.logtail.warn(message, redactedContext).catch(() => {});
         } else if (level === "debug") {
-          this.logtail.debug(message, redactedContext);
+          this.logtail.debug(message, redactedContext).catch(() => {});
         } else {
-          this.logtail.info(message, redactedContext);
+          this.logtail.info(message, redactedContext).catch(() => {});
         }
       } catch (err) {
         // Fail-safe: logging failure must never crash request execution

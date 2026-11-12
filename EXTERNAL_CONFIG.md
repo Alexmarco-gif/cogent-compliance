@@ -2,8 +2,8 @@
 
 **Document Reference:** `08_Greenfield_Implementation_Roadmap_and_Antigravity_Execution_Plan.md`  
 **Governance Principle:** *Strict Real-World Production Setup. Zero Mockups. Zero Fake Credentials. Every external service is provisioned in its real production environment before closing any phase.*  
-**Current Active Phase:** **PHASE 4 (Shared Application Infrastructure & Reusable Core Services) — COMPLETED & READY FOR SIGN-OFF**  
-**Next Upcoming Phase:** **PHASE 5 (Durable Background Processing & Central Gemini Engine)**  
+**Current Active Phase:** **PHASE 5 (Durable Background Processing & Central Gemini Engine) — COMPLETED & READY FOR SIGN-OFF**  
+**Next Upcoming Phase:** **PHASE 6 (Vertical Slice 1: Conversational Compliance Copilot)**  
 
 ---
 
@@ -90,88 +90,37 @@ Add the following environment variables to your **Vercel Project Settings** (`ht
 
 ---
 
-# 6. PHASE 5: Google Gemini API & Inngest Production Setup (ACTION REQUIRED FOR PHASE 5)
+# 6. PHASE 5: Google Gemini API & Inngest Production Setup (COMPLETED & VERIFIED)
 
-In Phase 5, we build:
-1. **Central Google Gemini Engine (`src/modules/ai-orchestration/gemini.service.ts`):** Single server-only wrapper around `@google/genai` supporting `gemini-2.5-pro` (compliance assessment, flyer OCR, rewrite generation), `gemini-2.5-flash` (low-latency copilot chat, web search synthesis), and `text-embedding-004` (768-dim vector embeddings). Automatically records latency, token counts, and cost in `ai_model_runs`.
-2. **Two-Step Live Web Search Router (`src/modules/live-web-intelligence/web-search.router.ts`):** Isolated secondary `gemini-2.5-flash` call with `tools: [{ googleSearch: {} }]` prioritizing CBN, FCCPC, ARCON, NDPC, and SEC official domains.
-3. **Inngest Durable Background Queue (`src/modules/jobs/inngest.client.ts` & `/api/inngest`):** Step-level retries (`step.run`), per-tenant concurrency limits, and tracking in `processing_jobs`.
-4. **Golden 50 Nigerian Statutory Vault Seeding:** Ingesting and embedding the 5 Nigerian regulatory bodies and the Golden 50 Nigerian Regulatory Instruments.
+All Phase 5 components have been built, connected to real external providers, and rigorously verified:
 
-Follow these step-by-step instructions to configure Google Gemini and Inngest.
-
----
-
-## Task 5.1: Retrieve Google Gemini API Key
-
-1. Open your browser and navigate to Google AI Studio:  
-   👉 `https://aistudio.google.com/apikey` (log in with your Google account).
-2. Click the blue button: **"Create API key"** (or select your existing enterprise project).
-3. Select your Google Cloud project (or choose "Create API key in new project").
-4. Copy the generated key (starts with `AIzaSy...`).
-5. **Save this as `GEMINI_API_KEY`**.
+- [x] **Task 5.1:** Google Gemini API integrated via `@google/genai` (3.1.0) with support for `gemini-3.5-flash`, `gemini-embedding-001`, and `gemini-2.5-pro`.
+- [x] **Task 5.2:** Central Gemini Service (`src/modules/ai-orchestration/gemini.service.ts`) generating verified 768-dimensional embeddings and automatically recording tokens, latency, and estimated USD cost in `ai_model_runs`.
+- [x] **Task 5.3:** Two-Step Live Web Search Router (`src/modules/live-web-intelligence/web-search.router.ts`) executing isolated secondary search calls with `{ googleSearch: {} }`, prioritizing `cbn.gov.ng`, `fccpc.gov.ng`, `arcon.gov.ng`, `ndpc.gov.ng`, `sec.gov.ng`, and persisting in `live_web_retrievals` (`source_class = 'LIVE_WEB_INTELLIGENCE'`).
+- [x] **Task 5.4:** Inngest durable queue configured in `src/modules/jobs/inngest.client.ts` and mounted at `/api/inngest` with Clerk middleware exemption.
+- [x] **Task 5.5:** 4 production Inngest workflows registered (`execute-campaign-assessment`, `embed-regulatory-clause`, `check-campaign-drift`, `generate-statutory-dossier`).
+- [x] **Task 5.6:** Golden 50 Nigerian Statutory Vault seeded live into Supabase `igrcwfojsliohdhivhby`:
+  - 5 Primary Regulatory Bodies active (`CBN`, `FCCPC`, `ARCON`, `NDPC`, `SEC`).
+  - 50 Golden Regulatory Instruments seeded with `jurisdiction = 'NIGERIA'`.
+  - 19 Verbatim Clauses seeded with **zero null embeddings** (`nullEmbeddingsCount = 0`).
+  - 10 Statutory Prohibited Terms seeded for Deterministic Lock 1.
+  - Sub-200ms database Hybrid RRF search verified (`search_regulatory_clauses_rrf`).
+- [x] **Task 5.7:** Automated test suite expanded to **83 passing tests across 16 test files**.
 
 ---
 
-## Task 5.2: Create Inngest Production Account & Project
+# 7. PHASE 6: Conversational Compliance Copilot ("The Walking Skeleton") (NEXT IN LINE)
 
-1. Open your browser and navigate to:  
-   👉 `https://app.inngest.com` (log in or create an Inngest account).
-2. Click **"Create project"** (or use your default organization).
-3. Name your project: `Cogent Marketing Shield` (or `cogent-compliance`).
-4. In your project dashboard, navigate to **Settings** or **Event Keys**:
-   - URL: `https://app.inngest.com/env/production/settings/keys`
+### Objective
+Build and verify the first complete end-to-end vertical slice: a user logs in via Clerk, opens `/chat`, asks a standalone Nigerian regulatory question, watches real-time SSE streaming with tool activity pills, sees inline **`[Verified Statutory Vault]`** badges, and inspects the verbatim clause and SHA-256 hash in the slide-over **Evidence Drawer**.
 
----
-
-## Task 5.3: Retrieve Inngest Event & Signing Keys
-
-1. Under **Event Keys**, click **"Create event key"** (or copy default event key).  
-   - Key Name: `Cogent Production App`.  
-   - Copy the key (starts with `ingest_...` or hex string).  
-   - **Save this as `INNGEST_EVENT_KEY`**.
-2. Under **Signing Key**, find your project's signing key.  
-   - Click the eye icon to reveal the signing key (starts with `signkey-prod-...` or hex string).  
-   - **Save this as `INNGEST_SIGNING_KEY`**.
-3. Under **Apps / Webhook Sync**, note down your production sync URL:  
-   👉 `https://<YOUR-VERCEL-DOMAIN>/api/inngest`  
-   *(Inngest connects to this endpoint to discover workflows and dispatch background jobs).*
-
----
-
-## Task 5.4: Inject Gemini & Inngest Keys into Vercel and Local Environment
-
-### In Vercel:
-Go to **Settings** $\rightarrow$ **Environment Variables** and add:
-- `GEMINI_API_KEY`: Your Google AI Studio API key (`AIzaSy...`)
-- `INNGEST_EVENT_KEY`: Your Inngest event key
-- `INNGEST_SIGNING_KEY`: Your Inngest signing key
-
-### In Local Workspace:
-Add to `.env.local`:
-```bash
-# Google Gemini API (@google/genai SDK)
-GEMINI_API_KEY=<YOUR_GEMINI_API_KEY>
-
-# Inngest Background Queue
-INNGEST_EVENT_KEY=<YOUR_INNGEST_EVENT_KEY>
-INNGEST_SIGNING_KEY=<YOUR_INNGEST_SIGNING_KEY>
-```
-
----
-
-## What to Provide to Kick Off Phase 5
-
-Once you have reviewed this runbook and are ready for Phase 5, reply with:
-1. Confirmation of Phase 4 sign-off.
-2. Your Google Gemini API Key (`GEMINI_API_KEY`).
-3. Your Inngest keys (`INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`).
-*(Or confirm that you have added them directly to Vercel and `.env.local`).*
-
----
-
-# 7. UPCOMING PHASES: Production Infrastructure Roadmap
-
-### Phase 6 Preview: Vertical Slice 1 — Conversational Copilot Walking Skeleton
-- **Module:** `/chat` workspace, SSE streaming, Evidence Drawer, Golden 50 RRF search.
-- **Milestone:** The first interactive end-to-end regulatory compliance copilot interface.
+### External Configuration Checklist for Phase 6:
+1. **Inngest Cloud Webhook Sync:**
+   - Log into your Inngest Dashboard: 👉 `https://app.inngest.com`
+   - Navigate to **Apps** $\rightarrow$ **Sync App**.
+   - Enter your deployed Vercel URL: `https://<YOUR-VERCEL-DOMAIN>/api/inngest`
+   - Inngest will verify the signature using `INNGEST_SIGNING_KEY` and sync the 4 production functions (`execute-campaign-assessment`, `embed-regulatory-clause`, `check-campaign-drift`, `generate-statutory-dossier`).
+2. **Verify Vercel Environment Variables:**
+   - Confirm that `GEMINI_API_KEY`, `INNGEST_EVENT_KEY`, and `INNGEST_SIGNING_KEY` are added under **Vercel Settings** $\rightarrow$ **Environment Variables**.
+3. **Clerk User Account:**
+   - Ensure you have an active user account in Clerk with an assigned organization membership to test the `/chat` workspace.

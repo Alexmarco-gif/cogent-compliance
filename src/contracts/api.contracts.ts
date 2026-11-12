@@ -134,9 +134,9 @@ export type CampaignStatus = z.infer<typeof CampaignStatusSchema>;
 /**
  * Five Nigerian regulatory bodies governing marketing compliance.
  */
-export const RegulatoryBodySchema = z.enum(["CBN", "FCCPC", "ARCON", "NDPC", "SEC"]);
+export const RegulatorCodeSchema = z.enum(["CBN", "FCCPC", "ARCON", "NDPC", "SEC"]);
 
-export type RegulatoryBody = z.infer<typeof RegulatoryBodySchema>;
+export type RegulatorCode = z.infer<typeof RegulatorCodeSchema>;
 
 /**
  * Finding severity classification.
