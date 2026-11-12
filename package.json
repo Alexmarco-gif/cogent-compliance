@@ -18,6 +18,7 @@
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
   },
   "dependencies": {
+    "@clerk/nextjs": "^7.9.25",
     "@logtail/node": "^0.6.1",
     "@supabase/supabase-js": "^2.119.0",
     "clsx": "^2.1.1",
@@ -25,6 +26,7 @@
     "next": "15.5.29",
     "react": "19.0.0",
     "react-dom": "19.0.0",
+    "svix": "^2.10.0",
     "tailwind-merge": "^3.0.1",
     "zod": "^3.24.2"
   },

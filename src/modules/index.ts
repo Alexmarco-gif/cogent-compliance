@@ -1,4 +1,4 @@
 /**
  * Core Domain Modules barrel
  */
-export {};
+export * from "./auth-tenancy";
