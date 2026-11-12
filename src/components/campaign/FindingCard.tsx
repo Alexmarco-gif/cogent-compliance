@@ -8,6 +8,7 @@ import {
   BookOpen,
   ArrowRight,
   ShieldCheck,
+  Wand2,
 } from "lucide-react";
 
 export interface FindingEvidence {
@@ -39,11 +40,13 @@ export interface Finding {
 interface FindingCardProps {
   finding: Finding;
   onEvidenceClick: (clauseId: string) => void;
+  onRemediateClick?: (finding: Finding) => void;
 }
 
 export const FindingCard: React.FC<FindingCardProps> = ({
   finding,
   onEvidenceClick,
+  onRemediateClick,
 }) => {
   const isCritical = finding.severity === "CRITICAL";
   const isHigh = finding.severity === "HIGH";
@@ -128,6 +131,19 @@ export const FindingCard: React.FC<FindingCardProps> = ({
           <p className="mt-1 text-[13px] text-zinc-800 leading-snug">
             {finding.recommended_action}
           </p>
+        </div>
+      )}
+
+      {/* Remediation Action Trigger */}
+      {onRemediateClick && (
+        <div className="mt-3 flex items-center justify-end pt-2 border-t border-zinc-100">
+          <button
+            onClick={() => onRemediateClick(finding)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 text-[12px] font-semibold border border-blue-200 transition-colors"
+          >
+            <Wand2 className="h-3.5 w-3.5" />
+            Remediate / AI Rewrite
+          </button>
         </div>
       )}
     </div>

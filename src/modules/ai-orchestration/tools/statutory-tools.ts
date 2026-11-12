@@ -7,6 +7,8 @@ import { FunctionDeclaration, Type } from "@google/genai";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { geminiService } from "@/modules/ai-orchestration/gemini.service";
 import { webSearchRouter } from "@/modules/live-web-intelligence/web-search.router";
+import { remediationService } from "@/modules/campaigns/remediation.service";
+import { RewriteTone } from "@/contracts/remediation.contracts";
 import { logger } from "@/lib/logger";
 
 export interface ToolExecutionContext {
@@ -136,6 +138,37 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
       },
       required: ["query"],
+    },
+  },
+  {
+    name: "generate_rewrite_suggestions",
+    description:
+      "Generates a compliant marketing rewrite proposal for a specific compliance finding, constrained by product truth and validated through Layer 6 deterministic locks.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        finding_id: { type: Type.STRING, description: "UUID of the compliance finding to remediate." },
+        tone: {
+          type: Type.STRING,
+          description: "Tone style: PROFESSIONAL, CONCISE_SMS, CONVERSATIONAL_SOCIAL, or FORMAL_LEGAL.",
+        },
+        instructions: { type: Type.STRING, description: "Additional officer instructions for the rewrite." },
+      },
+      required: ["finding_id"],
+    },
+  },
+  {
+    name: "compare_campaign_revisions",
+    description:
+      "Compares two revisions of a campaign, returning word-level diffs, resolved findings, and deterministic lock progression.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        campaign_id: { type: Type.STRING, description: "UUID of the campaign." },
+        from_revision_id: { type: Type.STRING, description: "UUID of the earlier revision." },
+        to_revision_id: { type: Type.STRING, description: "UUID of the newer revision." },
+      },
+      required: ["campaign_id", "from_revision_id", "to_revision_id"],
     },
   },
 ];
@@ -477,6 +510,49 @@ export class StatutoryToolExecutor {
       },
       ctx.tenantId
     );
+  }
+
+  /**
+   * Tool 16: generate_rewrite_suggestions
+   */
+  public async generateRewriteSuggestions(
+    args: { finding_id: string; tone?: string; instructions?: string },
+    ctx: ToolExecutionContext
+  ): Promise<Record<string, unknown>> {
+    const tone = (args.tone as RewriteTone) || "PROFESSIONAL";
+    const result = await remediationService.generateAndValidateRewrite(
+      ctx.tenantId,
+      ctx.userId || "system_copilot",
+      args.finding_id,
+      {
+        finding_id: args.finding_id,
+        tone,
+        custom_instructions: args.instructions,
+      }
+    );
+    return {
+      success: true,
+      data: result,
+    };
+  }
+
+  /**
+   * Tool 17: compare_campaign_revisions
+   */
+  public async compareCampaignRevisions(
+    args: { campaign_id: string; from_revision_id: string; to_revision_id: string },
+    ctx: ToolExecutionContext
+  ): Promise<Record<string, unknown>> {
+    const result = await remediationService.compareRevisions(
+      ctx.tenantId,
+      args.campaign_id,
+      args.from_revision_id,
+      args.to_revision_id
+    );
+    return {
+      success: true,
+      data: result,
+    };
   }
 }
 

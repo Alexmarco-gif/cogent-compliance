@@ -5,12 +5,14 @@ import {
   Shield,
   Layers,
   FileCheck2,
+  Wand2,
   X,
   RefreshCw,
 } from "lucide-react";
 import { Tab1LocksOverview, type LockResult } from "./Tab1LocksOverview";
 import { Tab2AssetBoundingBoxes, type ExtractionData } from "./Tab2AssetBoundingBoxes";
 import { Tab3FindingsList } from "./Tab3FindingsList";
+import { Tab4RemediationDiff } from "./Tab4RemediationDiff";
 import { Finding } from "./FindingCard";
 
 interface InspectorProps {
@@ -53,7 +55,8 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
   onEvidenceClick,
   onRefresh,
 }) => {
-  const [activeTab, setActiveTab] = useState<"locks" | "assets" | "findings">("locks");
+  const [activeTab, setActiveTab] = useState<"locks" | "assets" | "findings" | "remediation">("locks");
+  const [selectedFindingForRemediation, setSelectedFindingForRemediation] = useState<Finding | null>(null);
 
   if (!isOpen || !campaign) return null;
 
@@ -104,10 +107,10 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
       </div>
 
       {/* Tabs Navigation Bar */}
-      <div className="flex border-b border-zinc-200 bg-white px-6">
+      <div className="flex border-b border-zinc-200 bg-white px-6 overflow-x-auto">
         <button
           onClick={() => setActiveTab("locks")}
-          className={`flex items-center gap-2 border-b-2 py-3 text-[13.5px] font-medium transition-colors ${
+          className={`flex items-center gap-2 border-b-2 py-3 px-2 text-[13.5px] font-medium transition-colors shrink-0 ${
             activeTab === "locks"
               ? "border-blue-600 text-blue-600"
               : "border-transparent text-zinc-500 hover:text-zinc-800"
@@ -119,7 +122,7 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
 
         <button
           onClick={() => setActiveTab("assets")}
-          className={`flex items-center gap-2 border-b-2 py-3 px-4 text-[13.5px] font-medium transition-colors ${
+          className={`flex items-center gap-2 border-b-2 py-3 px-3 text-[13.5px] font-medium transition-colors shrink-0 ${
             activeTab === "assets"
               ? "border-blue-600 text-blue-600"
               : "border-transparent text-zinc-500 hover:text-zinc-800"
@@ -134,7 +137,7 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
 
         <button
           onClick={() => setActiveTab("findings")}
-          className={`flex items-center gap-2 border-b-2 py-3 text-[13.5px] font-medium transition-colors ${
+          className={`flex items-center gap-2 border-b-2 py-3 px-2 text-[13.5px] font-medium transition-colors shrink-0 ${
             activeTab === "findings"
               ? "border-blue-600 text-blue-600"
               : "border-transparent text-zinc-500 hover:text-zinc-800"
@@ -147,6 +150,18 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
               {findings.length}
             </span>
           )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab("remediation")}
+          className={`flex items-center gap-2 border-b-2 py-3 px-2 text-[13.5px] font-medium transition-colors shrink-0 ${
+            activeTab === "remediation"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-zinc-500 hover:text-zinc-800"
+          }`}
+        >
+          <Wand2 className="h-4 w-4" />
+          Remediation & Diff
         </button>
       </div>
 
@@ -172,6 +187,19 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
           <Tab3FindingsList
             findings={findings}
             onEvidenceClick={onEvidenceClick}
+            onRemediateClick={(finding) => {
+              setSelectedFindingForRemediation(finding);
+              setActiveTab("remediation");
+            }}
+          />
+        )}
+
+        {activeTab === "remediation" && (
+          <Tab4RemediationDiff
+            campaignId={campaign.id}
+            findings={findings}
+            selectedFinding={selectedFindingForRemediation}
+            onRevisionCreated={onRefresh}
           />
         )}
       </div>

@@ -260,6 +260,16 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
                   toolArgs as { conversation_id: string },
                   ctx
                 );
+              } else if (toolName === "generate_rewrite_suggestions") {
+                toolResult = await statutoryToolExecutor.generateRewriteSuggestions(
+                  toolArgs as { finding_id: string; tone?: string; instructions?: string },
+                  ctx
+                );
+              } else if (toolName === "compare_campaign_revisions") {
+                toolResult = await statutoryToolExecutor.compareCampaignRevisions(
+                  toolArgs as { campaign_id: string; from_revision_id: string; to_revision_id: string },
+                  ctx
+                );
               }
             } catch (execErr) {
               toolResult = { success: false, error: (execErr as Error).message };

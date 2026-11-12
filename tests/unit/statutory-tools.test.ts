@@ -126,6 +126,41 @@ describe("StatutoryToolExecutor (Unit)", () => {
       }),
     });
 
+// Mock Remediation Service
+vi.mock("@/modules/campaigns/remediation.service", () => ({
+  remediationService: {
+    generateAndValidateRewrite: vi.fn().mockResolvedValue({
+      finding_id: "find-1",
+      original_text: "0% interest",
+      proposed_text: "18.5% APR",
+      explanation: "Compliant rate disclosure",
+      layer_6_validation: {
+        validation_status: "PASSED",
+        original_issue_addressed: true,
+        new_prohibited_terms_detected: false,
+        product_rate_fee_match: "PASSED",
+        mandatory_disclosures_present: true,
+        violations_detected: [],
+      },
+    }),
+    compareRevisions: vi.fn().mockResolvedValue({
+      campaign_id: "camp-1",
+      from_revision: { id: "rev-1", revision_number: 1, content_text: "Hello" },
+      to_revision: { id: "rev-2", revision_number: 2, content_text: "Hello World" },
+      text_diff: [{ type: "unchanged", value: "Hello" }],
+      resolved_findings_count: 1,
+      remaining_findings_count: 0,
+      locks_comparison: {
+        from_passed: false,
+        to_passed: true,
+        from_breach_count: 1,
+        to_breach_count: 0,
+        breaches_delta: -1,
+      },
+    }),
+  },
+}));
+
     const result = await executor.verifyRegulatoryEvidence(
       { regulatory_clause_ids: ["c_1"] },
       ctx
@@ -136,5 +171,38 @@ describe("StatutoryToolExecutor (Unit)", () => {
     expect(verifications).toHaveLength(1);
     expect(verifications[0]!.status).toBe("CURRENT");
     expect(verifications[0]!.is_binding).toBe(true);
+  });
+
+  it("should execute generateRewriteSuggestions (Tool 16) and return validated rewrite", async () => {
+    const result = await executor.generateRewriteSuggestions(
+      {
+        finding_id: "find-1",
+        tone: "PROFESSIONAL",
+        instructions: "Keep concise",
+      },
+      ctx,
+    );
+
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, any>;
+    expect(data.proposed_text).toBe("18.5% APR");
+    expect(data.layer_6_validation.validation_status).toBe("PASSED");
+  });
+
+  it("should execute compareCampaignRevisions (Tool 17) and return revision diff and lock progression", async () => {
+    const result = await executor.compareCampaignRevisions(
+      {
+        campaign_id: "camp-1",
+        from_revision_id: "rev-1",
+        to_revision_id: "rev-2",
+      },
+      ctx,
+    );
+
+    expect(result.success).toBe(true);
+    const data = result.data as Record<string, any>;
+    expect(data.from_revision.revision_number).toBe(1);
+    expect(data.to_revision.revision_number).toBe(2);
+    expect(data.locks_comparison.to_passed).toBe(true);
   });
 });

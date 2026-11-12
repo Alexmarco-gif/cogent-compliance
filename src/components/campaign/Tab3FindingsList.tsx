@@ -7,11 +7,13 @@ import { CheckCircle2 } from "lucide-react";
 interface Tab3Props {
   findings: Finding[];
   onEvidenceClick: (clauseId: string) => void;
+  onRemediateClick?: (finding: Finding) => void;
 }
 
 export const Tab3FindingsList: React.FC<Tab3Props> = ({
   findings,
   onEvidenceClick,
+  onRemediateClick,
 }) => {
   const [filterSeverity, setFilterSeverity] = useState<string>("ALL");
 
@@ -121,6 +123,7 @@ export const Tab3FindingsList: React.FC<Tab3Props> = ({
               key={finding.id}
               finding={finding}
               onEvidenceClick={onEvidenceClick}
+              onRemediateClick={onRemediateClick}
             />
           ))}
         </div>
