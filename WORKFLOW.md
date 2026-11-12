@@ -3,8 +3,8 @@
 **Document Reference:** `08_Greenfield_Implementation_Roadmap_and_Antigravity_Execution_Plan.md`  
 **Governance Principle:** *Foundations First, Then Vertical Slices. Zero Mockups. Zero Progression Without Complete Phase Verification.*  
 **Last Updated:** 2026-11-11  
-**Current Active Phase:** **PHASE 3 (Authentication, Clerk Organization Sync & RBAC Infrastructure)**  
-**Gate Status:** **INTERNAL CODE & EXTERNAL CLERK INTEGRATION VERIFIED — PENDING USER SIGN-OFF TO ENTER PHASE 4**  
+**Current Active Phase:** **PHASE 4 (Shared Application Infrastructure & Reusable Core Services)**  
+**Gate Status:** **INTERNAL CODE & EXTERNAL R2/RESEND INTEGRATION VERIFIED — PENDING USER SIGN-OFF TO ENTER PHASE 5**  
 
 ---
 
@@ -25,9 +25,9 @@
 |---|---|---|---|---|---|---|
 | **Phase 1** | **Engineering Environment, Repository & CI/CD Baseline** | Foundation | **COMPLETED** | **COMPLETED** | **PASSED & SIGNED OFF** | Commit `7e901a5` / Next.js 15.5.29, Vercel Live, Better Stack Verified |
 | **Phase 2** | **Database Architecture, Composite Tenancy & Vector Foundation** | Foundation | **COMPLETED** | **COMPLETED** | **PASSED & SIGNED OFF** | Commit `e92c393` / 35 tables, `pgvector 0.8.2`, Composite FKs, RLS, RRF RPCs |
-| **Phase 3** | **Authentication, Clerk Organization Sync & RBAC Infrastructure** | Foundation | **COMPLETED** | **COMPLETED** | **VERIFIED (READY FOR SIGN-OFF)** | Clerk Middleware, Svix Webhook (`POST /api/webhooks/clerk`), 22-Permission Matrix, 39 Tests Passing |
-| **Phase 4** | Shared Application Infrastructure & Reusable Core Services | Foundation | Pending Phase 3 Sign-Off | Awaiting R2 & Resend Config | LOCKED | Cloudflare R2 presigned service, SHA-256 audit ledger, Resend, Rate Limiter |
-| **Phase 5** | Durable Background Processing (Inngest) & Central Gemini Engine | Foundation | Pending Phase 4 Sign-Off | Pending Phase 4 Sign-Off | LOCKED | Inngest queue, Central Gemini wrapper, Golden 50 corpus seed |
+| **Phase 3** | **Authentication, Clerk Organization Sync & RBAC Infrastructure** | Foundation | **COMPLETED** | **COMPLETED** | **PASSED & SIGNED OFF** | Commit `2cb2224` / Clerk Middleware, Svix Webhook, 22-Permission Matrix |
+| **Phase 4** | **Shared Application Infrastructure & Reusable Core Services** | Foundation | **COMPLETED** | **COMPLETED** | **VERIFIED (READY FOR SIGN-OFF)** | Cloudflare R2 Presigned Service, SHA-256 Audit Ledger, Resend, Rate Limiter |
+| **Phase 5** | Durable Background Processing (Inngest) & Central Gemini Engine | Foundation | Pending Phase 4 Sign-Off | Awaiting Gemini & Inngest Config | LOCKED | Inngest queue, Central Gemini wrapper, Golden 50 corpus seed |
 | **Phase 6** | Vertical Slice 1 — Conversational Copilot ("Walking Skeleton") | Vertical Slice | Pending Phase 5 Sign-Off | Pending Phase 5 Sign-Off | LOCKED | `/chat` workspace, SSE streaming, Evidence Drawer, Golden 50 RRF |
 | **Phase 7** | Vertical Slice 2 — Campaign Intake, R2 Asset OCR & Assessment | Vertical Slice | Pending Phase 6 Sign-Off | Pending Phase 6 Sign-Off | LOCKED | Multimodal intake, 3 Deterministic Locks, 7-Layer Guardrails |
 | **Phase 8** | Vertical Slice 3 — Controlled Remediation, Rewrite & Revisions | Vertical Slice | Pending Phase 7 Sign-Off | Pending Phase 7 Sign-Off | LOCKED | Layer 6 Rewrite Validator, side-by-side diff, immutable revisions |
@@ -44,7 +44,7 @@
 ### 3.1 Phase 1: Engineering Environment & CI/CD Baseline
 - **Status:** **PASSED & SIGNED OFF**
 - **Internal Verification:** Next.js 15.5.29, strict TypeScript, design tokens, Zod env boot, Better Stack logger, `/api/marketing-shield/v1/health` route. All 9 unit tests passing.
-- **External Verification:** Vercel production deployment active, Better Stack Logtail Source Token `xL1zCjM9t7iCAwHigBXrQDt9` connected, Better Uptime monitor operational.
+- **External Verification:** Vercel production deployment active, Better Stack Logtail Source Token connected, Better Uptime monitor operational.
 
 ---
 
@@ -56,44 +56,56 @@
 ---
 
 ### 3.3 Phase 3: Authentication, Clerk Organization Sync & RBAC Infrastructure
-- **Status:** **INTERNAL & EXTERNAL CLERK INTEGRATION VERIFIED — READY FOR USER SIGN-OFF**
-- **Objective:** Establish authoritative authentication via Clerk, real-time institutional organization synchronization into Supabase, and a centralized server-side RBAC guard enforcing the 22-permission matrix across all 5 canonical roles with strict separation of duties.
+- **Status:** **PASSED & SIGNED OFF**
+- **Internal Verification:** Clerk route protection middleware (`src/middleware.ts`), Clerk-to-Supabase Svix webhook receiver (`POST /api/webhooks/clerk`), 22-permission RBAC matrix across 5 roles, anti-self-approval dual-control enforcement, server-side tenant resolver (`resolveTenantContext()`).
+- **External Verification:** Clerk application configured with Organizations enabled, real credentials wired, 39 automated tests passing.
+
+---
+
+### 3.4 Phase 4: Shared Application Infrastructure & Reusable Core Services
+- **Status:** **INTERNAL & EXTERNAL R2/RESEND INTEGRATION VERIFIED — READY FOR USER SIGN-OFF**
+- **Objective:** Build shared backend capabilities (API route wrapper, Zod contracts, Cloudflare R2 private file storage, cryptographic hash-chained audit ledger, sliding-window rate limiting, and Resend transactional notifications) consuming consistent enterprise infrastructure.
 
 #### Internal Code & Architecture Checklist
-- [x] `@clerk/nextjs` (7.9.25) and `svix` (2.10.0) integrated.
-- [x] Clerk route protection middleware implemented in `src/middleware.ts` protecting `/(workspace)/*` and `/api/marketing-shield/v1/*` routes while exempting public landing, auth, health check, and webhook endpoints.
-- [x] Root layout wrapped with `<ClerkProvider>` in `src/app/layout.tsx`.
-- [x] Catch-all authentication pages implemented at `/sign-in/[[...sign-in]]` and `/sign-up/[[...sign-up]]`.
-- [x] Authoritative types created in `src/modules/auth-tenancy/types.ts`:
-  - 5 canonical roles: `MARKETING_GROWTH`, `COMPLIANCE_ANALYST`, `LEGAL_COUNSEL`, `CHIEF_COMPLIANCE_OFFICER`, `WORKSPACE_ADMIN`.
-  - 22 locked permission keys from Document 07 Section 5.2.
-  - Strongly typed `TenantContext` interface and `AuthTenancyError` class.
-- [x] Authoritative permission matrix and Clerk role mapper created in `src/modules/auth-tenancy/permissions.ts`.
-- [x] Centralized RBAC guard created in `src/modules/auth-tenancy/rbac.guard.ts`:
-  - `hasPermission(ctx, permission)`
-  - `requirePermission(ctx, required)` (throws 403 `FORBIDDEN` or `APPROVAL_NOT_PERMITTED`)
-  - `assertAntiSelfApproval(ctx, revisionCreatedBy)` (enforces Document 07 Section 5.3 Anti-Self-Approval dual control)
-  - `assertCanApprove(ctx, revisionCreatedBy)` composite gate.
-- [x] Clerk-to-Supabase real-time sync service created in `src/modules/auth-tenancy/clerk.sync.ts`:
-  - Idempotent handling for `organization.created`, `organization.updated`, `organization.deleted`.
-  - Idempotent handling for `organizationMembership.created`, `organizationMembership.updated`, `organizationMembership.deleted`.
-- [x] Clerk Svix Webhook receiver endpoint implemented at `POST /api/webhooks/clerk` (`src/app/api/webhooks/clerk/route.ts`) with cryptographic signature verification.
-- [x] Authoritative server-side tenant resolver created in `src/modules/auth-tenancy/tenant.resolver.ts` (`resolveTenantContext()`) failing closed with 401/403.
-- [x] Automated test suite expanded to **39 passing tests across 7 test files**:
-  - `tests/unit/rbac.test.ts`: 10 tests verifying all 5 roles, 22 permissions, suspended access, and anti-self-approval rules.
-  - `tests/unit/clerk-webhook.test.ts`: 10 tests verifying Svix header requirements, signature verification, and event dispatcher handlers.
-  - `tests/unit/tenant-resolver.test.ts`: 6 tests verifying session resolution, unauthenticated 401 rejection, missing organization 403 rejection, and suspended institution/membership 403 rejection.
-  - All database and health check tests maintained passing.
+- [x] `@aws-sdk/client-s3` (3.1166.0), `@aws-sdk/s3-request-presigner` (3.1166.0), and `resend` (6.38.0) integrated.
+- [x] Canonical Zod contracts established in `src/contracts/*`:
+  - `api.contracts.ts`: Standard success, paginated, and error envelopes (Document 04 Section 2.3), 11-state campaign lifecycle enum, 5 regulatory bodies, 5 finding severities.
+  - `storage.contracts.ts`: Presigned upload and file verification schemas.
+  - `audit.contracts.ts`: Audit event creation and query schemas.
+  - `notifications.contracts.ts`: Review request, approval decision, and drift alert schemas.
+- [x] Standard API Gateway route wrapper created in `src/lib/api-handler.ts` (`createApiHandler`):
+  - Propagates and validates `X-Request-ID`.
+  - Authoritatively enforces `resolveTenantContext(req)`.
+  - Enforces `requirePermission()` and `Idempotency-Key` headers on state-changing calls.
+  - Maps `ZodError` and `AuthTenancyError` to standard JSON error envelopes with proper HTTP status codes.
+- [x] Cloudflare R2 Private File Storage Service created in `src/modules/asset-processing/r2.storage.ts`:
+  - Scoped presigned `PUT` and `GET` URL generator (`tenants/{tenant_id}/assets/{asset_id}/{filename}`).
+  - **Magic-Byte Binary Inspection** (`verifyMagicBytes`): Validates genuine headers for PNG, JPEG, WEBP, PDF, and DOCX, and strictly rejects disguised executables (`MZ`), SVGs (`<svg`), HTML (`<!DOCTYPE`), and script injections.
+  - **SHA-256 Digest Verification** (`verifySha256`).
+- [x] Cryptographic Tamper-Evident Audit Ledger created in `src/modules/audit/audit.service.ts`:
+  - Implements SHA-256 hash chaining (`previous_state_hash` -> `new_state_hash`) starting from `GENESIS_HASH`.
+  - Audit integrity verifier (`verifyChain`) detecting any altered payload, modified row, or broken link.
+- [x] Sliding-Window Rate Limiter created in `src/lib/rate-limit.ts` protecting chat streams, assessments, uploads, and web searches.
+- [x] Transactional Notification Service created in `src/lib/notifications.ts` (Resend) with responsive HTML templates matching Cogent brand tokens.
+- [x] Automated test suite expanded to **67 passing tests across 12 test files**:
+  - `tests/unit/r2-storage.test.ts`: 12 tests verifying presigned URLs, magic-byte inspection (PNG, JPEG, WEBP, PDF, DOCX vs disguised executables/SVGs/HTML), and SHA-256 validation.
+  - `tests/unit/audit-service.test.ts`: 4 tests verifying deterministic SHA-256 chaining, genesis hash binding, and tamper detection.
+  - `tests/unit/rate-limit.test.ts`: 4 tests verifying sliding-window quota deduction, limit enforcement, and window reset.
+  - `tests/unit/api-handler.test.ts`: 4 tests verifying standard envelopes, idempotency enforcement, and Zod error formatting.
+  - `tests/unit/notifications.test.ts`: 4 tests verifying review requests, approval decisions, rejection notices, and drift alerts.
+  - All existing unit, clerk webhook, rbac, and database tests maintained passing.
 - [x] Strict TypeScript check (`tsc --noEmit`), lint (`next lint`), and Next.js build pass cleanly with 0 errors.
 
-#### External Live Clerk Checklist
-- [x] Clerk Application configured.
-- [x] Clerk Organizations enabled.
-- [x] Clerk credentials received:
-  - `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`: Configured in `.env.local`
-  - `CLERK_SECRET_KEY`: Configured in `.env.local`
-  - `CLERK_WEBHOOK_SIGNING_SECRET`: Configured in `.env.local`
-- [ ] User confirms Clerk Environment Variables added to Vercel Project Settings.
+#### External Live Infrastructure Checklist
+- [x] Cloudflare R2 credentials received:
+  - Account ID: `00a2b3f3a9307ba587e18784e5115ec9`
+  - Access Key ID: `b78ee8426b8d1a36777e4b48f294a94b`
+  - Bucket Name: `cogent-marketing-shield-assets`
+  - Secret Key: Configured in `.env.local`
+- [x] Resend credentials received:
+  - API Key: Configured in `.env.local`
+  - From Email: `compliance@notifications.stem-cogent.com`
+- [ ] User confirms R2 and Resend Environment Variables added to Vercel Project Settings.
 
 ---
 
@@ -103,4 +115,5 @@
 |---|---|---|---|---|
 | **Phase 1** | 2026-11-11 | `7e901a5` | User Sign-Off | Next.js 15.5.29, Vercel live health check, Better Stack Token `xL1zCjM9t7iCAwHigBXrQDt9`, Better Uptime monitor |
 | **Phase 2** | 2026-11-11 | `e92c393` | User Sign-Off | Live migration to Supabase `igrcwfojsliohdhivhby`, 35 tables, `vector 0.8.2`, RRF RPCs, code 23503 isolation |
-| **Phase 3** | 2026-11-11 | `Pending Sign-Off` | User (Pending) | Clerk Middleware, Svix Webhook (`POST /api/webhooks/clerk`), 22-Permission Matrix, 39 Tests Passing |
+| **Phase 3** | 2026-11-11 | `2cb2224` | User Sign-Off | Clerk Middleware, Svix Webhook (`POST /api/webhooks/clerk`), 22-Permission Matrix, 39 Tests Passing |
+| **Phase 4** | 2026-11-11 | `Pending Sign-Off` | User (Pending) | Cloudflare R2 Presigned Service, SHA-256 Audit Ledger, Resend, Rate Limiter, 67 Tests Passing |

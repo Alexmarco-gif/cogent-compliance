@@ -1,5 +1,8 @@
 /**
- * Central schema contracts barrel
- * (API contracts, Gemini tool schemas, and lifecycle enums)
+ * Cogent Marketing Shield - Canonical Contracts Barrel
  */
+
 export * from "./api.contracts";
+export * from "./storage.contracts";
+export * from "./audit.contracts";
+export * from "./notifications.contracts";

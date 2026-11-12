@@ -2,8 +2,8 @@
 
 **Document Reference:** `08_Greenfield_Implementation_Roadmap_and_Antigravity_Execution_Plan.md`  
 **Governance Principle:** *Strict Real-World Production Setup. Zero Mockups. Zero Fake Credentials. Every external service is provisioned in its real production environment before closing any phase.*  
-**Current Active Phase:** **PHASE 3 (Authentication, Clerk Organization Sync & RBAC Infrastructure) — COMPLETED & READY FOR SIGN-OFF**  
-**Next Upcoming Phase:** **PHASE 4 (Shared Application Infrastructure & Reusable Core Services)**  
+**Current Active Phase:** **PHASE 4 (Shared Application Infrastructure & Reusable Core Services) — COMPLETED & READY FOR SIGN-OFF**  
+**Next Upcoming Phase:** **PHASE 5 (Durable Background Processing & Central Gemini Engine)**  
 
 ---
 
@@ -11,14 +11,15 @@
 1. [Overview & How to Use This Runbook](#1-overview--how-to-use-this-runbook)
 2. [PHASE 1: Engineering Environment & CI/CD (COMPLETED & SIGNED OFF)](#2-phase-1-engineering-environment--cicd-completed--signed-off)
 3. [PHASE 2: Supabase PostgreSQL & pgvector (COMPLETED & SIGNED OFF)](#3-phase-2-supabase-postgresql--pgvector-completed--signed-off)
-4. [PHASE 3: Clerk Production Organizations & Svix (COMPLETED & VERIFIED)](#4-phase-3-clerk-production-organizations--svix-completed--verified)
-5. [PHASE 4: Cloudflare R2 Private Storage & Resend Setup (ACTION REQUIRED FOR PHASE 4)](#5-phase-4-cloudflare-r2-private-storage--resend-setup-action-required-for-phase-4)
-   - [Task 4.1: Create Cloudflare R2 Storage Bucket](#task-41-create-cloudflare-r2-storage-bucket)
-   - [Task 4.2: Generate Cloudflare R2 API Tokens (S3-Compatible)](#task-42-generate-cloudflare-r2-api-tokens-s3-compatible)
-   - [Task 4.3: Configure Resend Transactional Email Account & API Key](#task-43-configure-resend-transactional-email-account--api-key)
-   - [Task 4.4: Inject R2 & Resend Variables into Vercel and Local Environment](#task-44-inject-r2--resend-variables-into-vercel-and-local-environment)
-6. [UPCOMING PHASES: Production Infrastructure Roadmap](#6-upcoming-phases-production-infrastructure-roadmap)
-   - [Phase 5 Preview: Google Gemini API & Inngest Production](#phase-5-preview-google-gemini-api--inngest-production)
+4. [PHASE 3: Clerk Production Organizations & Svix (COMPLETED & SIGNED OFF)](#4-phase-3-clerk-production-organizations--svix-completed--signed-off)
+5. [PHASE 4: Cloudflare R2 Private Storage & Resend (COMPLETED & VERIFIED)](#5-phase-4-cloudflare-r2-private-storage--resend-completed--verified)
+6. [PHASE 5: Google Gemini API & Inngest Production Setup (ACTION REQUIRED FOR PHASE 5)](#6-phase-5-google-gemini-api--inngest-production-setup-action-required-for-phase-5)
+   - [Task 5.1: Retrieve Google Gemini API Key](#task-51-retrieve-google-gemini-api-key)
+   - [Task 5.2: Create Inngest Production Account & Project](#task-52-create-inngest-production-account--project)
+   - [Task 5.3: Retrieve Inngest Event & Signing Keys](#task-53-retrieve-inngest-event--signing-keys)
+   - [Task 5.4: Inject Gemini & Inngest Keys into Vercel and Local Environment](#task-54-inject-gemini--inngest-keys-into-vercel-and-local-environment)
+7. [UPCOMING PHASES: Production Infrastructure Roadmap](#7-upcoming-phases-production-infrastructure-roadmap)
+   - [Phase 6 Preview: Vertical Slice 1 — Conversational Copilot Walking Skeleton](#phase-6-preview-vertical-slice-1--conversational-copilot-walking-skeleton)
 
 ---
 
@@ -52,131 +53,125 @@ This document is your **click-by-click, screen-by-screen external operations run
 
 ---
 
-# 4. PHASE 3: Clerk Production Organizations & Svix (COMPLETED & VERIFIED)
-
-All Phase 3 authentication and RBAC infrastructure components have been implemented and verified:
+# 4. PHASE 3: Clerk Production Organizations & Svix (COMPLETED & SIGNED OFF)
 
 - [x] **Task 3.1:** `@clerk/nextjs` (7.9.25) and `svix` (2.10.0) integrated.
-- [x] **Task 3.2:** Route protection middleware (`src/middleware.ts`) deployed, guarding workspace and API routes while exempting public endpoints.
+- [x] **Task 3.2:** Route protection middleware (`src/middleware.ts`) deployed, guarding workspace and API routes.
 - [x] **Task 3.3:** Clerk Svix Webhook receiver implemented at `POST /api/webhooks/clerk` with cryptographic signature verification.
 - [x] **Task 3.4:** Clerk-to-Supabase real-time sync service (`src/modules/auth-tenancy/clerk.sync.ts`) handling organization and membership lifecycle events.
 - [x] **Task 3.5:** Authoritative 22-permission matrix for all 5 canonical roles and Document 07 Section 5.3 Anti-Self-Approval dual control implemented.
 - [x] **Task 3.6:** Server-side tenant resolver (`src/modules/auth-tenancy/tenant.resolver.ts`) failing closed with 401/403.
-- [x] **Task 3.7:** Automated test suite expanded to 39 passing tests.
-
-### Final External Action for Phase 3:
-Add the following 3 environment variables to your **Vercel Project Settings** (`https://vercel.com/<your-team>/cogent-compliance/settings/environment-variables`):
-1. `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` = `pk_test_ZXhvdGljLWxlZWNoLTE1MDMuY2xlcmsuYWNjb3VudHMuZGV2JA`
-2. `CLERK_SECRET_KEY` = `<YOUR_CLERK_SECRET_KEY>`
-3. `CLERK_WEBHOOK_SIGNING_SECRET` = `<YOUR_CLERK_WEBHOOK_SIGNING_SECRET>`
+- [x] **Task 3.7:** Phase 3 sign-off confirmed on 2026-11-11.
 
 ---
 
-# 5. PHASE 4: Cloudflare R2 Private Storage & Resend Setup (ACTION REQUIRED FOR PHASE 4)
+# 5. PHASE 4: Cloudflare R2 Private Storage & Resend (COMPLETED & VERIFIED)
 
-In Phase 4, we build the shared application infrastructure:
-1. **Cloudflare R2 File Storage Service:** Tenant-prefixed (`tenants/{tenant_id}/...`) presigned URLs for campaign flyers, PDFs, and playbooks with magic-byte file signature verification and SHA-256 integrity checks.
-2. **Resend Transactional Notification Service:** Automated email delivery for review requests, CCO approval/rejection decisions, and post-publication drift alerts.
-3. **Cryptographic Audit Service:** Tamper-evident hash-chained SHA-256 audit ledger.
-4. **Rate Limiting Service:** Sliding-window rate limiting on chat streaming, assessments, uploads, and live web searches.
+All Phase 4 shared application infrastructure components have been implemented and verified:
 
-Follow these step-by-step instructions to configure Cloudflare R2 and Resend.
+- [x] **Task 4.1:** Cloudflare R2 bucket provisioned: `cogent-marketing-shield-assets`.
+- [x] **Task 4.2:** Scoped presigned upload and download URL generator (`src/modules/asset-processing/r2.storage.ts`).
+- [x] **Task 4.3:** Binary magic-byte inspection verifying genuine PNG, JPEG, WEBP, PDF, and DOCX headers while strictly rejecting disguised executables (`MZ`), SVGs (`<svg`), HTML (`<!DOCTYPE`), and script injections.
+- [x] **Task 4.4:** SHA-256 binary digest verification.
+- [x] **Task 4.5:** Cryptographic tamper-evident audit ledger (`src/modules/audit/audit.service.ts`) with SHA-256 hash chaining and tamper-detection verifier.
+- [x] **Task 4.6:** Sliding-window rate limiter (`src/lib/rate-limit.ts`) protecting chat streams, assessments, uploads, and web searches.
+- [x] **Task 4.7:** Transactional notification service (`src/lib/notifications.ts`) with responsive HTML templates matching Cogent brand tokens.
+- [x] **Task 4.8:** Standard API gateway route wrapper (`src/lib/api-handler.ts`) with `X-Request-ID` correlation, tenant resolution, RBAC guards, and standard JSON envelopes.
+- [x] **Task 4.9:** Automated test suite expanded to 67 passing tests.
+
+### Final External Action for Phase 4:
+Add the following environment variables to your **Vercel Project Settings** (`https://vercel.com/<your-team>/cogent-compliance/settings/environment-variables`):
+1. `R2_ACCOUNT_ID` = `00a2b3f3a9307ba587e18784e5115ec9`
+2. `R2_ACCESS_KEY_ID` = `b78ee8426b8d1a36777e4b48f294a94b`
+3. `R2_SECRET_ACCESS_KEY` = `<YOUR_R2_SECRET_ACCESS_KEY>`
+4. `R2_BUCKET_NAME` = `cogent-marketing-shield-assets`
+5. `RESEND_API_KEY` = `<YOUR_RESEND_API_KEY>`
+6. `RESEND_FROM_EMAIL` = `compliance@notifications.stem-cogent.com`
 
 ---
 
-## Task 4.1: Create Cloudflare R2 Storage Bucket
+# 6. PHASE 5: Google Gemini API & Inngest Production Setup (ACTION REQUIRED FOR PHASE 5)
+
+In Phase 5, we build:
+1. **Central Google Gemini Engine (`src/modules/ai-orchestration/gemini.service.ts`):** Single server-only wrapper around `@google/genai` supporting `gemini-2.5-pro` (compliance assessment, flyer OCR, rewrite generation), `gemini-2.5-flash` (low-latency copilot chat, web search synthesis), and `text-embedding-004` (768-dim vector embeddings). Automatically records latency, token counts, and cost in `ai_model_runs`.
+2. **Two-Step Live Web Search Router (`src/modules/live-web-intelligence/web-search.router.ts`):** Isolated secondary `gemini-2.5-flash` call with `tools: [{ googleSearch: {} }]` prioritizing CBN, FCCPC, ARCON, NDPC, and SEC official domains.
+3. **Inngest Durable Background Queue (`src/modules/jobs/inngest.client.ts` & `/api/inngest`):** Step-level retries (`step.run`), per-tenant concurrency limits, and tracking in `processing_jobs`.
+4. **Golden 50 Nigerian Statutory Vault Seeding:** Ingesting and embedding the 5 Nigerian regulatory bodies and the Golden 50 Nigerian Regulatory Instruments.
+
+Follow these step-by-step instructions to configure Google Gemini and Inngest.
+
+---
+
+## Task 5.1: Retrieve Google Gemini API Key
+
+1. Open your browser and navigate to Google AI Studio:  
+   👉 `https://aistudio.google.com/apikey` (log in with your Google account).
+2. Click the blue button: **"Create API key"** (or select your existing enterprise project).
+3. Select your Google Cloud project (or choose "Create API key in new project").
+4. Copy the generated key (starts with `AIzaSy...`).
+5. **Save this as `GEMINI_API_KEY`**.
+
+---
+
+## Task 5.2: Create Inngest Production Account & Project
 
 1. Open your browser and navigate to:  
-   👉 `https://dash.cloudflare.com` (log in to your Cloudflare account).
-2. In the left-hand navigation sidebar, click on **"R2 Object Storage"** (or go to `https://dash.cloudflare.com/?to=/:account/r2`).
-3. Click the blue button: **"Create bucket"**.
-4. Configure bucket settings:
-   - **Bucket name:** Enter `cogent-marketing-shield-assets` (or `cogent-compliance-assets`).
-   - **Location:** Choose **Automatic** (or **WNAM / WEUR** closest to your target users).
-   - **Storage Class:** Select **Standard**.
-5. Click **"Create bucket"**.
-6. **Confirm Security Policy:**
-   - Under bucket **Settings**, ensure **Public access** is **Off / Disabled** (Private bucket). All uploads and downloads will use short-lived presigned URLs generated server-side.
+   👉 `https://app.inngest.com` (log in or create an Inngest account).
+2. Click **"Create project"** (or use your default organization).
+3. Name your project: `Cogent Marketing Shield` (or `cogent-compliance`).
+4. In your project dashboard, navigate to **Settings** or **Event Keys**:
+   - URL: `https://app.inngest.com/env/production/settings/keys`
 
 ---
 
-## Task 4.2: Generate Cloudflare R2 API Tokens (S3-Compatible)
+## Task 5.3: Retrieve Inngest Event & Signing Keys
 
-Cloudflare R2 provides an AWS S3-compatible API. We need an API token with read/write access to this bucket.
-
-1. In the R2 Overview page (`https://dash.cloudflare.com/?to=/:account/r2`), look on the right sidebar and click: **"Manage R2 API Tokens"** (or click **"Manage API Tokens"**).
-2. Click the button: **"Create API token"**.
-3. Configure the token:
-   - **Token name:** `cogent-compliance-app`.
-   - **Permissions:** Select **Object Read & Write**.
-   - **Apply to specific buckets only:** Choose your bucket `cogent-marketing-shield-assets`.
-   - **TTL:** Leave blank (no expiration) or set your security preference.
-4. Click **"Create API Token"**.
-5. **Copy and Save the Generated Credentials:**
-   - **Account ID:** Found in your R2 dashboard URL or right sidebar (32-character hex string).
-   - **Access Key ID:** S3-compatible access key string.
-   - **Secret Access Key:** S3-compatible secret key string.
-   - **Bucket Name:** `cogent-marketing-shield-assets`.
+1. Under **Event Keys**, click **"Create event key"** (or copy default event key).  
+   - Key Name: `Cogent Production App`.  
+   - Copy the key (starts with `ingest_...` or hex string).  
+   - **Save this as `INNGEST_EVENT_KEY`**.
+2. Under **Signing Key**, find your project's signing key.  
+   - Click the eye icon to reveal the signing key (starts with `signkey-prod-...` or hex string).  
+   - **Save this as `INNGEST_SIGNING_KEY`**.
+3. Under **Apps / Webhook Sync**, note down your production sync URL:  
+   👉 `https://<YOUR-VERCEL-DOMAIN>/api/inngest`  
+   *(Inngest connects to this endpoint to discover workflows and dispatch background jobs).*
 
 ---
 
-## Task 4.3: Configure Resend Transactional Email Account & API Key
-
-1. Open your browser and navigate to:  
-   👉 `https://resend.com/overview` (log in or sign up for Resend).
-2. In the left-hand navigation sidebar, click on **"API Keys"** (`https://resend.com/api-keys`).
-3. Click the black button in the top-right corner: **"Create API Key"**.
-4. Configure key settings:
-   - **Name:** `Cogent Marketing Shield Production`.
-   - **Permission:** **Full access** (or **Sending access**).
-   - **Domain:** All domains (or select your verified domain).
-5. Click **"Add"**.
-6. **Copy and Save:**
-   - Copy the API Key (starts with `re_...`). This is your `RESEND_API_KEY`.
-7. (Optional Domain Verification):
-   - Under **Domains** (`https://resend.com/domains`), add your domain (e.g., `notifications.cogentshield.com` or your company domain) and configure the DNS DKIM/SPF records. If testing before domain verification, Resend permits sending test emails to your account email address using `onboarding@resend.dev`.
-
----
-
-## Task 4.4: Inject R2 & Resend Variables into Vercel and Local Environment
+## Task 5.4: Inject Gemini & Inngest Keys into Vercel and Local Environment
 
 ### In Vercel:
 Go to **Settings** $\rightarrow$ **Environment Variables** and add:
-- `R2_ACCOUNT_ID`: Your Cloudflare Account ID
-- `R2_ACCESS_KEY_ID`: Your R2 Access Key ID
-- `R2_SECRET_ACCESS_KEY`: Your R2 Secret Access Key
-- `R2_BUCKET_NAME`: `cogent-marketing-shield-assets`
-- `RESEND_API_KEY`: Your Resend API Key (`re_...`)
-- `RESEND_FROM_EMAIL`: `compliance@notifications.cogentshield.com` (or `onboarding@resend.dev`)
+- `GEMINI_API_KEY`: Your Google AI Studio API key (`AIzaSy...`)
+- `INNGEST_EVENT_KEY`: Your Inngest event key
+- `INNGEST_SIGNING_KEY`: Your Inngest signing key
 
 ### In Local Workspace:
 Add to `.env.local`:
 ```bash
-# Cloudflare R2 Private File Storage (Phase 4)
-R2_ACCOUNT_ID=<YOUR_CLOUDFLARE_ACCOUNT_ID>
-R2_ACCESS_KEY_ID=<YOUR_R2_ACCESS_KEY_ID>
-R2_SECRET_ACCESS_KEY=<YOUR_R2_SECRET_ACCESS_KEY>
-R2_BUCKET_NAME=cogent-marketing-shield-assets
+# Google Gemini API (@google/genai SDK)
+GEMINI_API_KEY=<YOUR_GEMINI_API_KEY>
 
-# Resend Transactional Email (Phase 4)
-RESEND_API_KEY=<YOUR_RESEND_API_KEY>
-RESEND_FROM_EMAIL=compliance@notifications.cogentshield.com
+# Inngest Background Queue
+INNGEST_EVENT_KEY=<YOUR_INNGEST_EVENT_KEY>
+INNGEST_SIGNING_KEY=<YOUR_INNGEST_SIGNING_KEY>
 ```
 
 ---
 
-## What to Provide to Kick Off Phase 4
+## What to Provide to Kick Off Phase 5
 
-Once you have reviewed this runbook and are ready for Phase 4, reply with:
-1. Confirmation of Phase 3 sign-off.
-2. Your Cloudflare R2 credentials (`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`).
-3. Your Resend API Key (`RESEND_API_KEY`).
+Once you have reviewed this runbook and are ready for Phase 5, reply with:
+1. Confirmation of Phase 4 sign-off.
+2. Your Google Gemini API Key (`GEMINI_API_KEY`).
+3. Your Inngest keys (`INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`).
 *(Or confirm that you have added them directly to Vercel and `.env.local`).*
 
 ---
 
-# 6. UPCOMING PHASES: Production Infrastructure Roadmap
+# 7. UPCOMING PHASES: Production Infrastructure Roadmap
 
-### Phase 5 Preview: Google Gemini API & Inngest Production
-- **Services:** Google AI Studio / Vertex AI (`@google/genai`) & Inngest (`inngest.com`).
-- **Tokens to Retrieve:** `GEMINI_API_KEY`, `INNGEST_EVENT_KEY`, `INNGEST_SIGNING_KEY`.
+### Phase 6 Preview: Vertical Slice 1 — Conversational Copilot Walking Skeleton
+- **Module:** `/chat` workspace, SSE streaming, Evidence Drawer, Golden 50 RRF search.
+- **Milestone:** The first interactive end-to-end regulatory compliance copilot interface.
