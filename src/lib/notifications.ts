@@ -25,7 +25,7 @@ export class TransactionalNotificationService {
     const apiKey = process.env.RESEND_API_KEY;
     this.fromEmail = process.env.RESEND_FROM_EMAIL || "compliance@notifications.stem-cogent.com";
 
-    if (apiKey && apiKey.trim().length > 0 && !apiKey.includes("mock")) {
+    if (apiKey && apiKey.trim().length > 0 && (!apiKey.includes("mock") || process.env.NODE_ENV === "test")) {
       try {
         this.resend = new Resend(apiKey);
       } catch (err) {

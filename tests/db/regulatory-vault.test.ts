@@ -7,7 +7,13 @@ import { describe, it, expect } from "vitest";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { geminiService } from "@/modules/ai-orchestration/gemini.service";
 
-describe("Golden 50 Nigerian Statutory Vault & Hybrid RRF Retrieval (DB Integration)", () => {
+const isMockDb =
+  !process.env.SUPABASE_URL ||
+  process.env.SUPABASE_URL.includes("mock") ||
+  !process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY.includes("mock");
+
+describe.skipIf(isMockDb)("Golden 50 Nigerian Statutory Vault & Hybrid RRF Retrieval (DB Integration)", () => {
   const supabase = createAdminSupabaseClient();
 
   it("should have all 5 Nigerian regulatory bodies active in PostgreSQL", async () => {

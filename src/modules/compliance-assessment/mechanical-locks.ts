@@ -207,13 +207,14 @@ export class MechanicalLocksEngine {
     }
 
     // 2. Check active tenant-specific institutional terms in PostgreSQL
-    try {
-      const supabase = createAdminSupabaseClient();
-      const { data: dbTerms } = await supabase
-        .from("prohibited_terms")
-        .select("term, category, reason, severity, matching_mode")
-        .eq("status", "ACTIVE")
-        .or(`tenant_id.is.null,tenant_id.eq.${input.tenantId}`);
+    if (process.env.SUPABASE_URL && !process.env.SUPABASE_URL.includes("mock")) {
+      try {
+        const supabase = createAdminSupabaseClient();
+        const { data: dbTerms } = await supabase
+          .from("prohibited_terms")
+          .select("term, category, reason, severity, matching_mode")
+          .eq("status", "ACTIVE")
+          .or(`tenant_id.is.null,tenant_id.eq.${input.tenantId}`);
 
       if (dbTerms && dbTerms.length > 0) {
         for (const item of dbTerms) {
@@ -248,6 +249,7 @@ export class MechanicalLocksEngine {
         error: (err as Error).message,
       });
     }
+  }
 
     return breaches;
   }
