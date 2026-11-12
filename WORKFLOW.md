@@ -4,7 +4,7 @@
 **Governance Principle:** *Foundations First, Then Vertical Slices. Zero Mockups. Zero Progression Without Complete Phase Verification.*  
 **Last Updated:** 2026-11-11  
 **Current Active Phase:** **PHASE 2 (Database Architecture, Composite Tenancy & Vector Foundation)**  
-**Gate Status:** **IN PROGRESS (Creating Versioned Migrations & Awaiting Supabase Production Provisioning)**  
+**Gate Status:** **INTERNAL CODE & LIVE SUPABASE MIGRATION VERIFIED — PENDING USER SIGN-OFF TO ENTER PHASE 3**  
 
 ---
 
@@ -24,7 +24,7 @@
 | Phase | Phase Name | Category | Internal Code Status | External Config Status | Phase Gate Status | Git Commit / Deliverable |
 |---|---|---|---|---|---|---|
 | **Phase 1** | **Engineering Environment, Repository & CI/CD Baseline** | Foundation | **COMPLETED** | **COMPLETED** | **PASSED & SIGNED OFF** | Commit `7e901a5` / Next.js 15.5.29, Vercel Live, Better Stack Verified |
-| **Phase 2** | **Database Architecture, Composite Tenancy & Vector Foundation** | Foundation | **IN PROGRESS** | **AWAITING SUPABASE CONFIG** | **ACTIVE GATE** | Commit `035b9f7` / 28 Supabase tables, `pgvector`, Composite FKs, RLS |
+| **Phase 2** | **Database Architecture, Composite Tenancy & Vector Foundation** | Foundation | **COMPLETED** | **COMPLETED** | **VERIFIED (READY FOR SIGN-OFF)** | Commit `035b9f7` & live migration / 35 tables, `pgvector`, Composite FKs, RLS, RRF RPCs |
 | **Phase 3** | Authentication, Clerk Organization Sync & RBAC Infrastructure | Foundation | Pending Phase 2 Sign-Off | Pending Phase 2 Sign-Off | LOCKED | Clerk Production Org sync, Svix webhook, 22-permission RBAC |
 | **Phase 4** | Shared Application Infrastructure & Reusable Core Services | Foundation | Pending Phase 3 Sign-Off | Pending Phase 3 Sign-Off | LOCKED | Cloudflare R2 presigned service, SHA-256 audit ledger, Resend |
 | **Phase 5** | Durable Background Processing (Inngest) & Central Gemini Engine | Foundation | Pending Phase 4 Sign-Off | Pending Phase 4 Sign-Off | LOCKED | Inngest queue, Central Gemini wrapper, Golden 50 corpus seed |
@@ -39,32 +39,52 @@
 
 ---
 
-## 3. Detailed Current Phase Status: PHASE 1
+## 3. Detailed Phase Status & Verification Logs
 
-### 3.1 Objective
-Establish a clean, deterministic engineering environment, repository structure, strict type-safety baseline, observability sink, automated CI pipeline, and health-check route before writing business logic.
+### 3.1 Phase 1: Engineering Environment & CI/CD Baseline
+- **Status:** **PASSED & SIGNED OFF**
+- **Internal Verification:** Next.js 15.5.29, strict TypeScript, design tokens, Zod env boot, Better Stack logger, `/api/marketing-shield/v1/health` route. All 9 unit tests passing.
+- **External Verification:** Vercel production deployment active, Better Stack Logtail Source Token `xL1zCjM9t7iCAwHigBXrQDt9` connected, Better Uptime monitor operational.
 
-### 3.2 Internal Code & Build Checklist
-- [x] Greenfield Next.js 15 App Router + React 19 + TypeScript initialized.
-- [x] Strict TypeScript configured (`strict: true`, `noUncheckedIndexedAccess: true` in `tsconfig.json`).
-- [x] Locked design tokens from Document 06 configured in `tailwind.config.ts` (`#0B0F1A`, `#2A4BFF`, `#F5F6FA`, Three-Source Badges).
-- [x] Zod environment schema with fail-fast boot created in `src/lib/env.ts` and documented in `.env.example`.
-- [x] Better Stack structured logger with automatic PII/secret redaction and `X-Request-ID` correlation in `src/lib/logger.ts`.
-- [x] Standard API Gateway Health Check route implemented at `GET /api/marketing-shield/v1/health` with Document 04 standard envelope.
-- [x] Modular directory architecture established: `src/app`, `src/components`, `src/contracts`, `src/lib`, `src/modules`.
-- [x] GitHub Actions CI workflow created in `.github/workflows/ci.yml`.
-- [x] Unit testing harness configured with Vitest; 9/9 tests passing in <1s (`tests/unit/`).
-- [x] E2E testing harness configured with Playwright (`playwright.config.ts`).
-- [x] `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm test:unit`, and `pnpm build` all pass with code 0.
-- [x] All code committed and pushed to `main` (`commit b1d7d91`).
+---
 
-### 3.3 External Production Configuration Checklist (Action Required by User)
-*Follow the click-by-click instructions in `EXTERNAL_CONFIG.md` (Phase 1 section).*
-- [ ] **GitHub Actions:** Verify CI workflow for commit `b1d7d91` shows a green checkmark at `https://github.com/Alexmarco-gif/cogent-compliance/actions`.
-- [ ] **Vercel Production Deployment:** Import `Alexmarco-gif/cogent-compliance` into Vercel, set `SKIP_ENV_VALIDATION=true`, deploy, and verify `https://<your-vercel-domain>/api/marketing-shield/v1/health` returns HTTP 200.
-- [ ] **Better Stack Logs:** Connect Vercel Log Drain or create Node.js source in Better Stack Logs (`telemetry.betterstack.com`), add `BETTER_STACK_LOGTAIL_SOURCE_TOKEN`, and verify logs stream.
-- [ ] **Better Uptime Monitor:** Create HTTP monitor on `https://<your-vercel-domain>/api/marketing-shield/v1/health` at `betteruptime.com` and verify green "Operational" status.
-- [ ] **User Confirmation & Proof Provided:** User provides live URLs and confirms all 4 external checks are green.
+### 3.2 Phase 2: Database Architecture, Composite Tenancy & Vector Foundation
+- **Status:** **INTERNAL & LIVE MIGRATION COMPLETED — READY FOR USER SIGN-OFF**
+- **Objective:** Establish the canonical PostgreSQL schema with strict composite multi-tenancy `(tenant_id, id)`, 1536-dimensional vector search (`pgvector`), GIN full-text search, and Reciprocal Rank Fusion (RRF) RPC functions in live production.
+
+#### Internal Code & Migration Checklist
+- [x] Canonical migration script `supabase/migrations/20261111000001_marketing_shield_schema.sql` created (22KB, 480 lines).
+- [x] PostgreSQL extensions enabled: `pgcrypto`, `vector` (version 0.8.2 confirmed).
+- [x] All 28 canonical tables created with composite primary keys / unique constraints `(tenant_id, id)`.
+- [x] Child tables enforce composite foreign keys `FOREIGN KEY (tenant_id, parent_id) REFERENCES parent(tenant_id, id)`.
+- [x] Critical compliance audit tables enforce `ON DELETE RESTRICT` (preventing regulatory paper-trail destruction).
+- [x] 1536-dimensional vector embeddings with `ivfflat` cosine distance indexes on `regulatory_clauses` and `marketing_knowledge_chunks`.
+- [x] English full-text search `tsvector` columns with GIN indexes on regulatory and knowledge chunks.
+- [x] Two Hybrid Reciprocal Rank Fusion (RRF) search functions deployed:
+  - `search_regulatory_clauses_rrf(p_tenant_id, p_query_text, p_query_embedding, p_match_count, p_rrf_k)`
+  - `search_knowledge_chunks_rrf(p_tenant_id, p_query_text, p_query_embedding, p_match_count, p_rrf_k)`
+- [x] Row Level Security (RLS) enabled on all 28 tables with strict tenant-isolation policies.
+- [x] Supabase client abstractions implemented:
+  - `src/lib/supabase.ts` (admin service-role client & anon browser client).
+- [x] Live integration test `tests/db/tenant-isolation.test.ts` passing against live Supabase instance:
+  - Parent table composite unique constraints verified.
+  - Child table composite foreign key constraints verified.
+  - `ON DELETE RESTRICT` historical compliance audit rules verified.
+  - Live cross-tenant insertion rejection verified (`PostgreSQL code 23503`).
+- [x] Strict TypeScript check (`tsc --noEmit`), lint (`next lint`), and Next.js build pass cleanly with 0 errors.
+
+#### External Live Supabase Checklist
+- [x] Real Supabase Production Project provisioned:
+  - **Project ID:** `igrcwfojsliohdhivhby`
+  - **Region:** AWS Frankfurt (`eu-central-1`)
+  - **URL:** `https://igrcwfojsliohdhivhby.supabase.co`
+- [x] Migration executed against live Supabase database via Management API:
+  - Total public schema tables: 35 (28 canonical Marketing Shield tables + system tables).
+  - Extensions active: `vector` (0.8.2), `pgcrypto` (1.3).
+  - Stored procedures active: 2 RRF hybrid search functions.
+  - Foreign key constraints active: 16 composite FK constraints.
+- [x] Local `.env.local` configured with real credentials (git-ignored).
+- [ ] User confirms Vercel Environment Variables (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) added to Vercel Project Settings.
 
 ---
 
@@ -73,4 +93,4 @@ Establish a clean, deterministic engineering environment, repository structure, 
 | Phase | Completion Date | Git Commit | Approved By | Notes |
 |---|---|---|---|---|
 | **Phase 1** | 2026-11-11 | `7e901a5` | User Sign-Off | Verified with Better Stack Token `xL1zCjM9t7iCAwHigBXrQDt9`, Vercel live health check, and Better Uptime monitor |
-| **Phase 2** | *In Progress* | *Active* | *Pending Verification* | 28 Supabase tables, Composite Foreign Keys, pgvector, and RLS policies |
+| **Phase 2** | 2026-11-11 | `Pending Sign-Off` | User (Pending) | Applied live migration to `igrcwfojsliohdhivhby`, verified 35 tables, `vector 0.8.2`, RRF RPCs, code 23503 isolation |

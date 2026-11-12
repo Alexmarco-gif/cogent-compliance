@@ -63,7 +63,9 @@ class BetterStackLogger {
 
     if (token && token.trim().length > 0) {
       try {
-        this.logtail = new Logtail(token);
+        const endpoint =
+          process.env.BETTER_STACK_ENDPOINT || "https://in.logs.betterstack.com";
+        this.logtail = new Logtail(token, { endpoint });
       } catch (err) {
         console.warn("[Logger] Failed to initialize Logtail client:", err);
       }
