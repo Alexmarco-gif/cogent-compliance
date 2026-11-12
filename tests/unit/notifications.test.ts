@@ -26,6 +26,7 @@ describe("Transactional Notification Service (Resend)", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.RESEND_API_KEY = "re_test_mock_key_123";
     service = new TransactionalNotificationService();
   });
 
