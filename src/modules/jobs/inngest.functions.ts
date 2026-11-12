@@ -341,9 +341,48 @@ export const dossierGenerationJob = inngest.createFunction(
   }
 );
 
+/**
+ * Durable job executing asset security verification, OCR, and document extraction.
+ */
+export const assetExtractionJob = inngest.createFunction(
+  {
+    id: "extract-campaign-asset",
+    triggers: [{ event: "marketing-shield/asset.extract" }],
+    retries: 2,
+  },
+  async ({ event, step }) => {
+    const { assetId, tenantId, campaignId, autoAssess, triggeredByUserId } = event.data;
+
+    const extraction = await step.run("execute-asset-extraction", async () => {
+      const { assetExtractorService } = await import("@/modules/asset-processing/asset-extractor.service");
+      return await assetExtractorService.extractAsset({
+        tenantId,
+        assetId,
+      });
+    });
+
+    if (autoAssess && campaignId) {
+      await step.run("trigger-campaign-assessment", async () => {
+        const { campaignService } = await import("@/modules/campaigns/campaign.service");
+        await campaignService.triggerAssessment(tenantId, triggeredByUserId || "system", campaignId, {
+          include_live_web_check: false,
+        });
+      });
+    }
+
+    return {
+      success: true,
+      assetId,
+      extractionMethod: extraction.extractionMethod,
+      segmentCount: extraction.segments.length,
+    };
+  }
+);
+
 export const inngestFunctions = [
   assessmentExecutionJob,
   regulatoryEmbeddingJob,
   driftMonitoringJob,
   dossierGenerationJob,
+  assetExtractionJob,
 ];

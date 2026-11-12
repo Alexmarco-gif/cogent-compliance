@@ -8,3 +8,5 @@ export * from "./audit.contracts";
 export * from "./notifications.contracts";
 export * from "./ai.contracts";
 export * from "./regulatory.contracts";
+export * from "./conversation.contracts";
+export * from "./campaign.contracts";

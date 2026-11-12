@@ -144,6 +144,28 @@ export class R2StorageService {
   }
 
   /**
+   * Retrieves binary buffer of an object from Cloudflare R2.
+   */
+  public async getObjectBuffer(storageKey: string): Promise<Buffer> {
+    if (!this.client) {
+      throw new Error("R2 client not initialized");
+    }
+
+    const command = new GetObjectCommand({
+      Bucket: this.bucketName,
+      Key: storageKey,
+    });
+
+    const response = await this.client.send(command);
+    if (!response.Body) {
+      throw new Error(`Empty response body for R2 object: ${storageKey}`);
+    }
+
+    const byteArray = await response.Body.transformToByteArray();
+    return Buffer.from(byteArray);
+  }
+
+  /**
    * Inspects binary buffer magic bytes to verify genuine file type and reject disguised executables/SVGs/HTML.
    * Document 07 Section 6.1 specification:
    * - PNG: 89 50 4E 47 0D 0A 1A 0A

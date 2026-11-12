@@ -11,6 +11,7 @@ import {
   regulatoryEmbeddingJob,
   driftMonitoringJob,
   dossierGenerationJob,
+  assetExtractionJob,
 } from "@/modules/jobs/inngest.functions";
 
 describe("Inngest Durable Workflow Engine (Phase 5)", () => {
@@ -18,12 +19,13 @@ describe("Inngest Durable Workflow Engine (Phase 5)", () => {
     expect(inngest.id).toBe("cogent-marketing-shield");
   });
 
-  it("should register exactly 4 production workflow functions", () => {
-    expect(inngestFunctions).toHaveLength(4);
+  it("should register exactly 5 production workflow functions", () => {
+    expect(inngestFunctions).toHaveLength(5);
     expect(inngestFunctions).toContain(assessmentExecutionJob);
     expect(inngestFunctions).toContain(regulatoryEmbeddingJob);
     expect(inngestFunctions).toContain(driftMonitoringJob);
     expect(inngestFunctions).toContain(dossierGenerationJob);
+    expect(inngestFunctions).toContain(assetExtractionJob);
   });
 
   it("should configure tenant-scoped concurrency on assessmentExecutionJob", () => {

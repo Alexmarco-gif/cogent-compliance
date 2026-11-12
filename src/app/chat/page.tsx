@@ -6,9 +6,13 @@ import { AdaptiveMessageRenderer } from "@/components/chat/AdaptiveMessageRender
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ToolActivityPill, type ToolActivityProps } from "@/components/chat/ToolActivityPill";
 import { EvidenceDrawer } from "@/components/chat/EvidenceDrawer";
+import { ContextualCampaignInspector } from "@/components/campaign/ContextualCampaignInspector";
+import type { Finding } from "@/components/campaign/FindingCard";
+import type { LockResult } from "@/components/campaign/Tab1LocksOverview";
+import type { ExtractionData } from "@/components/campaign/Tab2AssetBoundingBoxes";
 import type { ConversationRecord, MessageRecord } from "@/modules/conversations/conversation.service";
 import type { CitationItem, SSEEvent } from "@/contracts/conversation.contracts";
-import { ShieldCheck, Sparkles } from "lucide-react";
+import { ShieldCheck, Sparkles, PanelRight } from "lucide-react";
 
 interface DisplayMessage {
   id: string;
@@ -16,6 +20,32 @@ interface DisplayMessage {
   content: string;
   citations?: CitationItem[];
   isStreaming?: boolean;
+}
+
+interface ActiveCampaignState {
+  id: string;
+  campaign_name: string;
+  channel: string;
+  status: string;
+  risk_level: string;
+  [key: string]: unknown;
+}
+
+interface ActiveAssessmentState {
+  id: string;
+  overall_risk_level: string;
+  summary?: string;
+  lockResults?: LockResult;
+  created_at?: string;
+  [key: string]: unknown;
+}
+
+interface ActiveAssetState {
+  id: string;
+  original_filename: string;
+  mime_type: string;
+  storage_key?: string;
+  [key: string]: unknown;
 }
 
 export default function ChatPage() {
@@ -27,6 +57,14 @@ export default function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [activeTool, setActiveTool] = useState<ToolActivityProps | null>(null);
   const [inspectClauseId, setInspectClauseId] = useState<string | null>(null);
+
+  // Phase 7 Campaign & Inspector State
+  const [activeCampaign, setActiveCampaign] = useState<ActiveCampaignState | null>(null);
+  const [activeAssessment, setActiveAssessment] = useState<ActiveAssessmentState | null>(null);
+  const [campaignFindings, setCampaignFindings] = useState<Finding[]>([]);
+  const [campaignAsset, setCampaignAsset] = useState<ActiveAssetState | null>(null);
+  const [assetExtraction, setAssetExtraction] = useState<ExtractionData | null>(null);
+  const [showInspector, setShowInspector] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -61,6 +99,45 @@ export default function ChatPage() {
     loadConversations();
   }, [loadConversations]);
 
+  // Load campaign and assessment details when active campaign exists
+  const loadCampaignData = useCallback(async (campaignId: string) => {
+    try {
+      const campRes = await fetch(`/api/marketing-shield/v1/campaigns/${campaignId}`);
+      const campJson = await campRes.json();
+      if (campJson.success && campJson.data) {
+        const camp = campJson.data;
+        setActiveCampaign(camp);
+
+        if (camp.assets?.length > 0) {
+          const firstAsset = camp.assets[0];
+          setCampaignAsset(firstAsset);
+
+          // Load asset extraction
+          const extRes = await fetch(`/api/marketing-shield/v1/assets/${firstAsset.id}/extraction`);
+          const extJson = await extRes.json();
+          if (extJson.success && extJson.data) {
+            setAssetExtraction(extJson.data);
+          }
+        }
+
+        if (camp.latest_assessment) {
+          setActiveAssessment(camp.latest_assessment);
+        }
+
+        // Load findings
+        const findRes = await fetch(`/api/marketing-shield/v1/campaigns/${campaignId}/findings`);
+        const findJson = await findRes.json();
+        if (findJson.success && findJson.data) {
+          setCampaignFindings(findJson.data || []);
+        }
+
+        setShowInspector(true);
+      }
+    } catch (err) {
+      console.error("Failed to load campaign data", err);
+    }
+  }, []);
+
   // Load messages whenever activeConvId changes
   useEffect(() => {
     if (!activeConvId) {
@@ -90,10 +167,16 @@ export default function ChatPage() {
         if (isMounted) setLoadingMessages(false);
       });
 
+    // Check if active conversation has linked campaign
+    const conv = conversations.find((c) => c.id === activeConvId);
+    if (conv?.active_campaign_id) {
+      loadCampaignData(conv.active_campaign_id);
+    }
+
     return () => {
       isMounted = false;
     };
-  }, [activeConvId]);
+  }, [activeConvId, conversations, loadCampaignData]);
 
   // Handle New Conversation creation
   const handleNewConversation = async () => {
@@ -108,6 +191,8 @@ export default function ChatPage() {
         setConversations((prev) => [json.data, ...prev]);
         setActiveConvId(json.data.id);
         setMessages([]);
+        setActiveCampaign(null);
+        setShowInspector(false);
       }
     } catch (err) {
       console.error("Failed to create conversation", err);
@@ -152,42 +237,92 @@ export default function ChatPage() {
     }
   };
 
+  // Handle Asset Upload completion from ChatComposer
+  const handleAssetUploaded = async (assetId: string, filename: string) => {
+    let currentConvId = activeConvId;
+
+    if (!currentConvId) {
+      const convRes = await fetch("/api/marketing-shield/v1/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: `Audit: ${filename}` }),
+      });
+      const convJson = await convRes.json();
+      if (convJson.success && convJson.data) {
+        currentConvId = convJson.data.id;
+        setActiveConvId(currentConvId);
+        setConversations((prev) => [convJson.data, ...prev]);
+      }
+    }
+
+    // Auto-create marketing campaign linked to asset
+    try {
+      const campRes = await fetch("/api/marketing-shield/v1/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: currentConvId,
+          campaign_name: filename.replace(/\.[^/.]+$/, ""),
+          channel: "SOCIAL_MEDIA",
+          initial_content_text: `Campaign asset ${filename} uploaded for compliance audit.`,
+        }),
+      });
+
+      const campJson = await campRes.json();
+      if (campJson.success && campJson.data) {
+        const campaign = campJson.data;
+        await loadCampaignData(campaign.id);
+      }
+    } catch (err) {
+      console.error("Failed to initialize campaign for uploaded asset", err);
+    }
+  };
+
   // Send Message & Stream Assistant SSE Response
   const handleSendMessage = async (text: string) => {
     let currentConvId = activeConvId;
 
-    // If no active conversation exists, create one first
     if (!currentConvId) {
       try {
         const createRes = await fetch("/api/marketing-shield/v1/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: text.slice(0, 40) + "..." }),
+          body: JSON.stringify({ title: text.slice(0, 48) + "..." }),
         });
         const createJson = await createRes.json();
         if (createJson.success && createJson.data) {
           currentConvId = createJson.data.id;
-          setConversations((prev) => [createJson.data, ...prev]);
           setActiveConvId(currentConvId);
-        } else {
-          return;
+          setConversations((prev) => [createJson.data, ...prev]);
         }
       } catch (err) {
-        console.error("Failed to create conversation for message", err);
+        console.error("Failed to create initial conversation", err);
         return;
       }
     }
 
-    // Append User Message to UI immediately
-    const tempUserMsgId = `temp_user_${Date.now()}`;
-    const tempAsstMsgId = `temp_asst_${Date.now()}`;
+    if (!currentConvId) return;
 
-    setMessages((prev) => [
-      ...prev,
-      { id: tempUserMsgId, role: "USER", content: text },
-      { id: tempAsstMsgId, role: "ASSISTANT", content: "", isStreaming: true, citations: [] },
-    ]);
+    // Append user message immediately
+    const tempUserMsgId = `user_${Date.now()}`;
+    const userMsg: DisplayMessage = {
+      id: tempUserMsgId,
+      role: "USER",
+      content: text,
+      isStreaming: false,
+    };
 
+    // Prepare assistant streaming message slot
+    const tempAssistantMsgId = `assistant_${Date.now()}`;
+    const assistantMsg: DisplayMessage = {
+      id: tempAssistantMsgId,
+      role: "ASSISTANT",
+      content: "",
+      citations: [],
+      isStreaming: true,
+    };
+
+    setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setIsStreaming(true);
     setActiveTool(null);
 
@@ -196,17 +331,13 @@ export default function ChatPage() {
         `/api/marketing-shield/v1/conversations/${currentConvId}/messages/stream`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "text/event-stream",
-            "Idempotency-Key": crypto.randomUUID(),
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ content: text }),
         }
       );
 
       if (!response.ok || !response.body) {
-        throw new Error(`SSE stream failed with status ${response.status}`);
+        throw new Error(`HTTP ${response.status}: Failed to connect to streaming endpoint`);
       }
 
       const reader = response.body.getReader();
@@ -222,78 +353,66 @@ export default function ChatPage() {
         buffer = lines.pop() || "";
 
         for (const block of lines) {
-          if (!block.trim()) continue;
+          const trimmed = block.trim();
+          if (!trimmed.startsWith("data:")) continue;
 
-          const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
-          if (!dataLine) continue;
+          const jsonStr = trimmed.replace(/^data:\s*/, "");
+          if (!jsonStr) continue;
 
           try {
-            const event: SSEEvent = JSON.parse(dataLine.replace(/^data:\s*/, ""));
+            const event: SSEEvent = JSON.parse(jsonStr);
 
-            if (event.type === "tool.started") {
+            if (event.type === "assistant.delta") {
+              const delta = event.data.text_delta;
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === tempAssistantMsgId
+                    ? { ...m, content: m.content + delta }
+                    : m
+                )
+              );
+            } else if (event.type === "tool.started") {
               setActiveTool({
                 toolName: event.data.tool_name,
                 displayLabel: event.data.display_label,
                 status: "RUNNING",
               });
             } else if (event.type === "tool.completed") {
-              setActiveTool((prev) =>
-                prev ? { ...prev, status: "COMPLETED", summary: event.data.summary } : null
-              );
-            } else if (event.type === "assistant.delta") {
-              setActiveTool(null);
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempAsstMsgId
-                    ? { ...m, content: m.content + event.data.text_delta }
-                    : m
-                )
-              );
+              setActiveTool({
+                toolName: event.data.tool_name,
+                displayLabel: event.data.tool_name,
+                status: event.data.status,
+                summary: event.data.summary,
+              });
             } else if (event.type === "message.completed") {
-              setIsStreaming(false);
-              setActiveTool(null);
               setMessages((prev) =>
                 prev.map((m) =>
-                  m.id === tempAsstMsgId
+                  m.id === tempAssistantMsgId
                     ? {
                         ...m,
                         id: event.data.assistant_message_id || m.id,
-                        isStreaming: false,
-                        citations: event.data.citations,
-                      }
-                    : m
-                )
-              );
-            } else if (event.type === "message.failed") {
-              setIsStreaming(false);
-              setActiveTool(null);
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempAsstMsgId
-                    ? {
-                        ...m,
-                        content: m.content + `\n\n[System Alert: ${event.data.message}]`,
+                        citations: event.data.citations || m.citations,
                         isStreaming: false,
                       }
                     : m
                 )
               );
             }
-          } catch (pErr) {
-            console.warn("Failed to parse SSE line", pErr);
+          } catch (parseErr) {
+            console.warn("Failed to parse SSE line", parseErr);
           }
         }
       }
-    } catch (streamErr) {
-      console.error("Streaming error", streamErr);
+    } catch (err) {
+      console.error("Streaming error", err);
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === tempAsstMsgId
+          m.id === tempAssistantMsgId
             ? {
                 ...m,
                 content:
-                  m.content ||
-                  "An error occurred while streaming the regulatory response. Please verify network connectivity.",
+                  m.content +
+                  "\n\n*A communication interruption occurred while streaming the regulatory analysis.*",
                 isStreaming: false,
               }
             : m
@@ -321,7 +440,7 @@ export default function ChatPage() {
       />
 
       {/* 2. Main Conversational Canvas */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
         {/* Top Navbar */}
         <header className="h-14 border-b border-slate-200 bg-surface px-6 flex items-center justify-between shrink-0">
           <div className="flex items-center space-x-3 truncate">
@@ -338,7 +457,26 @@ export default function ChatPage() {
             </div>
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center space-x-3">
+            {activeCampaign && (
+              <button
+                onClick={() => setShowInspector(!showInspector)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[12px] font-semibold border transition-all ${
+                  showInspector
+                    ? "bg-blue-600 text-white border-blue-600 shadow-xs"
+                    : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50"
+                }`}
+              >
+                <PanelRight className="h-3.5 w-3.5" />
+                Campaign Inspector
+                {campaignFindings.length > 0 && (
+                  <span className="ml-1 rounded-full bg-red-100 text-red-800 px-1.5 py-0.2 text-[10px] font-bold">
+                    {campaignFindings.length}
+                  </span>
+                )}
+              </button>
+            )}
+
             <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span>Statutory Vault Live</span>
@@ -360,12 +498,12 @@ export default function ChatPage() {
                 <Sparkles className="h-6 w-6" />
               </div>
               <h3 className="text-base font-bold text-slate-900 tracking-tight">
-                Sovereign Regulatory Copilot
+                Sovereign Regulatory Copilot & Intake
               </h3>
               <p className="text-xs text-slate-500 leading-relaxed">
                 Consult Nigerian banking, consumer protection, advertising vetting, and data privacy
-                rules. Every statutory answer is grounded in official regulatory instruments with
-                verbatim citations.
+                rules, or drop a promotional flyer/banner for multimodal OCR and 7-layer guardrail
+                compliance assessment.
               </p>
             </div>
           )}
@@ -396,17 +534,34 @@ export default function ChatPage() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Bottom Composer */}
+        {/* Bottom Composer with Asset Attachment */}
         <footer className="p-4 bg-surface border-t border-slate-200/80">
           <ChatComposer
             onSendMessage={handleSendMessage}
+            onAssetUploaded={handleAssetUploaded}
+            conversationId={activeConvId || undefined}
             disabled={isStreaming}
             showStarterPrompts={messages.length === 0}
           />
         </footer>
       </main>
 
-      {/* 3. Slide-over Evidence Drawer */}
+      {/* 3. Contextual Campaign Inspector (Tabs 1-3) */}
+      {showInspector && activeCampaign && (
+        <ContextualCampaignInspector
+          campaign={activeCampaign}
+          assessment={activeAssessment}
+          findings={campaignFindings}
+          asset={campaignAsset}
+          extraction={assetExtraction}
+          isOpen={showInspector}
+          onClose={() => setShowInspector(false)}
+          onEvidenceClick={(clauseId) => setInspectClauseId(clauseId)}
+          onRefresh={() => loadCampaignData(activeCampaign.id)}
+        />
+      )}
+
+      {/* 4. Slide-over Evidence Drawer */}
       <EvidenceDrawer
         clauseId={inspectClauseId}
         isOpen={Boolean(inspectClauseId)}

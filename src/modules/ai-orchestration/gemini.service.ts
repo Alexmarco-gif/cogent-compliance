@@ -11,6 +11,7 @@ import type { AiTaskType, AiModelRun } from "@/contracts/ai.contracts";
 
 export interface GenerateTextOptions {
   prompt: string;
+  imageInlineData?: { mimeType: string; data: string };
   systemInstruction?: string;
   model?: string;
   temperature?: number;
@@ -161,9 +162,24 @@ export class GeminiService {
           config.tools = options.tools;
         }
 
+        const contents:
+          | string
+          | Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> =
+          options.imageInlineData
+            ? [
+                {
+                  inlineData: {
+                    mimeType: options.imageInlineData.mimeType,
+                    data: options.imageInlineData.data,
+                  },
+                },
+                { text: options.prompt },
+              ]
+            : options.prompt;
+
         const response = await this.client.models.generateContent({
           model,
-          contents: options.prompt,
+          contents,
           config,
         });
 
