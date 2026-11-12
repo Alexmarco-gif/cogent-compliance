@@ -28,6 +28,10 @@ export const serverEnvSchema = z.object({
 
   // Google Gemini API (@google/genai SDK)
   GEMINI_API_KEY: z.string().min(1, "GEMINI_API_KEY is required for AI reasoning and embeddings"),
+  GEMINI_PRO_MODEL: z.string().optional(),
+  GEMINI_FLASH_MODEL: z.string().optional(),
+  GEMINI_FLASH_LITE_MODEL: z.string().optional(),
+  GEMINI_EMBEDDING_MODEL: z.string().optional(),
 
   // Inngest Background Queue
   INNGEST_EVENT_KEY: z.string().min(1, "INNGEST_EVENT_KEY is required for durable background events"),
@@ -36,6 +40,8 @@ export const serverEnvSchema = z.object({
   // Better Stack Observability & Logs
   BETTER_STACK_LOGTAIL_SOURCE_TOKEN: z.string().optional(),
   BETTER_STACK_UPTIME_HEARTBEAT_URL: z.string().url().optional(),
+  BETTERSTACK_SOURCE_TOKEN: z.string().optional(),
+  BETTERSTACK_INGESTING_HOST: z.string().optional(),
 
   // Resend Transactional Notifications
   RESEND_API_KEY: z.string().min(1, "RESEND_API_KEY is required for email alerts"),
@@ -95,6 +101,12 @@ export function validateEnv(customEnv?: Record<string, string | undefined>): Env
       R2_BUCKET_NAME: rawEnv.R2_BUCKET_NAME || "cogent-compliance-r2",
       R2_PUBLIC_URL_PREFIX: rawEnv.R2_PUBLIC_URL_PREFIX,
       GEMINI_API_KEY: rawEnv.GEMINI_API_KEY || "mock_gemini_api_key",
+      GEMINI_PRO_MODEL: rawEnv.GEMINI_PRO_MODEL || "gemini-3.5-flash",
+      GEMINI_FLASH_MODEL: rawEnv.GEMINI_FLASH_MODEL || "gemini-3.5-flash",
+      GEMINI_FLASH_LITE_MODEL: rawEnv.GEMINI_FLASH_LITE_MODEL || "gemini-3.1-flash-lite",
+      GEMINI_EMBEDDING_MODEL: rawEnv.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001",
+      BETTERSTACK_SOURCE_TOKEN: rawEnv.BETTERSTACK_SOURCE_TOKEN,
+      BETTERSTACK_INGESTING_HOST: rawEnv.BETTERSTACK_INGESTING_HOST,
       INNGEST_EVENT_KEY: rawEnv.INNGEST_EVENT_KEY || "mock_inngest_event_key",
       INNGEST_SIGNING_KEY: rawEnv.INNGEST_SIGNING_KEY || "mock_inngest_signing_key",
       BETTER_STACK_LOGTAIL_SOURCE_TOKEN: rawEnv.BETTER_STACK_LOGTAIL_SOURCE_TOKEN,

@@ -64,6 +64,30 @@ export type LiveWebSearchResult = z.infer<typeof liveWebSearchResultSchema>;
 export const liveWebSearchResponseSchema = z.object({
   source_class: z.literal("LIVE_WEB_INTELLIGENCE"),
   results: z.array(liveWebSearchResultSchema),
+  status: z.string().optional(),
 });
 
 export type LiveWebSearchResponse = z.infer<typeof liveWebSearchResponseSchema>;
+
+export const fetchLiveUrlContentArgsSchema = z.object({
+  url: z.string().url("Valid HTTPS URL is required").refine((u) => u.startsWith("https://"), {
+    message: "HTTPS scheme is required for live URL inspection",
+  }),
+  campaign_id: z.string().uuid().optional(),
+});
+
+export type FetchLiveUrlContentArgs = z.infer<typeof fetchLiveUrlContentArgsSchema>;
+
+export const fetchLiveUrlContentResponseSchema = z.object({
+  success: z.boolean(),
+  url: z.string().url(),
+  page_title: z.string(),
+  content_text: z.string(),
+  text_length: z.number().int(),
+  retrieved_at: z.string().datetime(),
+  source_class: z.literal("UNTRUSTED_USER_MATERIAL").default("UNTRUSTED_USER_MATERIAL"),
+  sha256_hash: z.string(),
+  asset_id: z.string().uuid().optional(),
+});
+
+export type FetchLiveUrlContentResponse = z.infer<typeof fetchLiveUrlContentResponseSchema>;

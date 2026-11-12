@@ -57,6 +57,8 @@ const TOKEN_PRICING: Record<string, { inputRate: number; outputRate: number }> =
   "gemini-embedding-001": { inputRate: 0.02, outputRate: 0.0 },
 };
 
+import { AI_MODELS } from "@/lib/ai/config";
+
 export class GeminiService {
   private client: GoogleGenAI;
   private defaultReasoningModel: string;
@@ -65,9 +67,9 @@ export class GeminiService {
 
   constructor(customClient?: GoogleGenAI) {
     this.client = customClient || new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
-    this.defaultReasoningModel = "gemini-3.5-flash";
-    this.defaultFastModel = "gemini-3.5-flash";
-    this.defaultEmbeddingModel = "gemini-embedding-001";
+    this.defaultReasoningModel = AI_MODELS.PRO;
+    this.defaultFastModel = AI_MODELS.FLASH;
+    this.defaultEmbeddingModel = AI_MODELS.EMBEDDING;
   }
 
   /**
@@ -258,66 +260,89 @@ export class GeminiService {
     const model = options?.model || this.defaultEmbeddingModel;
     const taskType = options?.context?.taskType || "EMBEDDING_GENERATION";
     const startTime = Date.now();
+    let attempts = 0;
+    const maxAttempts = 5;
+    let lastError: Error | null = null;
 
-    try {
-      const response = await this.client.models.embedContent({
-        model,
-        contents: text,
-        config: {
-          outputDimensionality: 768,
-        },
-      });
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        const response = await this.client.models.embedContent({
+          model,
+          contents: text.slice(0, 1000),
+          config: {
+            outputDimensionality: 768,
+          },
+        });
 
-      const latencyMs = Date.now() - startTime;
-      const embeddingValues = response.embeddings?.[0]?.values;
+        const latencyMs = Date.now() - startTime;
+        const embeddingValues = response.embeddings?.[0]?.values;
 
-      if (!embeddingValues || embeddingValues.length !== 768) {
-        throw new Error(
-          `Invalid embedding dimensionality: expected 768, received ${embeddingValues?.length ?? 0}`
-        );
+        if (!embeddingValues || embeddingValues.length !== 768) {
+          throw new Error(
+            `Invalid embedding dimensionality: expected 768, received ${embeddingValues?.length ?? 0}`
+          );
+        }
+
+        const inputTokens = Math.ceil(text.length / 4);
+        const estimatedCost = this.calculateCost(model, inputTokens, 0);
+
+        await this.recordModelRun({
+          tenantId: options?.context?.tenantId,
+          provider: "GOOGLE_GEMINI",
+          modelName: model,
+          modelVersion: "1.0",
+          taskType,
+          status: "COMPLETED",
+          inputTokens,
+          outputTokens: 0,
+          estimatedCost,
+          latencyMs,
+          metadata: {
+            ...options?.context?.metadata,
+            textLength: text.length,
+            dimensions: 768,
+          },
+        });
+
+        return embeddingValues;
+      } catch (err) {
+        lastError = err as Error;
+        const errMsg = lastError.message || "";
+
+        // Immediately throw dimensionality validation errors without retrying
+        if (errMsg.includes("Invalid embedding dimensionality")) {
+          throw lastError;
+        }
+
+        let sleepMs = 3000;
+
+        const retryMatch = /retry in ([\d.]+)s/i.exec(errMsg) || /retryDelay.*?(\d+)s/i.exec(errMsg);
+        if (retryMatch && retryMatch[1]) {
+          const parsed = Math.ceil(parseFloat(retryMatch[1]) * 1000) + 1500;
+          if (parsed > 60000 || errMsg.includes("per day limit exceeded")) {
+            throw new Error(`Gemini embedding daily quota limit exceeded: ${errMsg}`);
+          }
+          sleepMs = parsed;
+        } else if (errMsg.includes("429") || errMsg.includes("RESOURCE_EXHAUSTED")) {
+          if (errMsg.includes("per day limit exceeded")) {
+            throw new Error(`Gemini embedding daily quota limit exceeded: ${errMsg}`);
+          }
+          sleepMs = Math.min(3000 * Math.pow(2, attempts), 45000);
+        }
+
+        if (attempts < maxAttempts) {
+          logger.warn("Embedding API transient error, backing off", {
+            attempt: attempts,
+            sleepSeconds: Math.round(sleepMs / 1000),
+            error: errMsg.slice(0, 200),
+          });
+          await this.delay(sleepMs);
+        }
       }
-
-      const inputTokens = Math.ceil(text.length / 4);
-      const estimatedCost = this.calculateCost(model, inputTokens, 0);
-
-      await this.recordModelRun({
-        tenantId: options?.context?.tenantId,
-        provider: "GOOGLE_GEMINI",
-        modelName: model,
-        modelVersion: "1.0",
-        taskType,
-        status: "COMPLETED",
-        inputTokens,
-        outputTokens: 0,
-        estimatedCost,
-        latencyMs,
-        metadata: {
-          ...options?.context?.metadata,
-          textLength: text.length,
-          dimensions: 768,
-        },
-      });
-
-      return embeddingValues;
-    } catch (err: unknown) {
-      const latencyMs = Date.now() - startTime;
-      await this.recordModelRun({
-        tenantId: options?.context?.tenantId,
-        provider: "GOOGLE_GEMINI",
-        modelName: model,
-        modelVersion: "1.0",
-        taskType,
-        status: "FAILED",
-        inputTokens: 0,
-        outputTokens: 0,
-        estimatedCost: 0,
-        latencyMs,
-        errorCode: "EMBEDDING_FAILED",
-        errorMessage: (err as Error).message,
-        metadata: options?.context?.metadata || {},
-      });
-      throw err;
     }
+
+    throw new Error(`Gemini embedding failed after ${maxAttempts} attempts: ${lastError?.message}`);
   }
 
   /**

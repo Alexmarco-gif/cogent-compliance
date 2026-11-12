@@ -91,7 +91,7 @@ describe("Two-Step Live Web Search Router (WebSearchRouter)", () => {
     );
   });
 
-  it("should gracefully fall back to official portal citation when API encounters an error", async () => {
+  it("should return empty results and status no_verified_live_results when API encounters an error without inventing citations", async () => {
     mockGenAi.models.generateContent.mockRejectedValueOnce(
       new Error("Search API timeout")
     );
@@ -109,8 +109,51 @@ describe("Two-Step Live Web Search Router (WebSearchRouter)", () => {
     );
 
     expect(result.source_class).toBe("LIVE_WEB_INTELLIGENCE");
-    expect(result.results).toHaveLength(1);
-    expect(result.results[0]!.retrieved_url).toBe("https://cbn.gov.ng/documents/circulars.html");
-    expect(result.results[0]!.page_title).toContain("Central Bank of Nigeria");
+    expect(result.results).toHaveLength(0);
+    expect(result.status).toBe("no_verified_live_results");
+  });
+
+  it("should return empty results and status no_verified_live_results when search returns 0 grounding chunks", async () => {
+    mockGenAi.models.generateContent.mockResolvedValueOnce({
+      text: "No recent circular was published.",
+      candidates: [
+        {
+          groundingMetadata: {
+            groundingChunks: [],
+          },
+        },
+      ],
+    });
+
+    const router = new WebSearchRouter({
+      customClient: mockGenAi as unknown as GoogleGenAI,
+    });
+
+    const result = await router.searchLiveWeb(
+      {
+        query: "obscure circular 2099",
+        prioritize_official_regulators: false,
+      },
+      "11111111-1111-1111-1111-111111111111"
+    );
+
+    expect(result.results).toHaveLength(0);
+    expect(result.status).toBe("no_verified_live_results");
+  });
+
+  it("should block SSRF attempts to private and loopback targets in fetchLiveUrlContent", async () => {
+    const router = new WebSearchRouter();
+    const maliciousUrls = [
+      "https://127.0.0.1:5432/admin",
+      "https://169.254.169.254/latest/meta-data/",
+      "https://10.0.0.1/dashboard",
+      "https://localhost:8080",
+    ];
+
+    for (const url of maliciousUrls) {
+      await expect(
+        router.fetchLiveUrlContent({ url }, "11111111-1111-1111-1111-111111111111")
+      ).rejects.toThrow(/URL_FETCH_BLOCKED/);
+    }
   });
 });

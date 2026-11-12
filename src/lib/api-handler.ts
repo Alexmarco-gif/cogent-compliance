@@ -42,13 +42,20 @@ export type ApiRouteHandler<TData = unknown, TBody = unknown, TQuery = unknown> 
  * - Zod body & query schema validation
  * - Standard JSON success and error envelopes (Document 04 Section 2.3)
  */
+export type NextRouteContext = {
+  params: Promise<Record<string, string | string[]>>;
+};
+
 export function createApiHandler<TData, TBody = unknown, TQuery = unknown>(
   options: ApiHandlerOptions<TBody, TQuery>,
   handler: ApiRouteHandler<TData, TBody, TQuery>,
-) {
+): {
+  (req: NextRequest, routeProps: NextRouteContext): Promise<NextResponse>;
+  (req: NextRequest): Promise<NextResponse>;
+} {
   return async (
     req: NextRequest,
-    routeProps?: { params?: Promise<Record<string, string | string[]>> | Record<string, string | string[]> },
+    routeProps?: { params?: Promise<Record<string, string | string[]>> },
   ): Promise<NextResponse> => {
     const startTime = Date.now();
     const requestId = req.headers.get("x-request-id") || crypto.randomUUID();
@@ -134,11 +141,8 @@ export function createApiHandler<TData, TBody = unknown, TQuery = unknown>(
 
       // 6. Resolve Route Params (supporting async params in Next 15)
       let resolvedParams: Record<string, string | string[]> = {};
-      if (routeProps?.params) {
-        resolvedParams =
-          typeof (routeProps.params as Promise<Record<string, string | string[]>>).then === "function"
-            ? await (routeProps.params as Promise<Record<string, string | string[]>>)
-            : (routeProps.params as Record<string, string | string[]>);
+      if (routeProps && routeProps.params) {
+        resolvedParams = await routeProps.params;
       }
 
       // 7. Execute Handler

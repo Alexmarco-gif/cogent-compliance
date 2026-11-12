@@ -53,27 +53,49 @@ export function redactSensitiveData(data: unknown, depth = 0): unknown {
   return sanitized;
 }
 
+/**
+ * Resolves the Better Stack source-specific ingesting endpoint.
+ * Accepts either a bare host (BETTERSTACK_INGESTING_HOST) or a full URL (BETTER_STACK_ENDPOINT).
+ */
+export function resolveBetterStackEndpoint(
+  source: Record<string, string | undefined> = process.env,
+): string | null {
+  const host = source.BETTERSTACK_INGESTING_HOST?.trim();
+  if (host) return host.startsWith("http") ? host : `https://${host}`;
+  const legacy = source.BETTER_STACK_ENDPOINT?.trim();
+  return legacy ? legacy : null;
+}
+
 class BetterStackLogger {
   private logtail: Logtail | null = null;
   private defaultContext: LogContext = {};
 
   constructor(defaultContext: LogContext = {}) {
     this.defaultContext = defaultContext;
-    const token = process.env.BETTER_STACK_LOGTAIL_SOURCE_TOKEN;
+    const token =
+      process.env.BETTERSTACK_SOURCE_TOKEN || process.env.BETTER_STACK_LOGTAIL_SOURCE_TOKEN;
+    const endpoint = resolveBetterStackEndpoint();
 
-    if (token && token.trim().length > 0) {
+    // Better Stack only accepts logs on the source-specific ingesting host
+    // (e.g. https://s1234567.us-west-2a.betterstackdata.com). Without it the
+    // shared endpoint answers 401, so we refuse to start a silent no-op shipper.
+    if (token && token.trim().length > 0 && endpoint) {
       try {
-        const endpoint =
-          process.env.BETTER_STACK_ENDPOINT || "https://in.logs.betterstack.com";
         const client = new Logtail(token, { endpoint });
-        // Fail-safe wrapper around internal background sync to ensure HTTP 401 / network drops never crash the app
+        // Fail-safe wrapper around internal background sync so HTTP errors never crash the app,
+        // but are surfaced on stderr (once per minute) instead of being swallowed.
         const internalClient = client as unknown as { _sync: (logs: unknown[]) => Promise<unknown[]> };
         if (typeof internalClient._sync === "function") {
           const originalSync = internalClient._sync.bind(internalClient);
+          let lastWarnAt = 0;
           internalClient._sync = async (logs: unknown[]) => {
             try {
               return await originalSync(logs);
-            } catch {
+            } catch (err) {
+              if (Date.now() - lastWarnAt > 60_000) {
+                lastWarnAt = Date.now();
+                console.warn("[Logger] Better Stack log shipping failed:", (err as Error).message);
+              }
               return logs;
             }
           };
