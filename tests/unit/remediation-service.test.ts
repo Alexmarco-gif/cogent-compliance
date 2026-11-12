@@ -70,10 +70,11 @@ vi.mock("@/modules/campaigns/campaign.service", () => ({
 vi.mock("@/modules/compliance-assessment/mechanical-locks", () => ({
   mechanicalLocksEngine: {
     executeLocks: vi.fn().mockResolvedValue({
-      passed_all_locks: true,
+      passed: true,
+      totalBreachCount: 0,
       lock1_prohibited_terms: { passed: true, breaches: [] },
       lock2_product_rate_match: { passed: true, breaches: [] },
-      lock3_mandatory_disclosures: { passed: true, breaches: [] },
+      lock3_mandatory_disclosures: { passed: true, breaches: [], missingDisclosures: [] },
     }),
   },
 }));
@@ -128,19 +129,23 @@ describe("Layer 6 Rewrite Validator (Document 05 Section 7.1)", () => {
 
   it("should return FAILED when proposed text introduces a prohibited term (Lock 1 breach)", async () => {
     vi.mocked(mechanicalLocksEngine.executeLocks).mockResolvedValueOnce({
-      passed_all_locks: false,
+      passed: false,
+      totalBreachCount: 1,
       lock1_prohibited_terms: {
         passed: false,
         breaches: [
           {
+            lockNumber: 1,
+            lockName: "PROHIBITED_TERMS",
+            breachType: "PROHIBITED_TERM",
+            severity: "CRITICAL",
             matchedText: "zero risk",
             explanation: "Absolute guarantee is prohibited",
-            suggestedRemediation: "Remove absolute guarantee",
           },
         ],
       },
       lock2_product_rate_match: { passed: true, breaches: [] },
-      lock3_mandatory_disclosures: { passed: true, breaches: [] },
+      lock3_mandatory_disclosures: { passed: true, breaches: [], missingDisclosures: [] },
     });
 
     const report = await validator.validateRewrite({
@@ -158,19 +163,23 @@ describe("Layer 6 Rewrite Validator (Document 05 Section 7.1)", () => {
 
   it("should return FAILED when proposed text quotes a contradicted rate (Lock 2 breach)", async () => {
     vi.mocked(mechanicalLocksEngine.executeLocks).mockResolvedValueOnce({
-      passed_all_locks: false,
+      passed: false,
+      totalBreachCount: 1,
       lock1_prohibited_terms: { passed: true, breaches: [] },
       lock2_product_rate_match: {
         passed: false,
         breaches: [
           {
+            lockNumber: 2,
+            lockName: "PRODUCT_RATE_MISMATCH",
+            breachType: "RATE_DISCREPANCY",
+            severity: "HIGH",
             matchedText: "5%",
             explanation: "Claimed 5% interest contradicts product rate of 18.5%",
-            suggestedRemediation: "Align with product rate",
           },
         ],
       },
-      lock3_mandatory_disclosures: { passed: true, breaches: [] },
+      lock3_mandatory_disclosures: { passed: true, breaches: [], missingDisclosures: [] },
     });
 
     const report = await validator.validateRewrite({
