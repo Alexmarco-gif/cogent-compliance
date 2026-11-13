@@ -382,10 +382,107 @@ export const assetExtractionJob = inngest.createFunction(
   }
 );
 
+/**
+ * Durable job executing playbook document parsing, chunking, embedding, and rule extraction.
+ */
+export const playbookIngestionJob = inngest.createFunction(
+  {
+    id: "ingest-playbook-document",
+    triggers: [{ event: "marketing-shield/playbook.ingest" }],
+    retries: 2,
+  },
+  async ({ event, step }) => {
+    const { documentId, tenantId, requestedByUserId } = event.data;
+    const supabase = createAdminSupabaseClient();
+
+    // Step 1: Initialize job tracker in processing_jobs
+    const jobId = await step.run("init-playbook-job", async () => {
+      const { data: job } = await supabase
+        .from("processing_jobs")
+        .insert({
+          tenant_id: tenantId,
+          job_type: "PLAYBOOK_DOCUMENT_INGESTION",
+          entity_type: "KNOWLEDGE_DOCUMENT",
+          entity_id: documentId,
+          status: "RUNNING",
+          payload: { documentId, requestedByUserId },
+          started_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+      return job?.id || null;
+    });
+
+    // Step 2: Load document and check if asset extraction or text is available
+    const docData = await step.run("load-document-content", async () => {
+      const { data: doc } = await supabase
+        .from("marketing_knowledge_documents")
+        .select("*")
+        .eq("id", documentId)
+        .eq("tenant_id", tenantId)
+        .single();
+
+      if (!doc) throw new Error(`Document ${documentId} not found`);
+
+      let contentText = doc.description || "";
+
+      // If document links to an asset, fetch text from asset_extractions
+      if (doc.asset_id) {
+        const { data: extraction } = await supabase
+          .from("asset_extractions")
+          .select("extracted_text")
+          .eq("asset_id", doc.asset_id)
+          .maybeSingle();
+
+        if (extraction?.extracted_text) {
+          contentText = extraction.extracted_text;
+        }
+      }
+
+      return {
+        title: doc.title,
+        contentText: contentText || doc.title,
+      };
+    });
+
+    // Step 3: Chunk, embed, and extract candidate rules
+    const result = await step.run("chunk-and-extract-rules", async () => {
+      const { playbookService } = await import("@/modules/knowledge-base/playbook.service");
+      return await playbookService.processDocumentChunks(
+        tenantId,
+        documentId,
+        docData.contentText
+      );
+    });
+
+    // Step 4: Finalize processing_jobs record
+    if (jobId) {
+      await step.run("finalize-playbook-job", async () => {
+        await supabase
+          .from("processing_jobs")
+          .update({
+            status: "COMPLETED",
+            completed_at: new Date().toISOString(),
+            result: result,
+          })
+          .eq("id", jobId);
+      });
+    }
+
+    return {
+      success: true,
+      documentId,
+      chunkCount: result.chunkCount,
+      ruleCount: result.ruleCount,
+    };
+  }
+);
+
 export const inngestFunctions = [
   assessmentExecutionJob,
   regulatoryEmbeddingJob,
   driftMonitoringJob,
   dossierGenerationJob,
   assetExtractionJob,
+  playbookIngestionJob,
 ];

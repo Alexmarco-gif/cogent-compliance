@@ -12,20 +12,22 @@ import {
   driftMonitoringJob,
   dossierGenerationJob,
   assetExtractionJob,
+  playbookIngestionJob,
 } from "@/modules/jobs/inngest.functions";
 
-describe("Inngest Durable Workflow Engine (Phase 5)", () => {
+describe("Inngest Durable Workflow Engine (Phase 5 & 10)", () => {
   it("should initialize Inngest client with correct application ID and schemas", () => {
     expect(inngest.id).toBe("cogent-marketing-shield");
   });
 
-  it("should register exactly 5 production workflow functions", () => {
-    expect(inngestFunctions).toHaveLength(5);
+  it("should register all 6 production workflow functions", () => {
+    expect(inngestFunctions).toHaveLength(6);
     expect(inngestFunctions).toContain(assessmentExecutionJob);
     expect(inngestFunctions).toContain(regulatoryEmbeddingJob);
     expect(inngestFunctions).toContain(driftMonitoringJob);
     expect(inngestFunctions).toContain(dossierGenerationJob);
     expect(inngestFunctions).toContain(assetExtractionJob);
+    expect(inngestFunctions).toContain(playbookIngestionJob);
   });
 
   it("should configure tenant-scoped concurrency on assessmentExecutionJob", () => {

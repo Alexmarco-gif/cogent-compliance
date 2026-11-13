@@ -39,6 +39,22 @@ export type InngestEvents = {
       liveUrl: string;
     };
   };
+  "marketing-shield/playbook.ingest": {
+    data: {
+      documentId: string;
+      tenantId: string;
+      requestedByUserId: string;
+    };
+  };
+  "marketing-shield/asset.extract": {
+    data: {
+      assetId: string;
+      tenantId: string;
+      campaignId?: string;
+      autoAssess?: boolean;
+      triggeredByUserId?: string;
+    };
+  };
 };
 
 /**

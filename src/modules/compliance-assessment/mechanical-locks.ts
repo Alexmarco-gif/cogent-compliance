@@ -265,11 +265,35 @@ export class MechanicalLocksEngine {
     const { productTruth, contentText } = input;
     const lower = contentText.toLowerCase();
 
-    // Check for "0% interest" or "zero interest" claims when product truth has interest rate > 0
+    // 1. Fee Truth Matcher (LOCK2-001)
     if (
-      (productTruth.interestRateMin && productTruth.interestRateMin > 0) ||
-      (productTruth.interestRateMax && productTruth.interestRateMax > 0)
+      (productTruth.processingFeePercent && productTruth.processingFeePercent > 0) ||
+      (productTruth.managementFeePercent && productTruth.managementFeePercent > 0)
     ) {
+      const feePercent = productTruth.processingFeePercent || productTruth.managementFeePercent;
+      if (
+        /\b(?:no\s*fees?|0\s*fees?|zero\s*fees?|completely\s*free|0%\s*processing\s*fee|no\s*processing\s*fee)\b/i.test(
+          lower
+        )
+      ) {
+        breaches.push({
+          lockNumber: 2,
+          lockName: "Lock 2: Product Fee Truth Matcher",
+          breachType: "FEE_SCHEDULE_MISMATCH",
+          severity: "HIGH",
+          matchedText: "0% processing fee / no fees",
+          explanation: `Campaign claims zero fees, but institutional product terms mandate a processing fee of ${feePercent}%.`,
+          statutoryReference: "CBN Consumer Protection Regulations 2019 §3.2.3",
+        });
+      }
+    }
+
+    // 2. Interest Rate Matcher (LOCK2-002)
+    const minRate = productTruth.interestRateMin;
+    const maxRate = productTruth.interestRateMax;
+
+    // Check for "0% interest" or "zero interest" claims when product truth has interest rate > 0
+    if ((minRate && minRate > 0) || (maxRate && maxRate > 0)) {
       if (/(?:\b0%|\bzero\s*percent|\bzero\s*interest|\bno\s*interest)/i.test(contentText)) {
         breaches.push({
           lockNumber: 2,
@@ -277,27 +301,59 @@ export class MechanicalLocksEngine {
           breachType: "INTEREST_RATE_MISMATCH",
           severity: "CRITICAL",
           matchedText: "0% / zero interest",
-          explanation: `Campaign advertises 0% interest, but ${productTruth.productName} product truth specifies a rate of ${productTruth.interestRateMin}% - ${productTruth.interestRateMax}%.`,
+          explanation: `Campaign advertises 0% interest, but ${productTruth.productName} product truth specifies a rate of ${minRate}% - ${maxRate}%.`,
           statutoryReference: "CBN CPF §4.2.1 / FCCPC DEON Guidelines §6",
         });
       }
     }
 
-    // Check for "0 fees" or "no fees" claims when fees exist
-    if (
-      (productTruth.processingFeePercent && productTruth.processingFeePercent > 0) ||
-      (productTruth.managementFeePercent && productTruth.managementFeePercent > 0)
-    ) {
-      if (/\b(?:no\s*fees|0\s*fees|zero\s*fees|completely\s*free)\b/i.test(lower)) {
-        breaches.push({
-          lockNumber: 2,
-          lockName: "Lock 2: Product Fee Truth Matcher",
-          breachType: "FEE_SCHEDULE_MISMATCH",
-          severity: "HIGH",
-          matchedText: "no fees / zero fees",
-          explanation: `Campaign claims zero fees, but institutional product terms mandate a processing fee of ${productTruth.processingFeePercent}%.`,
-          statutoryReference: "CBN Consumer Protection Regulations 2019 §3.2.3",
-        });
+    // Check for specific advertised monthly or annual interest rate claims (e.g., "2% monthly interest")
+    const rateRegex = /(\d+(?:\.\d+)?)\s*%\s*(?:monthly\s*interest|interest(?:\s*rate)?|per\s*month)/gi;
+    let rateMatch: RegExpExecArray | null;
+    while ((rateMatch = rateRegex.exec(contentText)) !== null) {
+      const advertisedRate = parseFloat(rateMatch[1]!);
+      if (!isNaN(advertisedRate) && advertisedRate > 0) {
+        if (minRate !== undefined && advertisedRate < minRate) {
+          breaches.push({
+            lockNumber: 2,
+            lockName: "Lock 2: Product Rate Truth Matcher",
+            breachType: "INTEREST_RATE_UNDERSTATED",
+            severity: "CRITICAL",
+            matchedText: rateMatch[0],
+            explanation: `Campaign advertises '${rateMatch[0]}', but ${productTruth.productName} institutional rate card establishes a minimum interest rate of ${minRate}%.`,
+            statutoryReference: "CBN CPF §4.2.1 / FCCPA 2018 §115",
+          });
+        } else if (maxRate !== undefined && advertisedRate > maxRate) {
+          breaches.push({
+            lockNumber: 2,
+            lockName: "Lock 2: Product Rate Truth Matcher",
+            breachType: "INTEREST_RATE_EXCEEDED",
+            severity: "HIGH",
+            matchedText: rateMatch[0],
+            explanation: `Campaign advertises '${rateMatch[0]}', which exceeds the maximum approved ceiling rate of ${maxRate}%.`,
+            statutoryReference: "CBN Consumer Protection Regulations 2019",
+          });
+        }
+      }
+    }
+
+    // 3. Tenor Limit Matcher (LOCK2-003)
+    if (productTruth.tenorMaxDays) {
+      const daysRegex = /(\d+)\s*(?:days?|calendar\s*days?)(?:\s*(?:tenor|repayment|duration|loan\s*period))?/gi;
+      let daysMatch: RegExpExecArray | null;
+      while ((daysMatch = daysRegex.exec(contentText)) !== null) {
+        const advertisedDays = parseInt(daysMatch[1]!, 10);
+        if (!isNaN(advertisedDays) && advertisedDays > productTruth.tenorMaxDays) {
+          breaches.push({
+            lockNumber: 2,
+            lockName: "Lock 2: Product Tenor Truth Matcher",
+            breachType: "TENOR_LIMIT_EXCEEDED",
+            severity: "HIGH",
+            matchedText: daysMatch[0],
+            explanation: `Advertised repayment tenor (${advertisedDays} days) exceeds maximum approved tenor limit of ${productTruth.tenorMaxDays} days for ${productTruth.productName}.`,
+            statutoryReference: "FCCPC DEON Lending Regulations 2025 §5",
+          });
+        }
       }
     }
 

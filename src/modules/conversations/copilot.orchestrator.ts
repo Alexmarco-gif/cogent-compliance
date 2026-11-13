@@ -184,6 +184,10 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
               displayLabel = "Retrieving verbatim statutory provision and SHA-256 hash...";
             } else if (toolName === "search_live_web") {
               displayLabel = `Searching official Nigerian regulatory circulars: "${toolArgs.query || ""}"...`;
+            } else if (toolName === "search_institutional_knowledge") {
+              displayLabel = `Searching internal playbooks & rules: "${toolArgs.query || ""}"...`;
+            } else if (toolName === "get_product_approved_terms") {
+              displayLabel = "Retrieving approved product rate truth & disclaimers...";
             }
 
             yield {
@@ -270,6 +274,46 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
                   toolArgs as { campaign_id: string; from_revision_id: string; to_revision_id: string },
                   ctx
                 );
+              } else if (toolName === "search_institutional_knowledge") {
+                toolResult = await statutoryToolExecutor.searchInstitutionalKnowledge(
+                  toolArgs as { query: string; document_types?: string[]; limit?: number },
+                  ctx
+                );
+                const chunks = (toolResult.chunks as Array<Record<string, unknown>>) || [];
+                for (const c of chunks) {
+                  collectedCitations.push({
+                    source_class: "INTERNAL_PLAYBOOK",
+                    badge_label: "Internal Playbook Rule",
+                    instrument_title: (c.document_title as string) || "Internal Playbook",
+                    clause_reference: `Chunk #${((c.chunk_index as number) || 0) + 1}`,
+                    regulatory_clause_id: c.chunk_id as string,
+                  });
+                }
+                const rules = (toolResult.rules as Array<Record<string, unknown>>) || [];
+                for (const r of rules) {
+                  collectedCitations.push({
+                    source_class: "INTERNAL_PLAYBOOK",
+                    badge_label: "Internal Playbook Rule",
+                    instrument_title: (r.rule_title as string) || "Active Internal Rule",
+                    clause_reference: r.rule_type as string,
+                    regulatory_clause_id: r.id as string,
+                  });
+                }
+              } else if (toolName === "get_product_approved_terms") {
+                toolResult = await statutoryToolExecutor.getProductApprovedTerms(
+                  toolArgs as { product_id?: string; product_name_query?: string },
+                  ctx
+                );
+                if (toolResult.success && toolResult.product_truth) {
+                  const pt = toolResult.product_truth as Record<string, unknown>;
+                  collectedCitations.push({
+                    source_class: "INTERNAL_PLAYBOOK",
+                    badge_label: "Internal Playbook Rule",
+                    instrument_title: `${pt.product_name} (${pt.product_type}) Approved Terms`,
+                    clause_reference: "Approved Product Rate Card",
+                    regulatory_clause_id: pt.product_id as string,
+                  });
+                }
               }
             } catch (execErr) {
               toolResult = { success: false, error: (execErr as Error).message };

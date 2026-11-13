@@ -8,6 +8,9 @@ import { createAdminSupabaseClient } from "@/lib/supabase";
 import { geminiService } from "@/modules/ai-orchestration/gemini.service";
 import { webSearchRouter } from "@/modules/live-web-intelligence/web-search.router";
 import { remediationService } from "@/modules/campaigns/remediation.service";
+import { productService } from "@/modules/knowledge-base/product.service";
+import { playbookService } from "@/modules/knowledge-base/playbook.service";
+import { KnowledgeDocumentType } from "@/contracts/knowledge-product.contracts";
 import { RewriteTone } from "@/contracts/remediation.contracts";
 import { logger } from "@/lib/logger";
 
@@ -169,6 +172,36 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         to_revision_id: { type: Type.STRING, description: "UUID of the newer revision." },
       },
       required: ["campaign_id", "from_revision_id", "to_revision_id"],
+    },
+  },
+  {
+    name: "search_institutional_knowledge",
+    description:
+      "Searches the institution's private Knowledge Base & Playbooks (marketing_knowledge_chunks and active marketing_knowledge_rules) for internal marketing policies, brand guidelines, and SOPs.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        query: { type: Type.STRING, description: "Search query for internal company playbooks and rules." },
+        document_types: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Optional filter by document type (MARKETING_POLICY, BRAND_GUIDELINE, PRODUCT_DISCLOSURE, SOP, OTHER).",
+        },
+        limit: { type: Type.INTEGER, description: "Max results to return (1 to 10)." },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "get_product_approved_terms",
+    description:
+      "Retrieves the institution's structured product rate, fee, APR, tenor, and mandatory disclaimer schedule from campaign_products.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        product_id: { type: Type.STRING, description: "Optional UUID of the product." },
+        product_name_query: { type: Type.STRING, description: "Optional product name search string (e.g. 'QuickCash')." },
+      },
     },
   },
 ];
@@ -552,6 +585,54 @@ export class StatutoryToolExecutor {
     return {
       success: true,
       data: result,
+    };
+  }
+
+  /**
+   * Tool 7: search_institutional_knowledge
+   */
+  public async searchInstitutionalKnowledge(
+    args: { query: string; document_types?: string[]; limit?: number },
+    ctx: ToolExecutionContext
+  ): Promise<Record<string, unknown>> {
+    const result = await playbookService.searchInstitutionalKnowledge(
+      ctx.tenantId,
+      args.query,
+      args.document_types as KnowledgeDocumentType[],
+      args.limit || 5
+    );
+
+    return {
+      success: true,
+      source_class: "INSTITUTIONAL_KNOWLEDGE",
+      query: args.query,
+      chunks: result.chunks,
+      rules: result.activeRules,
+    };
+  }
+
+  /**
+   * Tool 8: get_product_approved_terms
+   */
+  public async getProductApprovedTerms(
+    args: { product_id?: string; product_name_query?: string },
+    ctx: ToolExecutionContext
+  ): Promise<Record<string, unknown>> {
+    const product = await productService.getProductTruth(ctx.tenantId, {
+      productId: args.product_id,
+      productName: args.product_name_query,
+    });
+
+    return {
+      success: true,
+      product_truth: product
+        ? {
+            product_id: product.id,
+            product_name: product.product_name,
+            product_type: product.product_type,
+            approved_terms: product.approved_terms,
+          }
+        : null,
     };
   }
 }

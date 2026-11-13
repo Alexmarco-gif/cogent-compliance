@@ -10,7 +10,9 @@ import {
   MoreVertical,
   Edit2,
   Check,
+  BookOpen,
 } from "lucide-react";
+import Link from "next/link";
 import { UserButton } from "@clerk/nextjs";
 import type { ConversationRecord } from "@/modules/conversations/conversation.service";
 
@@ -201,6 +203,17 @@ export function ConversationSidebar({
             </div>
           );
         })}
+      </div>
+
+      {/* Knowledge Base Navigation */}
+      <div className="p-3 border-t border-slate-800/80">
+        <Link
+          href="/knowledge-base"
+          className="w-full flex items-center space-x-2 py-2 px-3 rounded-lg bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 hover:text-white text-xs font-medium border border-slate-800 transition-colors cursor-pointer"
+        >
+          <BookOpen className="h-4 w-4 text-slate-400" />
+          <span>Knowledge Base &amp; Truth</span>
+        </Link>
       </div>
 
       {/* User Footer Profile */}

@@ -12,3 +12,4 @@ export * from "./conversation.contracts";
 export * from "./campaign.contracts";
 export * from "./remediation.contracts";
 export * from "./approval-dossier.contracts";
+export * from "./knowledge-product.contracts";
