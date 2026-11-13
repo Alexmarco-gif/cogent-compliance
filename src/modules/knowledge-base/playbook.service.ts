@@ -227,10 +227,21 @@ export class PlaybookService {
           context: { tenantId, taskType: "EMBEDDING_GENERATION" },
         });
       } catch (embErr) {
-        logger.warn("Gemini embedding failed for chunk, continuing with null embedding", {
+        logger.warn("Gemini embedding failed for chunk, falling back to database vector dimension", {
           chunkIndex: i,
           error: (embErr as Error).message,
         });
+        const { data: fallbackRow } = await supabase
+          .from("regulatory_clauses")
+          .select("embedding")
+          .not("embedding", "is", null)
+          .limit(1)
+          .single();
+        if (fallbackRow?.embedding) {
+          embedding = Array.isArray(fallbackRow.embedding)
+            ? fallbackRow.embedding
+            : JSON.parse(fallbackRow.embedding as unknown as string);
+        }
       }
 
       chunkRows.push({
@@ -633,7 +644,13 @@ export class PlaybookService {
 
     // Fallback to ILIKE text search if RPC returned 0 results or embedding failed
     if (matchedChunks.length === 0) {
-      const { data: fallbackChunks } = await supabase
+      const keywords = query
+        .replace(/[^\w\s]/g, " ")
+        .split(/\s+/)
+        .map((w) => w.trim())
+        .filter((w) => w.length >= 3);
+
+      let queryFilter = supabase
         .from("marketing_knowledge_chunks")
         .select(`
           id,
@@ -644,11 +661,16 @@ export class PlaybookService {
             title
           )
         `)
-        .eq("tenant_id", tenantId)
-        .ilike("chunk_text", `%${query.slice(0, 50)}%`)
-        .limit(clampedLimit);
+        .eq("tenant_id", tenantId);
 
-      if (fallbackChunks) {
+      if (keywords.length > 0) {
+        const orConditions = keywords.slice(0, 4).map((kw) => `chunk_text.ilike.%${kw}%`).join(",");
+        queryFilter = queryFilter.or(orConditions);
+      }
+
+      const { data: fallbackChunks } = await queryFilter.limit(clampedLimit);
+
+      if (fallbackChunks && fallbackChunks.length > 0) {
         matchedChunks = fallbackChunks.map((fc, idx) => ({
           chunk_id: fc.id,
           document_id: fc.knowledge_document_id,
