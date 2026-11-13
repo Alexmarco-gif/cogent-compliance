@@ -292,12 +292,13 @@ export class StatutoryToolExecutor {
 
       // 2. Execute PostgreSQL Hybrid RRF RPC
       const startTime = Date.now();
+      const candidateFetchCount = args.regulators && args.regulators.length > 0 ? 50 : Math.max(limit * 3, 25);
       const { data: rrfResults, error: rrfError } = await supabase.rpc(
         "search_regulatory_clauses_rrf",
         {
           query_text: args.query,
           query_embedding: queryEmbedding,
-          match_count: limit,
+          match_count: candidateFetchCount,
           rrf_k: 60,
         }
       );
@@ -320,7 +321,7 @@ export class StatutoryToolExecutor {
         );
       }
 
-      const results = filteredResults.map((r: {
+      const results = filteredResults.slice(0, limit).map((r: {
         clause_id: string;
         clause_reference: string;
         clause_text: string;
