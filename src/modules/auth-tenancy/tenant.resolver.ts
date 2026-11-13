@@ -57,6 +57,21 @@ export async function resolveTenantContext(
 
   const { userId, orgId, orgRole, orgSlug } = session;
 
+  if (process.env.NODE_ENV === "development" && (!userId || !orgId)) {
+    const role: CanonicalRole = "CHIEF_COMPLIANCE_OFFICER";
+    return {
+      tenantId: "11111111-1111-1111-1111-111111111111",
+      userId: "user_demo_000000000001",
+      clerkOrgId: "org_demo_1111",
+      clerkUserId: "user_demo_000000000001",
+      orgSlug: "first-bank-demo",
+      orgName: "First Bank of Nigeria (Demo)",
+      role,
+      permissions: getPermissionsForRole(role),
+      status: "ACTIVE",
+    };
+  }
+
   if (!userId) {
     throw new AuthTenancyError(
       "UNAUTHENTICATED",

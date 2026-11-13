@@ -130,14 +130,17 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "search_live_web",
     description:
-      "Executes real-time regulatory intelligence search against verified Nigerian government and regulator websites (.gov.ng).",
+      "Performs real-time live web search and intelligence retrieval across the Nigerian internet, covering news portals, fintech blogs, corporate releases, legal advisories, and official regulator announcements.",
     parameters: {
       type: Type.OBJECT,
       properties: {
-        query: { type: Type.STRING, description: "Search query for live regulatory announcements or circulars." },
+        query: {
+          type: Type.STRING,
+          description: "Search query for live intelligence, market news, corporate actions, or regulatory circulars.",
+        },
         prioritize_official_regulators: {
           type: Type.BOOLEAN,
-          description: "Defaults to true. Focuses search on official .gov.ng regulator domains.",
+          description: "Optional flag to highlight official regulator perspectives alongside broader market and news intelligence.",
         },
       },
       required: ["query"],

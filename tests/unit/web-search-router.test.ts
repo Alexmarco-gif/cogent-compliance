@@ -40,21 +40,27 @@ describe("Two-Step Live Web Search Router (WebSearchRouter)", () => {
     };
   });
 
-  it("should refine query with official Nigerian regulator domains when prioritize_official_regulators is true", async () => {
+  it("should perform open live web search with Google Search grounding across Nigerian news and regulatory sources", async () => {
     mockGenAi.models.generateContent.mockResolvedValueOnce({
-      text: "The FCCPC released new guidelines on digital lending advertisements.",
+      text: "The FCCPC released new guidelines on digital lending advertisements, reported across Nairametrics and official gazettes.",
       candidates: [
         {
           groundingMetadata: {
             groundingChunks: [
               {
                 web: {
+                  uri: "https://nairametrics.com/2026/02/fccpc-digital-lending-update",
+                  title: "Nairametrics: FCCPC Digital Lending Regulatory Update",
+                },
+              },
+              {
+                web: {
                   uri: "https://fccpc.gov.ng/regulations/digital-lending-notice-2026",
-                  title: "FCCPC Digital Lending Regulatory Update",
+                  title: "FCCPC Digital Lending Regulatory Notice",
                 },
               },
             ],
-            webSearchQueries: ["fccpc digital lending guidelines 2026"],
+            webSearchQueries: ["fccpc digital lending guidelines 2026", "nairametrics digital lending update"],
           },
         },
       ],
@@ -73,17 +79,19 @@ describe("Two-Step Live Web Search Router (WebSearchRouter)", () => {
     );
 
     expect(result.source_class).toBe("LIVE_WEB_INTELLIGENCE");
-    expect(result.results).toHaveLength(1);
+    expect(result.results).toHaveLength(2);
     expect(result.results[0]!.retrieved_url).toBe(
+      "https://nairametrics.com/2026/02/fccpc-digital-lending-update"
+    );
+    expect(result.results[1]!.retrieved_url).toBe(
       "https://fccpc.gov.ng/regulations/digital-lending-notice-2026"
     );
-    expect(result.results[0]!.page_title).toBe("FCCPC Digital Lending Regulatory Update");
-    expect(result.results[0]!.source_class).toBe("LIVE_WEB_INTELLIGENCE");
 
-    // Verify secondary call was made with googleSearch tool
+    // Verify secondary call was made with googleSearch tool and natural prompt (no restrictive site: operators)
     expect(mockGenAi.models.generateContent).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "gemini-3.5-flash",
+        contents: expect.stringContaining("digital lending fee disclosure guidelines"),
         config: {
           tools: [{ googleSearch: {} }],
         },

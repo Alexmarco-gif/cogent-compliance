@@ -59,14 +59,16 @@ export class WebSearchRouter {
     const validatedArgs = liveWebSearchArgsSchema.parse(rawArgs);
     const { query, prioritize_official_regulators } = validatedArgs;
 
-    // Enhance query with official regulator domains if prioritized
-    let refinedQuery = query;
-    if (prioritize_official_regulators) {
-      refinedQuery = `${query} (site:cbn.gov.ng OR site:fccpc.gov.ng OR site:arcon.gov.ng OR site:ndpc.gov.ng OR site:sec.gov.ng OR site:advertcouncil.gov.ng OR site:ndic.gov.ng OR "Central Bank of Nigeria" OR "FCCPC" OR "ARCON" OR "NDPC" OR "SEC Nigeria")`;
-    }
+    const prompt = prioritize_official_regulators
+      ? `You are an autonomous intelligence researcher specializing in Nigerian financial, fintech, legal, and regulatory compliance.
+Conduct an open, real-time web search across the Nigerian and global internet — including major Nigerian financial news platforms (such as Nairametrics, BusinessDay, Premium Times, TechCabal), law firm advisories, corporate press releases, and official regulatory bodies (CBN, FCCPC, ARCON, NDPC, SEC) — for: "${query}".
+Synthesize the latest factual developments, market impacts, industry discussions, and regulatory compliance implications, citing live, verified URLs.`
+      : `You are an autonomous real-time intelligence researcher specializing in Nigerian commerce, banking, marketing, and fintech.
+Conduct an open live web search across the internet (including news publications, blogs, industry commentaries, and corporate announcements) for: "${query}".
+Synthesize the latest factual information, current events, and practical implications, citing live, verified URLs.`;
 
     logger.info("Executing Two-Step Live Web Search Router", {
-      originalQuery: query,
+      query,
       tenantId,
       prioritizeRegulators: prioritize_official_regulators,
     });
@@ -77,7 +79,7 @@ export class WebSearchRouter {
     try {
       const response = await this.client.models.generateContent({
         model: this.searchModel,
-        contents: `You are a real-time Nigerian financial regulatory intelligence researcher. Search and return relevant regulatory circulars, announcements, and enforcement rules for: "${refinedQuery}". Summarize key compliance implications directly from official sources.`,
+        contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
         },
@@ -97,11 +99,15 @@ export class WebSearchRouter {
       if (chunks.length > 0) {
         for (const chunk of chunks) {
           const uri = chunk.web?.uri;
-          const title = chunk.web?.title || "Official Regulatory Notice";
+          const title = chunk.web?.title || "Live Web Intelligence Citation";
           if (!uri) continue;
 
           // Deduplicate within the same call
           if (retrievedResults.some((r) => r.retrieved_url === uri)) continue;
+
+          const isOfficialRegulator = NIGERIAN_REGULATORY_DOMAINS.some((domain) =>
+            uri.toLowerCase().includes(domain.toLowerCase())
+          );
 
           // Persist each verified web citation to live_web_retrievals
           const { data: record, error } = await supabase
@@ -112,10 +118,11 @@ export class WebSearchRouter {
               retrieved_url: uri,
               page_title: title,
               snippet_content:
-                summaryText.slice(0, 500) || `Live regulatory search result for: ${query}`,
+                summaryText.slice(0, 500) || `Live web search result for: ${query}`,
               source_class: "LIVE_WEB_INTELLIGENCE",
               metadata: {
                 prioritize_official_regulators,
+                is_official_regulator: isOfficialRegulator,
                 webSearchQueries: groundingMetadata?.webSearchQueries || [],
               },
             })
