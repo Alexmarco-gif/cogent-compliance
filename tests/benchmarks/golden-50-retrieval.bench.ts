@@ -196,7 +196,13 @@ const GOLDEN_50_BENCHMARK_CASES: BenchmarkCase[] = [
   },
 ];
 
-describe("Golden 50 Nigerian Statutory Vault & Retrieval Benchmark (Document 09 Section 4)", () => {
+const isMockDb =
+  !process.env.SUPABASE_URL ||
+  process.env.SUPABASE_URL.includes("mock") ||
+  !process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_SERVICE_ROLE_KEY.includes("mock");
+
+describe.skipIf(isMockDb)("Golden 50 Nigerian Statutory Vault & Retrieval Benchmark (Document 09 Section 4)", () => {
   const supabase = createAdminSupabaseClient();
   const executor = new StatutoryToolExecutor();
   const mockTenantContext = { tenantId: "11111111-1111-1111-1111-111111111111" };
