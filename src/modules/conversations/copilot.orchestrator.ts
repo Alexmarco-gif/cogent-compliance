@@ -184,6 +184,8 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
               displayLabel = "Retrieving verbatim statutory provision and SHA-256 hash...";
             } else if (toolName === "search_live_web") {
               displayLabel = `Searching official Nigerian regulatory circulars: "${toolArgs.query || ""}"...`;
+            } else if (toolName === "fetch_live_url_content") {
+              displayLabel = `Fetching & sanitizing live URL: "${toolArgs.url || ""}"...`;
             } else if (toolName === "search_institutional_knowledge") {
               displayLabel = `Searching internal playbooks & rules: "${toolArgs.query || ""}"...`;
             } else if (toolName === "get_product_approved_terms") {
@@ -246,7 +248,7 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
                 );
               } else if (toolName === "search_live_web") {
                 toolResult = await statutoryToolExecutor.searchLiveWeb(
-                  toolArgs as { query: string },
+                  toolArgs as { query: string; prioritize_official_regulators?: boolean },
                   ctx
                 );
                 const webResults = (toolResult.results as Array<Record<string, unknown>>) || [];
@@ -254,9 +256,23 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
                   collectedCitations.push({
                     source_class: "LIVE_WEB_INTELLIGENCE",
                     badge_label: "Live Web Intelligence",
-                    page_title: wr.title as string,
-                    retrieved_url: wr.url as string,
-                    live_web_retrieval_id: wr.retrieval_id as string,
+                    page_title: (wr.page_title as string) || (wr.title as string) || "Official Regulatory Notice",
+                    retrieved_url: (wr.retrieved_url as string) || (wr.url as string) || "",
+                    live_web_retrieval_id: (wr.live_web_retrieval_id as string) || (wr.retrieval_id as string),
+                  });
+                }
+              } else if (toolName === "fetch_live_url_content") {
+                toolResult = await statutoryToolExecutor.fetchLiveUrlContent(
+                  toolArgs as { url: string; campaign_id?: string },
+                  ctx
+                );
+                if (toolResult.success && toolResult.data) {
+                  const d = toolResult.data as Record<string, unknown>;
+                  collectedCitations.push({
+                    source_class: "LIVE_WEB_INTELLIGENCE",
+                    badge_label: "Live Web Intelligence",
+                    page_title: (d.page_title as string) || "Live Campaign Landing Page",
+                    retrieved_url: (d.url as string) || "",
                   });
                 }
               } else if (toolName === "get_conversation_context") {

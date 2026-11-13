@@ -144,6 +144,19 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
     },
   },
   {
+    name: "fetch_live_url_content",
+    description:
+      "Safely fetches, sanitizes, and snapshots visible promotional text and disclosures from a live HTTPS landing page URL with strict SSRF defense.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        url: { type: Type.STRING, description: "Full HTTPS URL of the promotional webpage." },
+        campaign_id: { type: Type.STRING, description: "Optional campaign UUID to attach the URL snapshot asset to." },
+      },
+      required: ["url"],
+    },
+  },
+  {
     name: "generate_rewrite_suggestions",
     description:
       "Generates a compliant marketing rewrite proposal for a specific compliance finding, constrained by product truth and validated through Layer 6 deterministic locks.",
@@ -543,6 +556,26 @@ export class StatutoryToolExecutor {
       },
       ctx.tenantId
     );
+  }
+
+  /**
+   * Tool 10: fetch_live_url_content
+   */
+  public async fetchLiveUrlContent(
+    args: { url: string; campaign_id?: string },
+    ctx: ToolExecutionContext
+  ): Promise<Record<string, unknown>> {
+    const result = await webSearchRouter.fetchLiveUrlContent(
+      {
+        url: args.url,
+        campaign_id: args.campaign_id,
+      },
+      ctx.tenantId
+    );
+    return {
+      success: true,
+      data: result,
+    };
   }
 
   /**

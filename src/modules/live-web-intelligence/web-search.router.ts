@@ -225,7 +225,7 @@ export class WebSearchRouter {
     }
 
     // Final URL redirect check
-    const finalUrl = new URL(res.url);
+    const finalUrl = new URL(res.url || validated.url);
     await this.assertPublicAddress(finalUrl.hostname);
 
     const rawHtml = await res.text();
@@ -250,7 +250,7 @@ export class WebSearchRouter {
 
     return {
       success: true,
-      url: res.url,
+      url: res.url || validated.url,
       page_title: pageTitle,
       content_text: cleanText.slice(0, 10000), // Bound max payload
       text_length: cleanText.length,

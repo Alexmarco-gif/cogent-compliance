@@ -294,6 +294,7 @@ export const regulatoryEmbeddingJob = inngest.createFunction(
 
 /**
  * Durable job monitoring live promotional URLs for compliance drift.
+ * Triggered by event: "marketing-shield/drift.check".
  */
 export const driftMonitoringJob = inngest.createFunction(
   {
@@ -302,17 +303,84 @@ export const driftMonitoringJob = inngest.createFunction(
     retries: 2,
   },
   async ({ event, step }) => {
-    const { campaignId, tenantId, liveUrl } = event.data;
+    const { tenantId, monitorId, actorId } = event.data;
+    const { driftService } = await import("@/modules/drift-monitor/drift.service");
 
-    await step.run("inspect-live-url-drift", async () => {
-      logger.info("Executing scheduled drift inspection", {
-        campaignId,
+    const result = await step.run("execute-drift-inspection", async () => {
+      logger.info("Executing durable drift inspection job", {
+        monitorId,
         tenantId,
-        liveUrl,
+        actorId,
       });
+
+      return await driftService.checkDrift(
+        tenantId,
+        actorId || "inngest_worker",
+        monitorId
+      );
     });
 
-    return { success: true, campaignId, liveUrl };
+    return {
+      success: true,
+      monitorId,
+      status: result.monitor.status,
+      discrepancyCount: result.details.discrepancies.length,
+      divergenceScore: result.details.divergence_score,
+    };
+  }
+);
+
+/**
+ * Scheduled cron job executing every 6 hours across active drift monitors.
+ */
+export const scheduledDriftWatcherJob = inngest.createFunction(
+  {
+    id: "scheduled-drift-watcher",
+    triggers: [{ cron: "0 */6 * * *" }],
+  },
+  async ({ step }) => {
+    const supabase = createAdminSupabaseClient();
+    const { driftService } = await import("@/modules/drift-monitor/drift.service");
+
+    const activeMonitors = await step.run("load-active-monitors", async () => {
+      const { data, error } = await supabase
+        .from("campaign_drift_monitors")
+        .select("id, tenant_id")
+        .eq("status", "ACTIVE")
+        .limit(50);
+
+      if (error) {
+        logger.error("Failed to query active drift monitors for cron", { error: error.message });
+        return [];
+      }
+      return data || [];
+    });
+
+    let checkedCount = 0;
+    let driftCount = 0;
+
+    for (const mon of activeMonitors) {
+      await step.run(`check-monitor-${mon.id}`, async () => {
+        try {
+          const res = await driftService.checkDrift(mon.tenant_id, "inngest_cron", mon.id);
+          checkedCount++;
+          if (res.monitor.status === "DRIFT_DETECTED") {
+            driftCount++;
+          }
+        } catch (err) {
+          logger.warn("Scheduled drift check failed for monitor", {
+            monitorId: mon.id,
+            error: (err as Error).message,
+          });
+        }
+      });
+    }
+
+    return {
+      success: true,
+      totalChecked: checkedCount,
+      driftDetected: driftCount,
+    };
   }
 );
 
@@ -482,6 +550,7 @@ export const inngestFunctions = [
   assessmentExecutionJob,
   regulatoryEmbeddingJob,
   driftMonitoringJob,
+  scheduledDriftWatcherJob,
   dossierGenerationJob,
   assetExtractionJob,
   playbookIngestionJob,
