@@ -328,16 +328,19 @@ export const dossierGenerationJob = inngest.createFunction(
   async ({ event, step }) => {
     const { campaignId, revisionId, tenantId, requestedByUserId } = event.data;
 
-    await step.run("compile-statutory-dossier", async () => {
-      logger.info("Compiling statutory compliance dossier PDF", {
+    const dossier = await step.run("compile-statutory-dossier", async () => {
+      const { statutoryDossierService } = await import(
+        "@/modules/dossier/statutory-dossier.service"
+      );
+      return await statutoryDossierService.generateDossier(
+        tenantId,
+        requestedByUserId || "system",
         campaignId,
         revisionId,
-        tenantId,
-        requestedByUserId,
-      });
+      );
     });
 
-    return { success: true, campaignId, revisionId };
+    return { success: true, dossier };
   }
 );
 

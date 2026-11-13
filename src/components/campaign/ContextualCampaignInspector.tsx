@@ -6,6 +6,7 @@ import {
   Layers,
   FileCheck2,
   Wand2,
+  ShieldCheck,
   X,
   RefreshCw,
 } from "lucide-react";
@@ -13,6 +14,7 @@ import { Tab1LocksOverview, type LockResult } from "./Tab1LocksOverview";
 import { Tab2AssetBoundingBoxes, type ExtractionData } from "./Tab2AssetBoundingBoxes";
 import { Tab3FindingsList } from "./Tab3FindingsList";
 import { Tab4RemediationDiff } from "./Tab4RemediationDiff";
+import { Tab5SignOffDossier } from "./Tab5SignOffDossier";
 import { Finding } from "./FindingCard";
 
 interface InspectorProps {
@@ -22,6 +24,8 @@ interface InspectorProps {
     channel: string;
     status: string;
     risk_level: string;
+    current_revision_id?: string;
+    approved_revision_id?: string | null;
   } | null;
   assessment: {
     id: string;
@@ -55,7 +59,7 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
   onEvidenceClick,
   onRefresh,
 }) => {
-  const [activeTab, setActiveTab] = useState<"locks" | "assets" | "findings" | "remediation">("locks");
+  const [activeTab, setActiveTab] = useState<"locks" | "assets" | "findings" | "remediation" | "signoff">("locks");
   const [selectedFindingForRemediation, setSelectedFindingForRemediation] = useState<Finding | null>(null);
 
   if (!isOpen || !campaign) return null;
@@ -75,6 +79,10 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
                   ? "bg-emerald-100 text-emerald-800"
                   : campaign.status === "FINDINGS_AVAILABLE"
                   ? "bg-blue-100 text-blue-800"
+                  : campaign.status === "UNDER_REVIEW"
+                  ? "bg-amber-100 text-amber-800"
+                  : campaign.status === "REJECTED"
+                  ? "bg-rose-100 text-rose-800"
                   : "bg-zinc-100 text-zinc-700"
               }`}
             >
@@ -90,7 +98,7 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
           {onRefresh && (
             <button
               onClick={onRefresh}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition-colors"
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition-colors cursor-pointer"
               title="Refresh Assessment"
             >
               <RefreshCw className="h-4 w-4" />
@@ -98,7 +106,7 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
           )}
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition-colors"
+            className="p-1.5 rounded-lg text-zinc-400 hover:text-zinc-600 hover:bg-zinc-100 transition-colors cursor-pointer"
             title="Close Inspector"
           >
             <X className="h-5 w-5" />
@@ -110,7 +118,7 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
       <div className="flex border-b border-zinc-200 bg-white px-6 overflow-x-auto">
         <button
           onClick={() => setActiveTab("locks")}
-          className={`flex items-center gap-2 border-b-2 py-3 px-2 text-[13.5px] font-medium transition-colors shrink-0 ${
+          className={`flex items-center gap-2 border-b-2 py-3 px-2 text-[13.5px] font-medium transition-colors shrink-0 cursor-pointer ${
             activeTab === "locks"
               ? "border-blue-600 text-blue-600"
               : "border-transparent text-zinc-500 hover:text-zinc-800"
@@ -122,7 +130,7 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
 
         <button
           onClick={() => setActiveTab("assets")}
-          className={`flex items-center gap-2 border-b-2 py-3 px-3 text-[13.5px] font-medium transition-colors shrink-0 ${
+          className={`flex items-center gap-2 border-b-2 py-3 px-3 text-[13.5px] font-medium transition-colors shrink-0 cursor-pointer ${
             activeTab === "assets"
               ? "border-blue-600 text-blue-600"
               : "border-transparent text-zinc-500 hover:text-zinc-800"
@@ -137,7 +145,7 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
 
         <button
           onClick={() => setActiveTab("findings")}
-          className={`flex items-center gap-2 border-b-2 py-3 px-2 text-[13.5px] font-medium transition-colors shrink-0 ${
+          className={`flex items-center gap-2 border-b-2 py-3 px-2 text-[13.5px] font-medium transition-colors shrink-0 cursor-pointer ${
             activeTab === "findings"
               ? "border-blue-600 text-blue-600"
               : "border-transparent text-zinc-500 hover:text-zinc-800"
@@ -154,7 +162,7 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
 
         <button
           onClick={() => setActiveTab("remediation")}
-          className={`flex items-center gap-2 border-b-2 py-3 px-2 text-[13.5px] font-medium transition-colors shrink-0 ${
+          className={`flex items-center gap-2 border-b-2 py-3 px-2 text-[13.5px] font-medium transition-colors shrink-0 cursor-pointer ${
             activeTab === "remediation"
               ? "border-blue-600 text-blue-600"
               : "border-transparent text-zinc-500 hover:text-zinc-800"
@@ -162,6 +170,21 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
         >
           <Wand2 className="h-4 w-4" />
           Remediation & Diff
+        </button>
+
+        <button
+          onClick={() => setActiveTab("signoff")}
+          className={`flex items-center gap-2 border-b-2 py-3 px-2 text-[13.5px] font-medium transition-colors shrink-0 cursor-pointer ${
+            activeTab === "signoff"
+              ? "border-blue-600 text-blue-600"
+              : "border-transparent text-zinc-500 hover:text-zinc-800"
+          }`}
+        >
+          <ShieldCheck className="h-4 w-4" />
+          Sign-Off & Dossier
+          {campaign.status === "APPROVED" && (
+            <span className="flex h-2 w-2 rounded-full bg-emerald-500" />
+          )}
         </button>
       </div>
 
@@ -200,6 +223,13 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
             findings={findings}
             selectedFinding={selectedFindingForRemediation}
             onRevisionCreated={onRefresh}
+          />
+        )}
+
+        {activeTab === "signoff" && (
+          <Tab5SignOffDossier
+            campaign={campaign}
+            onStatusUpdated={onRefresh}
           />
         )}
       </div>

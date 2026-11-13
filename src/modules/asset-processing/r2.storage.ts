@@ -166,6 +166,30 @@ export class R2StorageService {
   }
 
   /**
+   * Uploads a binary buffer directly to Cloudflare R2 (e.g., compiled PDF dossiers).
+   */
+  public async putObjectBuffer(
+    storageKey: string,
+    buffer: Buffer,
+    contentType: string = "application/octet-stream",
+  ): Promise<void> {
+    if (!this.client) {
+      logger.info("R2 client not initialized, skipping remote S3 upload", { storageKey });
+      return;
+    }
+
+    const command = new PutObjectCommand({
+      Bucket: this.bucketName,
+      Key: storageKey,
+      Body: buffer,
+      ContentType: contentType,
+    });
+
+    await this.client.send(command);
+    logger.info("Uploaded object buffer to R2", { storageKey, sizeBytes: buffer.length });
+  }
+
+  /**
    * Inspects binary buffer magic bytes to verify genuine file type and reject disguised executables/SVGs/HTML.
    * Document 07 Section 6.1 specification:
    * - PNG: 89 50 4E 47 0D 0A 1A 0A
