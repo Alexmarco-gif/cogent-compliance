@@ -1,0 +1,360 @@
+/**
+ * Cogent Compliance Platform - Marketing Shield
+ * Contextual Feature Gating & Entitlements Engine
+ * Document Reference: Document 11 (Section 5) & Document 08 (Phase 6 / Phase 12)
+ */
+
+import { createAdminSupabaseClient } from "@/lib/supabase";
+import { logger } from "@/lib/logger";
+import {
+  DEFAULT_PLANS,
+  paystackBillingService,
+} from "./paystack.service";
+import {
+  EntitlementCheckResult,
+  FeatureGateType,
+  PlanSlug,
+  SubscriptionPlan,
+  SubscriptionStatus,
+} from "@/contracts/billing.contracts";
+
+export interface TenantSubscriptionInfo {
+  plan: SubscriptionPlan;
+  status: SubscriptionStatus;
+  currentPeriodEnd: Date;
+  isTrial: boolean;
+  trialDaysRemaining: number;
+}
+
+export class EntitlementsService {
+  /**
+   * Retrieves all active subscription plans
+   */
+  public async getAvailablePlans(): Promise<SubscriptionPlan[]> {
+    try {
+      const supabase = createAdminSupabaseClient();
+      const { data, error } = await supabase
+        .from("subscription_plans")
+        .select("*")
+        .eq("is_active", true)
+        .order("price_usd_cents", { ascending: true });
+
+      if (!error && data && data.length > 0) {
+        return data.map((d) => ({
+          id: d.id,
+          slug: d.slug as PlanSlug,
+          name: d.name,
+          price_usd_cents: d.price_usd_cents,
+          price_usd_annual_cents: d.price_usd_annual_cents,
+          paystack_plan_code_monthly: d.paystack_plan_code_monthly,
+          paystack_plan_code_annual: d.paystack_plan_code_annual,
+          monthly_audit_limit: d.monthly_audit_limit,
+          seat_limit: d.seat_limit,
+          url_drift_monitor_limit: d.url_drift_monitor_limit,
+          retention_days: d.retention_days,
+          features: d.features,
+          is_active: d.is_active,
+        }));
+      }
+    } catch (err) {
+      logger.warn("Using default plans seed for getAvailablePlans", { err });
+    }
+
+    return Object.values(DEFAULT_PLANS);
+  }
+
+  /**
+   * Resolves the authoritative subscription state for a tenant.
+   * Checks database table `tenant_subscriptions` first, then tenant settings JSONB fallback.
+   */
+  public async getTenantSubscriptionInfo(tenantId: string): Promise<TenantSubscriptionInfo> {
+    const supabase = createAdminSupabaseClient();
+    const evaluationPlan = DEFAULT_PLANS.evaluation;
+
+    // 1. Fetch tenant creation date & settings
+    let tenantCreatedAt = new Date();
+    let tenantSettings: Record<string, unknown> = {};
+
+    try {
+      const { data: tenant } = await supabase
+        .from("tenants")
+        .select("created_at, settings")
+        .eq("id", tenantId)
+        .maybeSingle();
+
+      if (tenant?.created_at) {
+        tenantCreatedAt = new Date(tenant.created_at);
+      }
+      if (tenant?.settings && typeof tenant.settings === "object") {
+        tenantSettings = tenant.settings as Record<string, unknown>;
+      }
+    } catch (err) {
+      logger.warn("Could not fetch tenant metadata for subscription resolution", { tenantId, err });
+    }
+
+    const trialEnd = new Date(tenantCreatedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+    const now = new Date();
+    const trialDaysRemaining = Math.max(
+      0,
+      Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
+    );
+
+    // 2. Try querying tenant_subscriptions table
+    try {
+      const { data: sub, error } = await supabase
+        .from("tenant_subscriptions")
+        .select("status, billing_interval, current_period_end, subscription_plans(*)")
+        .eq("tenant_id", tenantId)
+        .maybeSingle();
+
+      if (!error && sub) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const planData = sub.subscription_plans as any;
+        const planSlug = (planData?.slug || "evaluation") as PlanSlug;
+        const plan = await paystackBillingService.getPlan(planSlug);
+        const currentPeriodEnd = new Date(sub.current_period_end || trialEnd);
+        const isActive = sub.status === "active" && currentPeriodEnd > now;
+
+        return {
+          plan,
+          status: isActive ? "active" : (sub.status as SubscriptionStatus),
+          currentPeriodEnd,
+          isTrial: false,
+          trialDaysRemaining,
+        };
+      }
+    } catch {
+      // Table may not exist yet, fallback to tenant settings
+    }
+
+    // 3. Check tenant.settings.subscription fallback
+    const settingsSub = tenantSettings.subscription as
+      | {
+          plan_slug?: PlanSlug;
+          status?: SubscriptionStatus;
+          current_period_end?: string;
+        }
+      | undefined;
+
+    if (settingsSub?.plan_slug && settingsSub.status === "active") {
+      const plan = await paystackBillingService.getPlan(settingsSub.plan_slug);
+      const periodEnd = settingsSub.current_period_end
+        ? new Date(settingsSub.current_period_end)
+        : trialEnd;
+
+      if (periodEnd > now) {
+        return {
+          plan,
+          status: "active",
+          currentPeriodEnd: periodEnd,
+          isTrial: false,
+          trialDaysRemaining,
+        };
+      }
+    }
+
+    // 4. Default: Evaluation Pilot (7-day trial)
+    const isTrialExpired = now > trialEnd;
+    return {
+      plan: evaluationPlan,
+      status: isTrialExpired ? "past_due" : "trialing",
+      currentPeriodEnd: trialEnd,
+      isTrial: true,
+      trialDaysRemaining,
+    };
+  }
+
+  /**
+   * Evaluates feature entitlements according to Document 11 Section 5 rules:
+   * - run_audit: monthly quota check
+   * - export_unwatermarked: requires Growth or higher
+   * - cco_approval_lock: requires Scale or Enterprise
+   * - url_drift_monitoring: requires Scale or Enterprise
+   */
+  public async checkTenantEntitlement(
+    tenantId: string,
+    feature: FeatureGateType,
+  ): Promise<EntitlementCheckResult> {
+    const subInfo = await this.getTenantSubscriptionInfo(tenantId);
+    const { plan, status, isTrial, trialDaysRemaining } = subInfo;
+
+    // 1. If trial has expired and account has no active subscription
+    if (isTrial && status === "past_due") {
+      return {
+        allowed: false,
+        feature,
+        reason: "Your 7-day Evaluation Pilot has expired. Upgrade to Growth or Scale to continue.",
+        planSlug: plan.slug,
+        status,
+        trialDaysRemaining: 0,
+      };
+    }
+
+    // 2. Feature: export_unwatermarked
+    if (feature === "export_unwatermarked") {
+      if (plan.slug === "evaluation" || !plan.features.export_unwatermarked) {
+        return {
+          allowed: false,
+          feature,
+          reason: "Unwatermarked statutory PDF dossiers require a Growth, Scale, or Enterprise plan.",
+          planSlug: plan.slug,
+          status,
+          trialDaysRemaining,
+        };
+      }
+      return {
+        allowed: true,
+        feature,
+        planSlug: plan.slug,
+        status,
+        trialDaysRemaining,
+      };
+    }
+
+    // 3. Feature: cco_approval_lock (Separation of duties)
+    if (feature === "cco_approval_lock") {
+      if (plan.slug !== "scale" && plan.slug !== "enterprise") {
+        return {
+          allowed: false,
+          feature,
+          reason: "CCO Separation-of-Duties Approval Locks require a Scale or Enterprise plan.",
+          planSlug: plan.slug,
+          status,
+          trialDaysRemaining,
+        };
+      }
+      return {
+        allowed: true,
+        feature,
+        planSlug: plan.slug,
+        status,
+        trialDaysRemaining,
+      };
+    }
+
+    // 4. Feature: url_drift_monitoring
+    if (feature === "url_drift_monitoring") {
+      const limit = plan.url_drift_monitor_limit;
+      if (limit === 0) {
+        return {
+          allowed: false,
+          feature,
+          reason: "Real-time post-publication URL drift monitoring requires a Scale or Enterprise plan.",
+          currentCount: 0,
+          limit: 0,
+          planSlug: plan.slug,
+          status,
+          trialDaysRemaining,
+        };
+      }
+
+      // Check active drift monitors count
+      let currentCount = 0;
+      try {
+        const supabase = createAdminSupabaseClient();
+        const { count } = await supabase
+          .from("drift_monitors")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenantId);
+
+        currentCount = count || 0;
+      } catch {
+        currentCount = 0;
+      }
+
+      if (limit !== -1 && currentCount >= limit) {
+        return {
+          allowed: false,
+          feature,
+          reason: `URL drift monitor quota reached (${currentCount}/${limit} active URLs). Upgrade to Enterprise for unlimited monitoring.`,
+          currentCount,
+          limit,
+          planSlug: plan.slug,
+          status,
+          trialDaysRemaining,
+        };
+      }
+
+      return {
+        allowed: true,
+        feature,
+        currentCount,
+        limit,
+        planSlug: plan.slug,
+        status,
+        trialDaysRemaining,
+      };
+    }
+
+    // 5. Feature: run_audit
+    if (feature === "run_audit") {
+      const limit = plan.monthly_audit_limit;
+      if (limit === -1) {
+        return {
+          allowed: true,
+          feature,
+          limit: -1,
+          planSlug: plan.slug,
+          status,
+          trialDaysRemaining,
+        };
+      }
+
+      // Count assessments created this month
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0, 0, 0, 0);
+
+      let currentCount = 0;
+      try {
+        const supabase = createAdminSupabaseClient();
+        const { count } = await supabase
+          .from("campaign_assessments")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenantId)
+          .gte("created_at", startOfMonth.toISOString());
+
+        currentCount = count || 0;
+      } catch {
+        currentCount = 0;
+      }
+
+      if (currentCount >= limit) {
+        return {
+          allowed: false,
+          feature,
+          reason: `Monthly audit quota reached (${currentCount}/${limit}). Upgrade your plan to continue running compliance audits.`,
+          currentCount,
+          limit,
+          planSlug: plan.slug,
+          status,
+          trialDaysRemaining,
+        };
+      }
+
+      return {
+        allowed: true,
+        feature,
+        currentCount,
+        limit,
+        planSlug: plan.slug,
+        status,
+        trialDaysRemaining,
+      };
+    }
+
+    return {
+      allowed: true,
+      feature,
+      planSlug: plan.slug,
+      status,
+      trialDaysRemaining,
+    };
+  }
+}
+
+export const entitlementsService = new EntitlementsService();
+export const checkTenantEntitlement = (
+  tenantId: string,
+  feature: FeatureGateType,
+) => entitlementsService.checkTenantEntitlement(tenantId, feature);

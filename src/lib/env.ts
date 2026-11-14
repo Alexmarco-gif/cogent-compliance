@@ -46,6 +46,9 @@ export const serverEnvSchema = z.object({
   // Resend Transactional Notifications
   RESEND_API_KEY: z.string().min(1, "RESEND_API_KEY is required for email alerts"),
   RESEND_FROM_EMAIL: z.string().default("compliance@notifications.cogentshield.com"),
+
+  // Paystack Billing
+  PAYSTACK_SECRET_KEY: z.string().optional(),
 });
 
 /**
@@ -54,6 +57,9 @@ export const serverEnvSchema = z.object({
  */
 export const clientEnvSchema = z.object({
   NEXT_PUBLIC_APP_URL: z.string().url().default("http://localhost:3000"),
+
+  // Paystack Client Key
+  NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY: z.string().optional(),
 
   // Clerk Client Keys
   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z
@@ -121,6 +127,9 @@ export function validateEnv(customEnv?: Record<string, string | undefined>): Env
       NEXT_PUBLIC_SUPABASE_URL: rawEnv.NEXT_PUBLIC_SUPABASE_URL || "https://mock.supabase.co",
       NEXT_PUBLIC_SUPABASE_ANON_KEY:
         rawEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY || "mock_supabase_anon_key",
+      PAYSTACK_SECRET_KEY: rawEnv.PAYSTACK_SECRET_KEY || "sk_test_mock_paystack_secret_key",
+      NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY:
+        rawEnv.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "pk_test_mock_paystack_public_key",
     };
   }
 

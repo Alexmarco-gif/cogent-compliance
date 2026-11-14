@@ -4,11 +4,12 @@
  * Standards: FCCPC Regulation 32 (2-Year Audit Preservation) & ARCON ASP Pre-Vetting Package
  */
 
-import { PDFDocument, StandardFonts, rgb, grayscale } from "pdf-lib";
+import { PDFDocument, StandardFonts, rgb, grayscale, degrees } from "pdf-lib";
 import crypto from "crypto";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { r2StorageService } from "@/modules/asset-processing/r2.storage";
 import { auditService } from "@/modules/audit/audit.service";
+import { entitlementsService } from "@/modules/billing/entitlements.service";
 import { logger } from "@/lib/logger";
 import { DossierMetadata } from "@/contracts/approval-dossier.contracts";
 
@@ -477,6 +478,33 @@ export class StatutoryDossierService {
       `Cogent Marketing Shield • Statutory Dossier ID: ${dossierId} • Page 2 of 2`,
       { x: 40, y: 30, size: 8, font: fontMono, color: colorMuted },
     );
+
+    // Contextual Feature Gating: Stamp watermark if on Evaluation / Trial plan
+    const unwatermarkedEntitlement = await entitlementsService.checkTenantEntitlement(
+      tenantId,
+      "export_unwatermarked",
+    );
+    if (!unwatermarkedEntitlement.allowed) {
+      const watermarkText = "EVALUATION COPY - NOT FOR REGULATORY FILING";
+      page1.drawText(watermarkText, {
+        x: 60,
+        y: 340,
+        size: 22,
+        font: fontBold,
+        color: rgb(0.85, 0.2, 0.2),
+        rotate: degrees(45),
+        opacity: 0.18,
+      });
+      page2.drawText(watermarkText, {
+        x: 60,
+        y: 340,
+        size: 22,
+        font: fontBold,
+        color: rgb(0.85, 0.2, 0.2),
+        rotate: degrees(45),
+        opacity: 0.18,
+      });
+    }
 
     // 7. Save real PDF Binary
     const pdfBytes = await pdfDoc.save();
