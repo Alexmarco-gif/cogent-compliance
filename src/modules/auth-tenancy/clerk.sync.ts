@@ -35,39 +35,95 @@ export interface ClerkMembershipEventData {
  */
 export async function syncClerkOrganizationCreated(data: ClerkOrgEventData): Promise<{ tenantId: string }> {
   const supabase = createAdminSupabaseClient();
-  const slug = data.slug || data.id.toLowerCase().replace(/[^a-z0-9_-]/g, "_");
 
-  const { data: tenant, error } = await supabase
+  // 1. Return immediately if already provisioned for this clerk_org_id (never overwrite existing settings)
+  const { data: existing, error: existingErr } = await supabase
     .from("tenants")
-    .upsert(
-      {
+    .select("id")
+    .eq("clerk_org_id", data.id)
+    .maybeSingle();
+
+  if (existing?.id) {
+    return { tenantId: existing.id };
+  }
+  if (existingErr) {
+    logger.warn("Lookup by clerk_org_id returned error before provisioning", {
+      clerkOrgId: data.id,
+      error: existingErr.message,
+    });
+  }
+
+  // 2. Normalize slug and prepare collision-safe fallback candidates
+  const rawSlug = data.slug || data.name || data.id;
+  const baseSlug =
+    rawSlug
+      .toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-")
+      .replace(/^-+|-+$/g, "") || data.id.toLowerCase();
+
+  const orgSuffix = data.id.slice(-8).toLowerCase().replace(/[^a-z0-9]/g, "");
+  const candidateSlugs = Array.from(
+    new Set([
+      baseSlug,
+      `${baseSlug}-${orgSuffix}`,
+      `${baseSlug}-${crypto.randomUUID().slice(0, 6)}`,
+    ]),
+  );
+
+  let lastErrorMessage = "Unknown database error";
+
+  for (const candidateSlug of candidateSlugs) {
+    const { data: tenant, error } = await supabase
+      .from("tenants")
+      .insert({
         clerk_org_id: data.id,
-        name: data.name,
-        slug: slug,
+        name: data.name || `Organization ${data.id.slice(-6)}`,
+        slug: candidateSlug,
         status: "ACTIVE",
         settings: {},
         updated_at: new Date().toISOString(),
-      },
-      { onConflict: "clerk_org_id" },
-    )
-    .select("id")
-    .single();
+      })
+      .select("id")
+      .single();
 
-  if (error || !tenant) {
-    logger.error("Failed to sync Clerk organization creation", {
-      clerkOrgId: data.id,
-      error: error?.message,
-    });
-    throw new Error(`Failed to upsert tenant for Clerk org ${data.id}: ${error?.message}`);
+    if (!error && tenant?.id) {
+      logger.info("Synchronized Clerk organization to Supabase tenant", {
+        tenantId: tenant.id,
+        clerkOrgId: data.id,
+        name: data.name,
+        slug: candidateSlug,
+      });
+      return { tenantId: tenant.id };
+    }
+
+    lastErrorMessage = error?.message || "Insert returned no tenant row";
+
+    // Handle concurrent creation race or slug uniqueness collision (PostgreSQL 23505)
+    if (error?.code === "23505" || /duplicate key/i.test(lastErrorMessage)) {
+      const { data: raced } = await supabase
+        .from("tenants")
+        .select("id")
+        .eq("clerk_org_id", data.id)
+        .maybeSingle();
+      if (raced?.id) {
+        return { tenantId: raced.id };
+      }
+      // Slug was already taken by another tenant row -> try next candidate slug
+      logger.warn("Tenant slug collision during Clerk org sync; retrying with disambiguated slug", {
+        clerkOrgId: data.id,
+        collidedSlug: candidateSlug,
+      });
+      continue;
+    }
+
+    break;
   }
 
-  logger.info("Synchronized Clerk organization to Supabase tenant", {
-    tenantId: tenant.id,
+  logger.error("Failed to sync Clerk organization creation", {
     clerkOrgId: data.id,
-    name: data.name,
+    error: lastErrorMessage,
   });
-
-  return { tenantId: tenant.id };
+  throw new Error(`Failed to provision tenant for Clerk org ${data.id}: ${lastErrorMessage}`);
 }
 
 /**

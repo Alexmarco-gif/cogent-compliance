@@ -99,6 +99,8 @@ export async function resolveTenantContext(
     .eq("clerk_org_id", orgId)
     .single();
 
+  let provisionFailureReason: string | null = null;
+
   if ((tenantError || !tenant) && process.env.NODE_ENV !== "test") {
     try {
       let resolvedOrgName = orgSlug || `Organization ${orgId.slice(-6)}`;
@@ -135,20 +137,28 @@ export async function resolveTenantContext(
           clerkOrgId: orgId,
           tenantId: reloadedTenant.id,
         });
+      } else {
+        provisionFailureReason = reloadErr?.message || "Reloaded tenant record was null";
       }
     } catch (provisionErr) {
+      provisionFailureReason =
+        provisionErr instanceof Error ? provisionErr.message : String(provisionErr);
       logger.error("Failed to auto-provision missing tenant row", {
         clerkOrgId: orgId,
-        error: provisionErr instanceof Error ? provisionErr.message : String(provisionErr),
+        error: provisionFailureReason,
       });
     }
   }
 
   if (tenantError || !tenant) {
-    logger.warn("Tenant not found in Supabase for active Clerk org", { clerkOrgId: orgId });
+    logger.warn("Tenant not found in Supabase for active Clerk org", {
+      clerkOrgId: orgId,
+      provisionFailureReason,
+    });
+    const detail = provisionFailureReason ? ` (${provisionFailureReason})` : "";
     throw new AuthTenancyError(
       "TENANT_CONTEXT_INVALID",
-      `Institution tenant for organization ${orgId} is not provisioned or recognized in the database.`,
+      `Institution tenant for organization ${orgId} is not provisioned or recognized in the database.${detail}`,
       403,
     );
   }
@@ -172,6 +182,7 @@ export async function resolveTenantContext(
 
   let resolvedRole: CanonicalRole;
   let membershipStatus: "ACTIVE" | "SUSPENDED" | "INVITED" = "ACTIVE";
+  let resolvedMembershipId = membership?.id;
 
   if (membership) {
     if (membership.status === "SUSPENDED") {
@@ -185,26 +196,53 @@ export async function resolveTenantContext(
     resolvedRole = mapClerkRoleToCanonical(membership.role);
     membershipStatus = membership.status as "ACTIVE" | "SUSPENDED" | "INVITED";
   } else {
-    // If membership row is still syncing via webhook but Clerk session contains active orgRole
-    if (orgRole) {
-      resolvedRole = mapClerkRoleToCanonical(orgRole);
-      // Auto-reconcile membership row in background
-      void supabase
-        .from("tenant_memberships")
-        .upsert(
-          {
-            tenant_id: tenant.id,
-            user_id: userId,
-            role: resolvedRole,
-            status: "ACTIVE",
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "tenant_id,user_id" },
-        )
-        .then(
-          () => logger.info("Auto-reconciled missing membership row", { userId, tenantId: tenant.id }),
-          (err: unknown) => logger.error("Failed to auto-reconcile membership", { error: err }),
-        );
+    let effectiveOrgRole = orgRole;
+
+    // Fallback to Clerk API when JWT session claims omit orgRole right after org creation
+    if (!effectiveOrgRole && process.env.NODE_ENV !== "test") {
+      try {
+        const client = await clerkClient();
+        const memList = await client.organizations.getOrganizationMembershipList({
+          organizationId: orgId,
+          limit: 100,
+        });
+        const clerkMem = memList.data.find((m) => m.publicUserData?.userId === userId);
+        if (clerkMem?.role) {
+          effectiveOrgRole = clerkMem.role;
+        }
+      } catch (memErr) {
+        logger.warn("Unable to inspect Clerk organization memberships", {
+          clerkOrgId: orgId,
+          userId,
+          error: memErr instanceof Error ? memErr.message : String(memErr),
+        });
+      }
+    }
+
+    if (effectiveOrgRole) {
+      resolvedRole = mapClerkRoleToCanonical(effectiveOrgRole);
+      try {
+        const { data: reconciled } = await supabase
+          .from("tenant_memberships")
+          .upsert(
+            {
+              tenant_id: tenant.id,
+              user_id: userId,
+              role: resolvedRole,
+              status: "ACTIVE",
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "tenant_id,user_id" },
+          )
+          .select("id")
+          .single();
+        if (reconciled?.id) {
+          resolvedMembershipId = reconciled.id;
+        }
+        logger.info("Auto-reconciled missing membership row", { userId, tenantId: tenant.id });
+      } catch (err: unknown) {
+        logger.error("Failed to auto-reconcile membership", { error: err });
+      }
     } else {
       throw new AuthTenancyError(
         "TENANT_CONTEXT_INVALID",
@@ -218,7 +256,7 @@ export async function resolveTenantContext(
 
   return {
     tenantId: tenant.id,
-    userId: membership?.id || userId,
+    userId: resolvedMembershipId || userId,
     clerkOrgId: orgId,
     clerkUserId: userId,
     orgSlug: tenant.slug || orgSlug || "unknown",

@@ -7,7 +7,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { NextRequest } from "next/server";
 import { Webhook } from "svix";
 import { POST } from "@/app/api/webhooks/clerk/route";
-import { dispatchClerkWebhookEvent } from "@/modules/auth-tenancy/clerk.sync";
+import {
+  dispatchClerkWebhookEvent,
+  syncClerkOrganizationCreated,
+} from "@/modules/auth-tenancy/clerk.sync";
+import { createAdminSupabaseClient } from "@/lib/supabase";
 
 // Mock Supabase admin client for deterministic unit testing
 vi.mock("@/lib/supabase", () => {
@@ -16,14 +20,26 @@ vi.mock("@/lib/supabase", () => {
     error: null,
   });
 
+  const mockMaybeSingle = vi.fn().mockResolvedValue({
+    data: null,
+    error: null,
+  });
+
   const mockSelect = vi.fn().mockReturnValue({
     eq: vi.fn().mockReturnValue({
       single: mockSingle,
+      maybeSingle: mockMaybeSingle,
       eq: vi.fn().mockReturnValue({
         single: mockSingle,
+        maybeSingle: mockMaybeSingle,
       }),
     }),
     single: mockSingle,
+    maybeSingle: mockMaybeSingle,
+  });
+
+  const mockInsert = vi.fn().mockReturnValue({
+    select: mockSelect,
   });
 
   const mockUpsert = vi.fn().mockReturnValue({
@@ -35,6 +51,7 @@ vi.mock("@/lib/supabase", () => {
   });
 
   const mockFrom = vi.fn().mockReturnValue({
+    insert: mockInsert,
     upsert: mockUpsert,
     update: mockUpdate,
     select: mockSelect,
@@ -212,5 +229,96 @@ describe("Clerk Webhook Event Dispatcher (dispatchClerkWebhookEvent)", () => {
 
     expect(result.handled).toBe(false);
     expect(result.eventType).toBe("session.created");
+  });
+
+  it("should retry with a disambiguated slug when slug uniqueness collides during organization sync", async () => {
+    const insertedSlugs: string[] = [];
+    const mockClient = createAdminSupabaseClient();
+
+    vi.mocked(mockClient.from).mockImplementationOnce(() => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+        }),
+      }),
+    }) as any);
+
+    // First insert attempt fails with 23505 on tenants_slug_key
+    vi.mocked(mockClient.from).mockImplementationOnce(() => ({
+      insert: (payload: { slug: string }) => {
+        insertedSlugs.push(payload.slug);
+        return {
+          select: () => ({
+            single: vi.fn().mockResolvedValue({
+              data: null,
+              error: {
+                code: "23505",
+                message: 'duplicate key value violates unique constraint "tenants_slug_key"',
+              },
+            }),
+          }),
+        };
+      },
+    }) as any);
+
+    // Race check returns null (was a slug collision, not clerk_org_id)
+    vi.mocked(mockClient.from).mockImplementationOnce(() => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+        }),
+      }),
+    }) as any);
+
+    // Second insert attempt with disambiguated slug succeeds
+    vi.mocked(mockClient.from).mockImplementationOnce(() => ({
+      insert: (payload: { slug: string }) => {
+        insertedSlugs.push(payload.slug);
+        return {
+          select: () => ({
+            single: vi.fn().mockResolvedValue({
+              data: { id: "tenant_laku_123" },
+              error: null,
+            }),
+          }),
+        };
+      },
+    }) as any);
+
+    const result = await syncClerkOrganizationCreated({
+      id: "org_3MVkRIaqDowznKtPsDnPpFSioLU",
+      name: "Laku",
+      slug: "laku",
+    });
+
+    expect(result.tenantId).toBe("tenant_laku_123");
+    expect(insertedSlugs[0]).toBe("laku");
+    expect(insertedSlugs[1]).toBe("laku-ppfsiolu");
+  });
+
+  it("should return existing tenant ID without overwriting settings if already provisioned", async () => {
+    const mockClient = createAdminSupabaseClient();
+    const insertSpy = vi.fn();
+
+    vi.mocked(mockClient.from).mockImplementationOnce(() => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: { id: "tenant_existing_999" },
+            error: null,
+          }),
+        }),
+      }),
+      insert: insertSpy,
+    }) as any);
+
+    const result = await syncClerkOrganizationCreated({
+      id: "org_3MVkRIaqDowznKtPsDnPpFSioLU",
+      name: "Laku",
+      slug: "laku",
+    });
+
+    expect(result.tenantId).toBe("tenant_existing_999");
+    expect(insertSpy).not.toHaveBeenCalled();
   });
 });
