@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
+import { useAuth, UserButton, OrganizationSwitcher } from "@clerk/nextjs";
 import {
   ShieldAlert,
   Plus,
@@ -11,10 +12,12 @@ import {
   Activity,
   AlertTriangle,
   CheckCircle2,
+  LogIn,
 } from "lucide-react";
 import { DriftMonitorCard } from "@/components/drift-monitor/DriftMonitorCard";
 import { DriftDiffViewer } from "@/components/drift-monitor/DriftDiffViewer";
 import { CreateMonitorModal } from "@/components/drift-monitor/CreateMonitorModal";
+import { extractApiError, unwrapApiList } from "@/lib/api-client";
 import {
   CampaignDriftMonitor,
   CreateDriftMonitorInput,
@@ -29,9 +32,12 @@ interface CampaignItem {
 }
 
 export default function DriftMonitorsPage() {
+  const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
   const [monitors, setMonitors] = useState<CampaignDriftMonitor[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<DriftMonitorStatus | "ALL">("ALL");
 
@@ -44,12 +50,18 @@ export default function DriftMonitorsPage() {
     try {
       setIsLoading(true);
       const res = await fetch("/api/marketing-shield/v1/drift-monitors");
-      if (res.ok) {
-        const json = await res.json();
-        setMonitors(json.data || []);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.success === false) {
+        const parsed = extractApiError(res.status, json, "Failed to load drift monitors");
+        setErrorStatus(parsed.status);
+        setLoadError(parsed.message);
+        return;
       }
+      setMonitors(unwrapApiList<CampaignDriftMonitor>(json));
+      setLoadError(null);
+      setErrorStatus(null);
     } catch {
-      // ignore
+      setLoadError("Unable to reach drift monitor endpoint.");
     } finally {
       setIsLoading(false);
     }
@@ -59,19 +71,29 @@ export default function DriftMonitorsPage() {
   const loadCampaigns = useCallback(async () => {
     try {
       const res = await fetch("/api/marketing-shield/v1/campaigns");
-      if (res.ok) {
-        const json = await res.json();
-        setCampaigns(json.data || []);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.success === false) {
+        return;
       }
+      const rawCampaigns = unwrapApiList<Record<string, unknown>>(json, "campaigns");
+      setCampaigns(
+        rawCampaigns.map((c) => ({
+          id: String(c.id),
+          title: String(c.campaign_name || c.title || "Untitled Campaign"),
+          status: String(c.status || "DRAFT"),
+          approved_revision_id: (c.approved_revision_id as string | null) ?? null,
+        }))
+      );
     } catch {
-      // ignore
+      // Secondary dropdown list failure handled cleanly in modal
     }
   }, []);
 
   useEffect(() => {
+    if (!clerkLoaded) return;
     loadMonitors();
     loadCampaigns();
-  }, [loadMonitors, loadCampaigns]);
+  }, [clerkLoaded, isSignedIn, orgId, loadMonitors, loadCampaigns]);
 
   // Handle immediate check
   const handleCheckNow = async (monitorId: string) => {
@@ -80,17 +102,20 @@ export default function DriftMonitorsPage() {
       const res = await fetch(`/api/marketing-shield/v1/drift-monitors/${monitorId}/check`, {
         method: "POST",
       });
-      if (res.ok) {
-        const json = await res.json();
-        setMonitors((prev) =>
-          prev.map((m) => (m.id === monitorId ? json.data.monitor || m : m))
-        );
-        if (activeDiffMonitor?.id === monitorId) {
-          setActiveDiffMonitor(json.data.monitor || activeDiffMonitor);
-        }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.success === false) {
+        const parsed = extractApiError(res.status, json, "Failed to check drift monitor");
+        setLoadError(parsed.message);
+        return;
+      }
+      setMonitors((prev) =>
+        prev.map((m) => (m.id === monitorId ? json.data?.monitor || m : m))
+      );
+      if (activeDiffMonitor?.id === monitorId) {
+        setActiveDiffMonitor(json.data?.monitor || activeDiffMonitor);
       }
     } catch {
-      // ignore
+      setLoadError("Network error while checking drift monitor.");
     } finally {
       setCheckingMonitorId(null);
     }
@@ -107,12 +132,12 @@ export default function DriftMonitorsPage() {
       }
     );
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error?.message || "Failed to create drift monitor");
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.success === false) {
+      const parsed = extractApiError(res.status, json, "Failed to create drift monitor");
+      throw new Error(parsed.message);
     }
 
-    const json = await res.json();
     setMonitors((prev) => [json.data, ...prev]);
   };
 
@@ -123,14 +148,18 @@ export default function DriftMonitorsPage() {
       const res = await fetch(`/api/marketing-shield/v1/drift-monitors/${monitorId}`, {
         method: "DELETE",
       });
-      if (res.ok) {
-        setMonitors((prev) => prev.filter((m) => m.id !== monitorId));
-        if (activeDiffMonitor?.id === monitorId) {
-          setActiveDiffMonitor(null);
-        }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.success === false) {
+        const parsed = extractApiError(res.status, json, "Failed to delete drift monitor");
+        setLoadError(parsed.message);
+        return;
+      }
+      setMonitors((prev) => prev.filter((m) => m.id !== monitorId));
+      if (activeDiffMonitor?.id === monitorId) {
+        setActiveDiffMonitor(null);
       }
     } catch {
-      // ignore
+      setLoadError("Network error while deleting drift monitor.");
     }
   };
 
@@ -180,11 +209,47 @@ export default function DriftMonitorsPage() {
             <Plus className="h-3.5 w-3.5" />
             <span>Link Published URL</span>
           </button>
+          {clerkLoaded && isSignedIn && (
+            <>
+              <OrganizationSwitcher
+                hidePersonal
+                afterSelectOrganizationUrl="/drift-monitors"
+                afterCreateOrganizationUrl="/drift-monitors"
+              />
+              <UserButton />
+            </>
+          )}
+          {clerkLoaded && !isSignedIn && (
+            <Link
+              href="/sign-in"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold transition-colors"
+            >
+              <LogIn className="h-3.5 w-3.5" />
+              <span>Sign In</span>
+            </Link>
+          )}
         </div>
       </header>
 
       {/* Main Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto p-6 space-y-6">
+        {loadError && (
+          <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl flex items-center justify-between gap-3 text-xs text-red-700">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <span>{loadError}</span>
+            </div>
+            {errorStatus === 401 && (
+              <Link
+                href="/sign-in"
+                className="px-3 py-1.5 rounded-lg bg-red-700 text-white font-semibold hover:bg-red-800 shrink-0"
+              >
+                Sign In →
+              </Link>
+            )}
+          </div>
+        )}
+
         {/* KPI Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-white border border-zinc-200 rounded-xl p-4 shadow-2xs flex items-center justify-between">

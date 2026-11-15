@@ -3,7 +3,7 @@
  * Document Reference: Document 04 (Section 3.5, Section 7), Document 07, DOC-10-ACPC (v1.1.0)
  */
 
-import { GoogleGenAI } from "@google/genai";
+import { FunctionCallingConfigMode, GoogleGenAI } from "@google/genai";
 import { env } from "@/lib/env";
 import { AI_MODELS } from "@/lib/ai/config";
 import { logger } from "@/lib/logger";
@@ -47,6 +47,7 @@ You advise Chief Compliance Officers (CCOs), General Counsel, and Fintech Produc
 CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
 1. SOVEREIGN REGULATORY GROUNDING:
    - Always search the Statutory Vault using 'search_regulatory_evidence' or 'get_regulatory_provision' before stating statutory requirements.
+   - Perform at most 1 to 2 targeted searches to gather relevant evidence, then immediately write your full compliance analysis. Do not repeat nearly identical searches.
    - Never invent or fabricate clause numbers, circular dates, or penalty amounts.
    - If evidence is not found in the vault, state clearly that the provision is not in the indexed corpus, and search the live web using 'search_live_web'.
 2. PRESENTATION & FORMATTING (DOC-10-ACPC):
@@ -144,7 +145,7 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
     const collectedCitations: CitationItem[] = [];
     let fullResponseText = "";
     let toolRounds = 0;
-    const maxToolRounds = 5;
+    const maxToolRounds = 3;
 
     try {
       while (toolRounds < maxToolRounds) {
@@ -153,7 +154,7 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
         // Call Gemini generateContent
         const response = await this.ai.models.generateContent({
           model: AI_MODELS.PRO,
-          contents,
+          contents: [...contents],
           config: {
             systemInstruction: this.buildSystemInstruction(),
             temperature: 0.2,
@@ -170,10 +171,21 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
         );
 
         if (functionCalls.length > 0) {
-          // Model returned tool calls
+          // Preserve full model turn parts (including thought parts & thoughtSignature)
+          contents.push({
+            role: "model",
+            parts: contentParts as Array<Record<string, unknown>>,
+          });
+
+          const functionResponseParts: Array<Record<string, unknown>> = [];
+
+          // Execute each returned tool call and batch responses into one user turn
           for (const callPart of functionCalls) {
-            const fCall = (callPart as unknown as { functionCall: { name: string; args: Record<string, unknown> } }).functionCall;
-            const toolCallId = `tc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+            const fCall = (callPart as unknown as {
+              functionCall: { id?: string; name: string; args: Record<string, unknown> };
+            }).functionCall;
+            const toolCallId =
+              fCall.id || `tc_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
             const toolName = fCall.name;
             const toolArgs = fCall.args || {};
 
@@ -345,26 +357,24 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
               },
             };
 
-            // Feed function call and response back to Gemini history
-            contents.push({
-              role: "model",
-              parts: [{ functionCall: fCall }],
-            });
-            contents.push({
-              role: "user",
-              parts: [
-                {
-                  functionResponse: {
-                    name: toolName,
-                    response: toolResult,
-                  },
-                },
-              ],
+            functionResponseParts.push({
+              functionResponse: {
+                ...(fCall.id ? { id: fCall.id } : {}),
+                name: toolName,
+                response: toolResult,
+              },
             });
           }
+
+          contents.push({
+            role: "user",
+            parts: functionResponseParts,
+          });
         } else {
-          // No function calls — model produced final answer text
-          const textParts = contentParts.filter((p) => "text" in p && p.text);
+          // No function calls — model produced final answer text (exclude internal thought summaries)
+          const textParts = contentParts.filter(
+            (p) => "text" in p && p.text && !("thought" in p && Boolean((p as { thought?: boolean }).thought))
+          );
           for (const tp of textParts) {
             const delta = (tp as { text: string }).text || "";
             fullResponseText += delta;
@@ -377,6 +387,54 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
           }
           break; // Done with tool execution loop
         }
+      }
+
+      // If maxToolRounds was reached with tool calls only, force a final tool-free synthesis pass
+      if (fullResponseText.trim().length === 0) {
+        const synthesisResponse = await this.ai.models.generateContent({
+          model: AI_MODELS.PRO,
+          contents: [...contents],
+          config: {
+            systemInstruction:
+              this.buildSystemInstruction() +
+              "\n\nYou have finished retrieving evidence. Synthesize your final compliance response now using only the evidence already gathered above.",
+            temperature: 0.2,
+            tools: [{ functionDeclarations: STATUTORY_TOOL_DECLARATIONS }],
+            toolConfig: {
+              functionCallingConfig: {
+                mode: FunctionCallingConfigMode.NONE,
+              },
+            },
+          },
+        });
+        const synthParts = synthesisResponse.candidates?.[0]?.content?.parts || [];
+        const synthTextParts = synthParts.filter(
+          (p) => "text" in p && p.text && !("thought" in p && Boolean((p as { thought?: boolean }).thought))
+        );
+        for (const tp of synthTextParts) {
+          const delta = (tp as { text: string }).text || "";
+          fullResponseText += delta;
+          yield {
+            type: "assistant.delta",
+            data: {
+              text_delta: delta,
+            },
+          };
+        }
+      }
+
+      if (fullResponseText.trim().length === 0) {
+        const fallbackSummary =
+          collectedCitations.length > 0
+            ? `### Statutory Evidence Retrieved\n\nI retrieved ${collectedCitations.length} regulatory reference(s) from the Statutory Vault, including **${collectedCitations[0]?.instrument_title || "Nigerian regulatory instruments"}** (${collectedCitations[0]?.clause_reference || "cited section"}). Please inspect the attached citations below or refine your question for a focused clause-by-clause breakdown.`
+            : "No statutory synthesis could be generated for this query. Please rephrase your marketing claim or upload the promotional asset for deterministic inspection.";
+        fullResponseText = fallbackSummary;
+        yield {
+          type: "assistant.delta",
+          data: {
+            text_delta: fallbackSummary,
+          },
+        };
       }
 
       // 4. Finalize Assistant Message in DB
@@ -411,15 +469,21 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
         },
       };
     } catch (streamError) {
-      const errMsg = (streamError as Error).message || "Stream error";
-      logger.error("Copilot stream failed", { error: errMsg, conversationId: options.conversationId });
+      const rawErrMsg = (streamError as Error).message || "Stream error";
+      const errMsg =
+        rawErrMsg.includes("RESOURCE_EXHAUSTED") || rawErrMsg.includes("429")
+          ? "Gemini API daily free-tier request quota exceeded. Upgrade the GEMINI_API_KEY to pay-as-you-go billing or retry after the quota window resets."
+          : rawErrMsg;
+      logger.error("Copilot stream failed", { error: rawErrMsg, conversationId: options.conversationId });
 
-      await conversationService.updateMessage({
-        tenantId: options.tenantId,
-        messageId: asstMsg.id,
-        status: "FAILED",
-        metadata: { error: errMsg },
-      });
+      await conversationService
+        .updateMessage({
+          tenantId: options.tenantId,
+          messageId: asstMsg.id,
+          status: "FAILED",
+          metadata: { error: errMsg },
+        })
+        .catch(() => {});
 
       yield {
         type: "message.failed",

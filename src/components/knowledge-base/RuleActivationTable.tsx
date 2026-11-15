@@ -1,21 +1,26 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 import {
   CheckCircle2,
   AlertTriangle,
   Filter,
   Check,
 } from "lucide-react";
+import { extractApiError, unwrapApiList } from "@/lib/api-client";
 import type {
   MarketingKnowledgeRule,
   KnowledgeRuleType,
 } from "@/contracts/knowledge-product.contracts";
 
 export function RuleActivationTable() {
+  const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
   const [rules, setRules] = useState<MarketingKnowledgeRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
   const [typeFilter, setTypeFilter] = useState<string>("ALL");
   const [activatingId, setActivatingId] = useState<string | null>(null);
@@ -29,10 +34,15 @@ export function RuleActivationTable() {
       if (typeFilter !== "ALL") params.set("rule_type", typeFilter);
 
       const res = await fetch(`/api/marketing-shield/v1/knowledge-base/rules?${params.toString()}`);
-      if (!res.ok) throw new Error("Failed to load knowledge rules");
-      const data = await res.json();
-      setRules(data || []);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.success === false) {
+        const parsed = extractApiError(res.status, json, "Failed to load knowledge rules");
+        setErrorStatus(parsed.status);
+        throw new Error(parsed.message);
+      }
+      setRules(unwrapApiList<MarketingKnowledgeRule>(json));
       setError(null);
+      setErrorStatus(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -41,8 +51,9 @@ export function RuleActivationTable() {
   }, [statusFilter, typeFilter]);
 
   useEffect(() => {
+    if (!clerkLoaded) return;
     fetchRules();
-  }, [fetchRules]);
+  }, [clerkLoaded, isSignedIn, orgId, fetchRules]);
 
   const handleActivate = async (ruleId: string) => {
     setActivatingId(ruleId);
@@ -155,9 +166,19 @@ export function RuleActivationTable() {
       )}
 
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-center gap-2 text-xs text-red-700">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span>{error}</span>
+        <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-center justify-between gap-3 text-xs text-red-700">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+          {errorStatus === 401 && (
+            <Link
+              href="/sign-in"
+              className="px-2.5 py-1 rounded bg-red-700 text-white font-semibold hover:bg-red-800 shrink-0"
+            >
+              Sign In →
+            </Link>
+          )}
         </div>
       )}
 

@@ -3,10 +3,11 @@
  * Document Reference: Document 07 (Section 3 & 4) & Document 08 (Phase 3)
  */
 
-import { auth } from "@clerk/nextjs/server";
+import { auth, clerkClient } from "@clerk/nextjs/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { AuthTenancyError, CanonicalRole, TenantContext } from "./types";
 import { getPermissionsForRole, mapClerkRoleToCanonical } from "./permissions";
+import { syncClerkOrganizationCreated } from "./clerk.sync";
 import { logger } from "@/lib/logger";
 
 export interface ResolveTenantOptions {
@@ -92,11 +93,56 @@ export async function resolveTenantContext(
   const supabase = createAdminSupabaseClient();
 
   // Find tenant by clerk_org_id
-  const { data: tenant, error: tenantError } = await supabase
+  let { data: tenant, error: tenantError } = await supabase
     .from("tenants")
     .select("id, name, slug, status")
     .eq("clerk_org_id", orgId)
     .single();
+
+  if ((tenantError || !tenant) && process.env.NODE_ENV !== "test") {
+    try {
+      let resolvedOrgName = orgSlug || `Organization ${orgId.slice(-6)}`;
+      let resolvedOrgSlug = orgSlug || null;
+
+      try {
+        const client = await clerkClient();
+        const org = await client.organizations.getOrganization({ organizationId: orgId });
+        if (org?.name) resolvedOrgName = org.name;
+        if (org?.slug) resolvedOrgSlug = org.slug;
+      } catch (clerkErr) {
+        logger.warn("Unable to fetch org metadata from Clerk during lazy tenant provisioning", {
+          clerkOrgId: orgId,
+          error: clerkErr instanceof Error ? clerkErr.message : String(clerkErr),
+        });
+      }
+
+      const provisioned = await syncClerkOrganizationCreated({
+        id: orgId,
+        name: resolvedOrgName,
+        slug: resolvedOrgSlug,
+      });
+
+      const { data: reloadedTenant, error: reloadErr } = await supabase
+        .from("tenants")
+        .select("id, name, slug, status")
+        .eq("id", provisioned.tenantId)
+        .single();
+
+      if (reloadedTenant && !reloadErr) {
+        tenant = reloadedTenant;
+        tenantError = null;
+        logger.info("Auto-provisioned missing Supabase tenant for active Clerk organization", {
+          clerkOrgId: orgId,
+          tenantId: reloadedTenant.id,
+        });
+      }
+    } catch (provisionErr) {
+      logger.error("Failed to auto-provision missing tenant row", {
+        clerkOrgId: orgId,
+        error: provisionErr instanceof Error ? provisionErr.message : String(provisionErr),
+      });
+    }
+  }
 
   if (tenantError || !tenant) {
     logger.warn("Tenant not found in Supabase for active Clerk org", { clerkOrgId: orgId });

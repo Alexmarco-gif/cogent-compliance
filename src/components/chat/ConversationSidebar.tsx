@@ -12,9 +12,12 @@ import {
   Check,
   BookOpen,
   Activity,
+  CreditCard,
+  Sliders,
+  LogIn,
 } from "lucide-react";
 import Link from "next/link";
-import { UserButton } from "@clerk/nextjs";
+import { UserButton, OrganizationSwitcher, useAuth } from "@clerk/nextjs";
 import type { ConversationRecord } from "@/modules/conversations/conversation.service";
 
 export interface ConversationSidebarProps {
@@ -36,6 +39,7 @@ export function ConversationSidebar({
   onArchive,
   loading,
 }: ConversationSidebarProps) {
+  const { isLoaded, isSignedIn } = useAuth();
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -222,17 +226,61 @@ export function ConversationSidebar({
           <Activity className="h-4 w-4 text-slate-400" />
           <span>Drift Monitors</span>
         </Link>
+        <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+          <Link
+            href="/onboarding"
+            className="flex items-center justify-center space-x-1.5 py-1.5 px-2 rounded-lg bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 hover:text-white text-[11px] font-medium border border-slate-800 transition-colors cursor-pointer"
+          >
+            <Sliders className="h-3.5 w-3.5 text-slate-400" />
+            <span>Setup</span>
+          </Link>
+          <Link
+            href="/settings/billing"
+            className="flex items-center justify-center space-x-1.5 py-1.5 px-2 rounded-lg bg-slate-900/60 hover:bg-slate-800/80 text-slate-300 hover:text-white text-[11px] font-medium border border-slate-800 transition-colors cursor-pointer"
+          >
+            <CreditCard className="h-3.5 w-3.5 text-slate-400" />
+            <span>Billing</span>
+          </Link>
+        </div>
       </div>
 
-      {/* User Footer Profile */}
-      <div className="p-3 border-t border-slate-800/80 flex items-center justify-between bg-slate-950/60">
-        <div className="flex items-center space-x-2">
-          <UserButton />
-          <div className="text-left">
-            <p className="text-xs font-semibold text-white">Compliance Member</p>
-            <p className="text-[10px] text-slate-500">Regulated Financial Institution</p>
-          </div>
-        </div>
+      {/* User & Organization Footer */}
+      <div className="p-3 border-t border-slate-800/80 bg-slate-950/60 space-y-2">
+        {isLoaded && isSignedIn && (
+          <>
+            <div className="w-full overflow-hidden">
+              <OrganizationSwitcher
+                hidePersonal
+                afterSelectOrganizationUrl="/chat"
+                afterCreateOrganizationUrl="/chat"
+                appearance={{
+                  elements: {
+                    rootBox: "w-full",
+                    organizationSwitcherTrigger:
+                      "w-full justify-between px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-200 hover:bg-slate-800 text-xs",
+                  },
+                }}
+              />
+            </div>
+            <div className="flex items-center space-x-2">
+              <UserButton />
+              <div className="text-left truncate">
+                <p className="text-xs font-semibold text-white truncate">Compliance Member</p>
+                <p className="text-[10px] text-slate-500 truncate">Regulated Financial Institution</p>
+              </div>
+            </div>
+          </>
+        )}
+
+        {isLoaded && !isSignedIn && (
+          <Link
+            href="/sign-in"
+            className="w-full flex items-center justify-center space-x-2 py-2 px-3 rounded-lg bg-brand-primary hover:bg-brand-hover text-white text-xs font-semibold transition-colors"
+          >
+            <LogIn className="h-3.5 w-3.5" />
+            <span>Sign In to Workspace</span>
+          </Link>
+        )}
       </div>
     </aside>
   );

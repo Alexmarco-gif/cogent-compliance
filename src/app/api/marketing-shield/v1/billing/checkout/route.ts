@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { currentUser } from "@clerk/nextjs/server";
 import { resolveTenantContext } from "@/modules/auth-tenancy/tenant.resolver";
+import { AuthTenancyError } from "@/modules/auth-tenancy/types";
 import { CheckoutRequestSchema } from "@/contracts/billing.contracts";
 import { paystackBillingService } from "@/modules/billing/paystack.service";
 import { createAdminSupabaseClient } from "@/lib/supabase";
@@ -77,6 +78,9 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(checkout, { status: 200 });
   } catch (err: unknown) {
+    if (err instanceof AuthTenancyError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
+    }
     const message = err instanceof Error ? err.message : "Internal server error";
     logger.error("Checkout initialization failed", { error: err });
     return NextResponse.json({ error: message }, { status: 500 });

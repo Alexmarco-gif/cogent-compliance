@@ -4,11 +4,16 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { ZodError } from "zod";
 import { resolveTenantContext } from "@/modules/auth-tenancy/tenant.resolver";
 import { requirePermission } from "@/modules/auth-tenancy/rbac.guard";
+import { AuthTenancyError } from "@/modules/auth-tenancy/types";
 import { sendMessageStreamSchema } from "@/contracts/conversation.contracts";
 import { copilotOrchestrator } from "@/modules/conversations/copilot.orchestrator";
 import { logger } from "@/lib/logger";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function POST(
   req: NextRequest,
@@ -35,8 +40,21 @@ export async function POST(
 
     // 3. Create a ReadableStream for Server-Sent Events
     const encoder = new TextEncoder();
+    let isStreamClosed = false;
     const stream = new ReadableStream({
+      cancel() {
+        isStreamClosed = true;
+      },
       async start(controller) {
+        const safeEnqueue = (chunk: Uint8Array) => {
+          if (isStreamClosed) return;
+          try {
+            controller.enqueue(chunk);
+          } catch {
+            isStreamClosed = true;
+          }
+        };
+
         try {
           for await (const sseEvent of copilotOrchestrator.streamChat({
             tenantId: tenant.tenantId,
@@ -47,19 +65,30 @@ export async function POST(
             campaignUrls: validated.campaign_urls,
             activeCampaignId: validated.active_campaign_id,
           })) {
+            if (isStreamClosed) break;
             const frame = `event: ${sseEvent.type}\ndata: ${JSON.stringify(sseEvent)}\n\n`;
-            controller.enqueue(encoder.encode(frame));
+            safeEnqueue(encoder.encode(frame));
           }
-          controller.close();
+          if (!isStreamClosed) {
+            isStreamClosed = true;
+            controller.close();
+          }
         } catch (streamErr) {
           const errMsg = (streamErr as Error).message || "Streaming failed";
           logger.error("Error in SSE controller loop", { error: errMsg, requestId });
-          const errorFrame = `event: message.failed\ndata: ${JSON.stringify({
-            type: "message.failed",
-            data: { error_code: "SSE_STREAM_ERROR", message: errMsg },
-          })}\n\n`;
-          controller.enqueue(encoder.encode(errorFrame));
-          controller.close();
+          if (!isStreamClosed) {
+            const errorFrame = `event: message.failed\ndata: ${JSON.stringify({
+              type: "message.failed",
+              data: { error_code: "SSE_STREAM_ERROR", message: errMsg },
+            })}\n\n`;
+            safeEnqueue(encoder.encode(errorFrame));
+            isStreamClosed = true;
+            try {
+              controller.close();
+            } catch {
+              // Controller already closed by client disconnect
+            }
+          }
         }
       },
     });
@@ -73,6 +102,39 @@ export async function POST(
       },
     });
   } catch (err) {
+    if (err instanceof AuthTenancyError) {
+      logger.warn("AuthTenancy rejection on SSE stream", {
+        code: err.code,
+        statusCode: err.statusCode,
+        requestId,
+      });
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: err.code,
+            message: err.message,
+            request_id: requestId,
+          },
+        },
+        { status: err.statusCode }
+      );
+    }
+
+    if (err instanceof ZodError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "VALIDATION_FAILED",
+            message: err.errors.map((e) => e.message).join("; ") || "Invalid request payload",
+            request_id: requestId,
+          },
+        },
+        { status: 400 }
+      );
+    }
+
     const errorMsg = (err as Error).message || "Internal server error";
     logger.error("Failed to initialize SSE stream", { error: errorMsg, requestId });
 

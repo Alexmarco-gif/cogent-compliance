@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveTenantContext } from "@/modules/auth-tenancy/tenant.resolver";
+import { AuthTenancyError } from "@/modules/auth-tenancy/types";
 import { entitlementsService } from "@/modules/billing/entitlements.service";
 import { FEATURE_GATE_TYPES, FeatureGateType } from "@/contracts/billing.contracts";
 import { logger } from "@/lib/logger";
@@ -41,6 +42,9 @@ export async function GET(req: NextRequest) {
       { status: 200 },
     );
   } catch (err: unknown) {
+    if (err instanceof AuthTenancyError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
+    }
     const message = err instanceof Error ? err.message : "Internal server error";
     logger.error("Failed to query tenant entitlements", { error: err });
     return NextResponse.json({ error: message }, { status: 500 });

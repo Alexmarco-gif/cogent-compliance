@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
+import Link from "next/link";
+import { useAuth, OrganizationSwitcher } from "@clerk/nextjs";
 import { ConversationSidebar } from "@/components/chat/ConversationSidebar";
 import { AdaptiveMessageRenderer } from "@/components/chat/AdaptiveMessageRenderer";
 import { ChatComposer } from "@/components/chat/ChatComposer";
@@ -12,7 +14,8 @@ import type { LockResult } from "@/components/campaign/Tab1LocksOverview";
 import type { ExtractionData } from "@/components/campaign/Tab2AssetBoundingBoxes";
 import type { ConversationRecord, MessageRecord } from "@/modules/conversations/conversation.service";
 import type { CitationItem, SSEEvent } from "@/contracts/conversation.contracts";
-import { ShieldCheck, Sparkles, PanelRight } from "lucide-react";
+import { extractApiError, extractSseDataFromBlock } from "@/lib/api-client";
+import { ShieldCheck, Sparkles, PanelRight, AlertTriangle, LogIn, X } from "lucide-react";
 
 interface DisplayMessage {
   id: string;
@@ -49,6 +52,7 @@ interface ActiveAssetState {
 }
 
 export default function ChatPage() {
+  const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
   const [conversations, setConversations] = useState<ConversationRecord[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -57,6 +61,8 @@ export default function ChatPage() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [activeTool, setActiveTool] = useState<ToolActivityProps | null>(null);
   const [inspectClauseId, setInspectClauseId] = useState<string | null>(null);
+  const [authIssue, setAuthIssue] = useState<"UNAUTHENTICATED" | "NO_ORG" | null>(null);
+  const [chatError, setChatError] = useState<string | null>(null);
 
   // Phase 7 Campaign & Inspector State
   const [activeCampaign, setActiveCampaign] = useState<ActiveCampaignState | null>(null);
@@ -67,6 +73,11 @@ export default function ChatPage() {
   const [showInspector, setShowInspector] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const activeConvIdRef = useRef<string | null>(null);
+  activeConvIdRef.current = activeConvId;
+  const conversationsRef = useRef<ConversationRecord[]>([]);
+  conversationsRef.current = conversations;
+  const skipNextLoadForConvRef = useRef<string | null>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -76,28 +87,51 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages, activeTool]);
 
-  // Load conversations on initial mount
+  const applyApiFailure = useCallback((status: number, body: unknown, fallback: string) => {
+    const parsed = extractApiError(status, body, fallback);
+    if (status === 401 || parsed.code === "UNAUTHENTICATED") {
+      setAuthIssue("UNAUTHENTICATED");
+      setChatError("Your session is signed out. Sign in to start or resume a compliance consultation.");
+    } else if (status === 403 && parsed.code === "TENANT_CONTEXT_INVALID") {
+      setAuthIssue("NO_ORG");
+      setChatError(parsed.message);
+    } else {
+      setAuthIssue(null);
+      setChatError(parsed.message);
+    }
+    return parsed;
+  }, []);
+
+  // Load conversations on mount and whenever active Clerk auth/org changes
   const loadConversations = useCallback(async () => {
     setLoadingConversations(true);
     try {
       const res = await fetch("/api/marketing-shield/v1/conversations?status=ACTIVE");
-      const json = await res.json();
-      if (json.success && json.data) {
-        setConversations(json.data.conversations || []);
-        if (json.data.conversations?.length > 0 && !activeConvId) {
-          setActiveConvId(json.data.conversations[0].id);
-        }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        applyApiFailure(res.status, json, "Failed to load compliance consultations.");
+        return;
+      }
+      setAuthIssue(null);
+      setChatError(null);
+      const list: ConversationRecord[] = json.data?.conversations || [];
+      setConversations(list);
+      const firstConv = list[0];
+      if (firstConv && !activeConvIdRef.current) {
+        setActiveConvId(firstConv.id);
       }
     } catch (err) {
       console.error("Failed to load conversations", err);
+      setChatError("Unable to reach the compliance gateway. Please check your connection and retry.");
     } finally {
       setLoadingConversations(false);
     }
-  }, [activeConvId]);
+  }, [applyApiFailure]);
 
   useEffect(() => {
+    if (!clerkLoaded) return;
     loadConversations();
-  }, [loadConversations]);
+  }, [clerkLoaded, isSignedIn, orgId, loadConversations]);
 
   // Load campaign and assessment details when active campaign exists
   const loadCampaignData = useCallback(async (campaignId: string) => {
@@ -138,10 +172,15 @@ export default function ChatPage() {
     }
   }, []);
 
-  // Load messages whenever activeConvId changes
+  // Load messages whenever activeConvId changes (unless freshly auto-created mid-send)
   useEffect(() => {
     if (!activeConvId) {
       setMessages([]);
+      return;
+    }
+
+    if (skipNextLoadForConvRef.current === activeConvId) {
+      skipNextLoadForConvRef.current = null;
       return;
     }
 
@@ -168,7 +207,7 @@ export default function ChatPage() {
       });
 
     // Check if active conversation has linked campaign
-    const conv = conversations.find((c) => c.id === activeConvId);
+    const conv = conversationsRef.current.find((c) => c.id === activeConvId);
     if (conv?.active_campaign_id) {
       loadCampaignData(conv.active_campaign_id);
     }
@@ -176,7 +215,7 @@ export default function ChatPage() {
     return () => {
       isMounted = false;
     };
-  }, [activeConvId, conversations, loadCampaignData]);
+  }, [activeConvId, loadCampaignData]);
 
   // Handle New Conversation creation
   const handleNewConversation = async () => {
@@ -186,16 +225,21 @@ export default function ChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: "New Compliance Consultation" }),
       });
-      const json = await res.json();
-      if (json.success && json.data) {
-        setConversations((prev) => [json.data, ...prev]);
-        setActiveConvId(json.data.id);
-        setMessages([]);
-        setActiveCampaign(null);
-        setShowInspector(false);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success || !json.data) {
+        applyApiFailure(res.status, json, "Failed to start a new compliance consultation.");
+        return;
       }
+      setAuthIssue(null);
+      setChatError(null);
+      setConversations((prev) => [json.data, ...prev]);
+      setActiveConvId(json.data.id);
+      setMessages([]);
+      setActiveCampaign(null);
+      setShowInspector(false);
     } catch (err) {
       console.error("Failed to create conversation", err);
+      setChatError("Network error while creating a new consultation.");
     }
   };
 
@@ -207,14 +251,17 @@ export default function ChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: newTitle }),
       });
-      const json = await res.json();
-      if (json.success) {
-        setConversations((prev) =>
-          prev.map((c) => (c.id === id ? { ...c, title: newTitle } : c))
-        );
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        applyApiFailure(res.status, json, "Failed to rename consultation.");
+        return;
       }
+      setConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, title: newTitle } : c))
+      );
     } catch (err) {
       console.error("Failed to rename conversation", err);
+      setChatError("Network error while renaming consultation.");
     }
   };
 
@@ -224,16 +271,19 @@ export default function ChatPage() {
       const res = await fetch(`/api/marketing-shield/v1/conversations/${id}/archive`, {
         method: "POST",
       });
-      const json = await res.json();
-      if (json.success) {
-        setConversations((prev) => prev.filter((c) => c.id !== id));
-        if (activeConvId === id) {
-          const remaining = conversations.filter((c) => c.id !== id);
-          setActiveConvId(remaining[0]?.id || null);
-        }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        applyApiFailure(res.status, json, "Failed to archive consultation.");
+        return;
+      }
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (activeConvId === id) {
+        const remaining = conversations.filter((c) => c.id !== id);
+        setActiveConvId(remaining[0]?.id || null);
       }
     } catch (err) {
       console.error("Failed to archive conversation", err);
+      setChatError("Network error while archiving consultation.");
     }
   };
 
@@ -247,12 +297,14 @@ export default function ChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: `Audit: ${filename}` }),
       });
-      const convJson = await convRes.json();
-      if (convJson.success && convJson.data) {
-        currentConvId = convJson.data.id;
-        setActiveConvId(currentConvId);
-        setConversations((prev) => [convJson.data, ...prev]);
+      const convJson = await convRes.json().catch(() => ({}));
+      if (!convRes.ok || !convJson.success || !convJson.data) {
+        applyApiFailure(convRes.status, convJson, "Failed to initialize consultation for uploaded asset.");
+        return;
       }
+      currentConvId = convJson.data.id;
+      setActiveConvId(currentConvId);
+      setConversations((prev) => [convJson.data, ...prev]);
     }
 
     // Auto-create marketing campaign linked to asset
@@ -268,18 +320,22 @@ export default function ChatPage() {
         }),
       });
 
-      const campJson = await campRes.json();
-      if (campJson.success && campJson.data) {
-        const campaign = campJson.data;
-        await loadCampaignData(campaign.id);
+      const campJson = await campRes.json().catch(() => ({}));
+      if (!campRes.ok || !campJson.success || !campJson.data) {
+        applyApiFailure(campRes.status, campJson, "Failed to initialize campaign for uploaded asset.");
+        return;
       }
+      const campaign = campJson.data;
+      await loadCampaignData(campaign.id);
     } catch (err) {
       console.error("Failed to initialize campaign for uploaded asset", err);
+      setChatError("Network error initializing campaign for uploaded asset.");
     }
   };
 
   // Send Message & Stream Assistant SSE Response
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string): Promise<boolean> => {
+    setChatError(null);
     let currentConvId = activeConvId;
 
     if (!currentConvId) {
@@ -289,19 +345,27 @@ export default function ChatPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ title: text.slice(0, 48) + "..." }),
         });
-        const createJson = await createRes.json();
-        if (createJson.success && createJson.data) {
-          currentConvId = createJson.data.id;
-          setActiveConvId(currentConvId);
-          setConversations((prev) => [createJson.data, ...prev]);
+        const createJson = await createRes.json().catch(() => ({}));
+        if (!createRes.ok || !createJson.success || !createJson.data) {
+          applyApiFailure(createRes.status, createJson, "Unable to create compliance consultation.");
+          return false;
         }
+        currentConvId = createJson.data.id;
+        skipNextLoadForConvRef.current = currentConvId;
+        setAuthIssue(null);
+        setActiveConvId(currentConvId);
+        setConversations((prev) => [createJson.data, ...prev]);
       } catch (err) {
         console.error("Failed to create initial conversation", err);
-        return;
+        setChatError("Unable to reach the compliance gateway. Please check your connection and try again.");
+        return false;
       }
     }
 
-    if (!currentConvId) return;
+    if (!currentConvId) {
+      setChatError("Unable to initialize consultation session. Please try again.");
+      return false;
+    }
 
     // Append user message immediately
     const tempUserMsgId = `user_${Date.now()}`;
@@ -337,74 +401,110 @@ export default function ChatPage() {
       );
 
       if (!response.ok || !response.body) {
-        throw new Error(`HTTP ${response.status}: Failed to connect to streaming endpoint`);
+        const errBody = await response.json().catch(() => ({}));
+        const parsed = applyApiFailure(
+          response.status,
+          errBody,
+          `HTTP ${response.status}: Failed to connect to streaming endpoint`
+        );
+        throw new Error(parsed.message);
       }
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
 
+      const processSseBlock = (block: string) => {
+        const jsonStr = extractSseDataFromBlock(block);
+        if (!jsonStr) return;
+
+        try {
+          const event: SSEEvent = JSON.parse(jsonStr);
+
+          if (event.type === "assistant.delta") {
+            const delta = event.data.text_delta;
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempAssistantMsgId
+                  ? { ...m, content: m.content + delta }
+                  : m
+              )
+            );
+          } else if (event.type === "tool.started") {
+            setActiveTool({
+              toolName: event.data.tool_name,
+              displayLabel: event.data.display_label,
+              status: "RUNNING",
+            });
+          } else if (event.type === "tool.completed") {
+            setActiveTool({
+              toolName: event.data.tool_name,
+              displayLabel: event.data.tool_name,
+              status: event.data.status,
+              summary: event.data.summary,
+            });
+          } else if (event.type === "message.completed") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempAssistantMsgId
+                  ? {
+                      ...m,
+                      id: event.data.assistant_message_id || m.id,
+                      citations: event.data.citations || m.citations,
+                      isStreaming: false,
+                    }
+                  : m
+              )
+            );
+          } else if (event.type === "message.failed") {
+            const failMsg = event.data.message || "Regulatory analysis failed.";
+            setChatError(failMsg);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempAssistantMsgId
+                  ? {
+                      ...m,
+                      content: m.content
+                        ? `${m.content}\n\n*Regulatory analysis failed: ${failMsg}*`
+                        : `*Regulatory analysis failed: ${failMsg}*`,
+                      isStreaming: false,
+                    }
+                  : m
+              )
+            );
+          }
+        } catch (parseErr) {
+          console.warn("Failed to parse SSE block", parseErr);
+        }
+      };
+
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() || "";
+        const blocks = buffer.split(/\r?\n\r?\n/);
+        buffer = blocks.pop() || "";
 
-        for (const block of lines) {
-          const trimmed = block.trim();
-          if (!trimmed.startsWith("data:")) continue;
-
-          const jsonStr = trimmed.replace(/^data:\s*/, "");
-          if (!jsonStr) continue;
-
-          try {
-            const event: SSEEvent = JSON.parse(jsonStr);
-
-            if (event.type === "assistant.delta") {
-              const delta = event.data.text_delta;
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempAssistantMsgId
-                    ? { ...m, content: m.content + delta }
-                    : m
-                )
-              );
-            } else if (event.type === "tool.started") {
-              setActiveTool({
-                toolName: event.data.tool_name,
-                displayLabel: event.data.display_label,
-                status: "RUNNING",
-              });
-            } else if (event.type === "tool.completed") {
-              setActiveTool({
-                toolName: event.data.tool_name,
-                displayLabel: event.data.tool_name,
-                status: event.data.status,
-                summary: event.data.summary,
-              });
-            } else if (event.type === "message.completed") {
-              setMessages((prev) =>
-                prev.map((m) =>
-                  m.id === tempAssistantMsgId
-                    ? {
-                        ...m,
-                        id: event.data.assistant_message_id || m.id,
-                        citations: event.data.citations || m.citations,
-                        isStreaming: false,
-                      }
-                    : m
-                )
-              );
-            }
-          } catch (parseErr) {
-            console.warn("Failed to parse SSE line", parseErr);
-          }
+        for (const block of blocks) {
+          processSseBlock(block);
         }
       }
+
+      if (buffer.trim()) {
+        processSseBlock(buffer);
+      }
+
+      // Ensure message never remains stuck in streaming state if stream ended without terminal event
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === tempAssistantMsgId && m.isStreaming ? { ...m, isStreaming: false } : m
+        )
+      );
+      return true;
     } catch (err) {
       console.error("Streaming error", err);
+      const errMsg = err instanceof Error ? err.message : "Streaming communication interrupted.";
       setMessages((prev) =>
         prev.map((m) =>
           m.id === tempAssistantMsgId
@@ -412,12 +512,13 @@ export default function ChatPage() {
                 ...m,
                 content:
                   m.content +
-                  "\n\n*A communication interruption occurred while streaming the regulatory analysis.*",
+                  `\n\n*Regulatory analysis interrupted: ${errMsg}*`,
                 isStreaming: false,
               }
             : m
         )
       );
+      return true;
     } finally {
       setIsStreaming(false);
       setActiveTool(null);
@@ -483,6 +584,57 @@ export default function ChatPage() {
             </span>
           </div>
         </header>
+
+        {/* Actionable Auth / API Error Banner */}
+        {(authIssue || chatError) && (
+          <div className="mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-xs text-amber-950 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0 shadow-2xs">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">
+                  {authIssue === "UNAUTHENTICATED"
+                    ? "Authentication Required"
+                    : authIssue === "NO_ORG"
+                      ? "Institutional Organization Required"
+                      : "Consultation Error"}
+                </p>
+                <p className="text-amber-800 mt-0.5">{chatError}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              {authIssue === "UNAUTHENTICATED" && (
+                <Link
+                  href="/sign-in"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-primary hover:bg-brand-hover text-white font-semibold text-xs transition-colors"
+                >
+                  <LogIn className="h-3.5 w-3.5" />
+                  <span>Sign In →</span>
+                </Link>
+              )}
+
+              {authIssue === "NO_ORG" && (
+                <OrganizationSwitcher
+                  hidePersonal
+                  afterSelectOrganizationUrl="/chat"
+                  afterCreateOrganizationUrl="/chat"
+                />
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setChatError(null);
+                  setAuthIssue(null);
+                }}
+                className="p-1 rounded-md text-amber-700 hover:bg-amber-100 transition-colors"
+                aria-label="Dismiss error banner"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Message Scroll Area */}
         <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">

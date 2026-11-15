@@ -8,13 +8,15 @@ import {
   BookOpen,
   CheckCircle2,
   ArrowLeft,
+  LogIn,
 } from "lucide-react";
-import { UserButton } from "@clerk/nextjs";
+import { UserButton, OrganizationSwitcher, useAuth } from "@clerk/nextjs";
 import { ProductRateEditor } from "@/components/knowledge-base/ProductRateEditor";
 import { PlaybookUploader } from "@/components/knowledge-base/PlaybookUploader";
 import { RuleActivationTable } from "@/components/knowledge-base/RuleActivationTable";
 
 export default function KnowledgeBasePage() {
+  const { isLoaded, isSignedIn } = useAuth();
   const [activeTab, setActiveTab] = useState<"products" | "playbooks" | "rules">("products");
 
   return (
@@ -44,10 +46,28 @@ export default function KnowledgeBasePage() {
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-700 border border-zinc-200">
+          <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-zinc-100 text-zinc-700 border border-zinc-200">
             TENANT VAULT
           </span>
-          <UserButton />
+          {isLoaded && isSignedIn && (
+            <>
+              <OrganizationSwitcher
+                hidePersonal
+                afterSelectOrganizationUrl="/knowledge-base"
+                afterCreateOrganizationUrl="/knowledge-base"
+              />
+              <UserButton />
+            </>
+          )}
+          {isLoaded && !isSignedIn && (
+            <Link
+              href="/sign-in"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-semibold transition-colors"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Sign In</span>
+            </Link>
+          )}
         </div>
       </header>
 

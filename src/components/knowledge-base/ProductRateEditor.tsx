@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import { useAuth } from "@clerk/nextjs";
 import {
   Plus,
   Percent,
@@ -12,12 +14,15 @@ import {
   X,
   FileCheck,
 } from "lucide-react";
+import { extractApiError, unwrapApiList } from "@/lib/api-client";
 import type { CampaignProduct } from "@/contracts/knowledge-product.contracts";
 
 export function ProductRateEditor() {
+  const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
   const [products, setProducts] = useState<CampaignProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<CampaignProduct | null>(null);
 
@@ -41,10 +46,15 @@ export function ProductRateEditor() {
     try {
       setLoading(true);
       const res = await fetch("/api/marketing-shield/v1/products");
-      if (!res.ok) throw new Error("Failed to load products");
-      const data = await res.json();
-      setProducts(data || []);
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.success === false) {
+        const parsed = extractApiError(res.status, json, "Failed to load products");
+        setErrorStatus(parsed.status);
+        throw new Error(parsed.message);
+      }
+      setProducts(unwrapApiList<CampaignProduct>(json));
       setError(null);
+      setErrorStatus(null);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -53,8 +63,9 @@ export function ProductRateEditor() {
   }, []);
 
   useEffect(() => {
+    if (!clerkLoaded) return;
     fetchProducts();
-  }, [fetchProducts]);
+  }, [clerkLoaded, isSignedIn, orgId, fetchProducts]);
 
   const openCreateModal = () => {
     setEditingProduct(null);
@@ -124,14 +135,20 @@ export function ProductRateEditor() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error("Failed to update product truth");
+        const errJson = await res.json().catch(() => ({}));
+        if (!res.ok || errJson.success === false) {
+          throw new Error(extractApiError(res.status, errJson, "Failed to update product truth").message);
+        }
       } else {
         const res = await fetch("/api/marketing-shield/v1/products", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error("Failed to create product truth");
+        const errJson = await res.json().catch(() => ({}));
+        if (!res.ok || errJson.success === false) {
+          throw new Error(extractApiError(res.status, errJson, "Failed to create product truth").message);
+        }
       }
 
       setModalOpen(false);
@@ -147,7 +164,10 @@ export function ProductRateEditor() {
     if (!confirm("Are you sure you want to delete this institutional product truth schedule?")) return;
     try {
       const res = await fetch(`/api/marketing-shield/v1/products/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error("Failed to delete product truth");
+      const errJson = await res.json().catch(() => ({}));
+      if (!res.ok || errJson.success === false) {
+        throw new Error(extractApiError(res.status, errJson, "Failed to delete product truth").message);
+      }
       await fetchProducts();
     } catch (err) {
       alert((err as Error).message);
@@ -176,9 +196,19 @@ export function ProductRateEditor() {
       </div>
 
       {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-center gap-2 text-xs text-red-700">
-          <AlertTriangle className="w-4 h-4 shrink-0" />
-          <span>{error}</span>
+        <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-center justify-between gap-3 text-xs text-red-700">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+          {errorStatus === 401 && (
+            <Link
+              href="/sign-in"
+              className="px-2.5 py-1 rounded bg-red-700 text-white font-semibold hover:bg-red-800 shrink-0"
+            >
+              Sign In →
+            </Link>
+          )}
         </div>
       )}
 

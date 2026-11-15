@@ -2,9 +2,10 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { Send, CornerDownLeft, Paperclip, Loader2, FileUp } from "lucide-react";
+import { extractApiError } from "@/lib/api-client";
 
 export interface ChatComposerProps {
-  onSendMessage: (content: string) => Promise<void>;
+  onSendMessage: (content: string) => Promise<boolean | void>;
   onAssetUploaded?: (assetId: string, filename: string) => Promise<void>;
   conversationId?: string;
   disabled?: boolean;
@@ -56,11 +57,13 @@ export function ChatComposer({
     if (!content.trim() || disabled) return;
 
     const text = content.trim();
-    setContent("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
+    const sent = await onSendMessage(text);
+    if (sent !== false) {
+      setContent("");
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
     }
-    await onSendMessage(text);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -97,20 +100,24 @@ export function ChatComposer({
         }),
       });
 
-      const sessionJson = await sessionRes.json();
+      const sessionJson = await sessionRes.json().catch(() => ({}));
       if (!sessionRes.ok || !sessionJson.success) {
-        throw new Error(sessionJson.error?.message || "Failed to create upload session");
+        const parsed = extractApiError(sessionRes.status, sessionJson, "Failed to create upload session");
+        throw new Error(parsed.message);
       }
 
       const { asset_id, presigned_upload_url } = sessionJson.data;
 
       // 3. Upload binary directly to R2 (or fallback if mock URL)
       if (!presigned_upload_url.includes("mock")) {
-        await fetch(presigned_upload_url, {
+        const putRes = await fetch(presigned_upload_url, {
           method: "PUT",
           body: file,
           headers: { "Content-Type": file.type },
         });
+        if (!putRes.ok) {
+          throw new Error(`Asset binary upload failed (HTTP ${putRes.status})`);
+        }
       }
 
       // 4. Complete upload & queue extraction
@@ -120,9 +127,10 @@ export function ChatComposer({
         body: JSON.stringify({ auto_assess: true }),
       });
 
-      const completeJson = await completeRes.json();
+      const completeJson = await completeRes.json().catch(() => ({}));
       if (!completeRes.ok || !completeJson.success) {
-        throw new Error(completeJson.error?.message || "Failed to finalize asset extraction");
+        const parsed = extractApiError(completeRes.status, completeJson, "Failed to finalize asset extraction");
+        throw new Error(parsed.message);
       }
 
       // 5. Notify parent callback
@@ -151,9 +159,11 @@ export function ChatComposer({
             <button
               key={idx}
               type="button"
-              onClick={() => onSendMessage(starter.prompt)}
+              onClick={() => {
+                void onSendMessage(starter.prompt);
+              }}
               disabled={disabled}
-              className="text-left p-3 rounded-xl border border-slate-200/80 bg-surface hover:bg-slate-50 hover:border-slate-300 transition-all text-xs shadow-2xs group cursor-pointer"
+              className="text-left p-3 rounded-xl border border-slate-200/80 bg-surface hover:bg-slate-50 hover:border-slate-300 transition-all text-xs shadow-2xs group cursor-pointer disabled:opacity-50"
             >
               <span className="font-semibold text-slate-800 block text-[11px] group-hover:text-brand-primary transition-colors">
                 {starter.title}

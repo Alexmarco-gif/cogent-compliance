@@ -5,7 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CopilotOrchestrator } from "@/modules/conversations/copilot.orchestrator";
-import { GoogleGenAI } from "@google/genai";
+import { FunctionCallingConfigMode, GoogleGenAI } from "@google/genai";
 
 // Mock Supabase
 const mockSupabase = {
@@ -145,5 +145,175 @@ describe("CopilotOrchestrator (Unit)", () => {
     expect(completed?.data.citations[0]?.regulatory_clause_id).toBe("c_999");
     expect(completed?.data.citations[0]?.source_class).toBe("VERIFIED_OFFICIAL_SOURCE");
     expect(completed?.data.citations[0]?.badge_label).toBe("Verified Statutory Vault");
+  });
+
+  it("should preserve thoughtSignature on functionCall parts and exclude thought summaries from assistant deltas", async () => {
+    mockGenAi.models.generateContent.mockResolvedValueOnce({
+      candidates: [
+        {
+          content: {
+            parts: [
+              { thought: true, text: "Internal reasoning: check vault first." },
+              {
+                functionCall: {
+                  id: "call_1",
+                  name: "search_regulatory_evidence",
+                  args: { query: "guaranteed returns" },
+                },
+                thoughtSignature: "sig_abc_123",
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    mockGenAi.models.generateContent.mockResolvedValueOnce({
+      candidates: [
+        {
+          content: {
+            parts: [
+              { thought: true, text: "Internal reasoning: synthesize answer." },
+              { text: "Promising guaranteed returns without qualification breaches FCCPA rules." },
+            ],
+          },
+        },
+      ],
+    });
+
+    const orchestrator = new CopilotOrchestrator(mockGenAi as unknown as GoogleGenAI);
+    const events = [];
+    for await (const event of orchestrator.streamChat({
+      tenantId: "00000000-0000-0000-0000-000000000001",
+      userId: "user_officer",
+      conversationId: "conv_test_sig",
+      userPrompt: "Can we say guaranteed returns?",
+    })) {
+      events.push(event);
+    }
+
+    // Second call must preserve original model turn parts including thoughtSignature
+    const secondCallArgs = mockGenAi.models.generateContent.mock.calls[1]?.[0];
+    const modelTurn = secondCallArgs.contents.find((c: { role: string }) => c.role === "model");
+    expect(modelTurn?.parts[1]?.thoughtSignature).toBe("sig_abc_123");
+
+    const userFunctionResponseTurn = secondCallArgs.contents[secondCallArgs.contents.length - 1];
+    expect(userFunctionResponseTurn.role).toBe("user");
+    expect(userFunctionResponseTurn.parts[0]?.functionResponse?.name).toBe("search_regulatory_evidence");
+
+    // Assistant delta must NOT leak internal thought summary text
+    const deltas = events
+      .filter((e) => e.type === "assistant.delta")
+      .map((e) => e.data.text_delta)
+      .join("");
+    expect(deltas).not.toContain("Internal reasoning");
+    expect(deltas).toContain("Promising guaranteed returns");
+  });
+
+  it("should execute a final tool-free synthesis pass when maxToolRounds is reached without text", async () => {
+    const toolCallResponse = {
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                functionCall: {
+                  name: "search_regulatory_evidence",
+                  args: { query: "savings promo" },
+                },
+                thoughtSignature: "sig_round",
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    mockGenAi.models.generateContent
+      .mockResolvedValueOnce(toolCallResponse)
+      .mockResolvedValueOnce(toolCallResponse)
+      .mockResolvedValueOnce(toolCallResponse)
+      .mockResolvedValueOnce({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: "Unqualified claims of guaranteed returns risk misleading-advertising enforcement.",
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+    const orchestrator = new CopilotOrchestrator(mockGenAi as unknown as GoogleGenAI);
+    const events = [];
+    for await (const event of orchestrator.streamChat({
+      tenantId: "00000000-0000-0000-0000-000000000001",
+      userId: "user_officer",
+      conversationId: "conv_test_synth",
+      userPrompt: "Can we advertise guaranteed returns?",
+    })) {
+      events.push(event);
+    }
+
+    expect(mockGenAi.models.generateContent).toHaveBeenCalledTimes(4);
+    const fourthCallConfig = mockGenAi.models.generateContent.mock.calls[3]?.[0]?.config;
+    expect(fourthCallConfig?.toolConfig?.functionCallingConfig?.mode).toBe(
+      FunctionCallingConfigMode.NONE
+    );
+
+    const deltas = events
+      .filter((e) => e.type === "assistant.delta")
+      .map((e) => e.data.text_delta)
+      .join("");
+    expect(deltas).toContain("Unqualified claims of guaranteed returns");
+  });
+
+  it("should emit grounded citation summary if synthesis returns no text parts", async () => {
+    const toolCallResponse = {
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                functionCall: {
+                  name: "search_regulatory_evidence",
+                  args: { query: "savings promo" },
+                },
+                thoughtSignature: "sig_round",
+              },
+            ],
+          },
+        },
+      ],
+    };
+
+    mockGenAi.models.generateContent
+      .mockResolvedValueOnce(toolCallResponse)
+      .mockResolvedValueOnce(toolCallResponse)
+      .mockResolvedValueOnce(toolCallResponse)
+      .mockResolvedValueOnce({
+        candidates: [{ content: { parts: [] } }],
+      });
+
+    const orchestrator = new CopilotOrchestrator(mockGenAi as unknown as GoogleGenAI);
+    const events = [];
+    for await (const event of orchestrator.streamChat({
+      tenantId: "00000000-0000-0000-0000-000000000001",
+      userId: "user_officer",
+      conversationId: "conv_test_empty_fallback",
+      userPrompt: "Can we advertise guaranteed returns?",
+    })) {
+      events.push(event);
+    }
+
+    const deltas = events
+      .filter((e) => e.type === "assistant.delta")
+      .map((e) => e.data.text_delta)
+      .join("");
+    expect(deltas).toContain("FCCPA 2018");
+    expect(events.some((e) => e.type === "message.completed")).toBe(true);
   });
 });

@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { extractApiError } from "@/lib/api-client";
 import {
   REGULATORY_SCOPES,
   REGULATORY_SCOPE_METADATA,
@@ -57,6 +59,8 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
   const [rewriteApplied, setRewriteApplied] = useState(false);
   const [celebrationModalOpen, setCelebrationModalOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [stepError, setStepError] = useState<string | null>(null);
+  const [stepErrorStatus, setStepErrorStatus] = useState<number | null>(null);
 
   useEffect(() => {
     if (stepParam) {
@@ -77,8 +81,10 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
   const handleScopeSubmit = async () => {
     if (selectedScopes.length === 0) return;
     setSavingScope(true);
+    setStepError(null);
+    setStepErrorStatus(null);
     try {
-      await fetch("/api/marketing-shield/v1/onboarding/scope", {
+      const res = await fetch("/api/marketing-shield/v1/onboarding/scope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -86,10 +92,18 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
           organization_name: orgName,
         }),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const parsed = extractApiError(res.status, json, "Failed to save regulatory scopes");
+        setStepErrorStatus(parsed.status);
+        setStepError(parsed.message);
+        return;
+      }
       setCurrentStep(2);
       router.push("/onboarding?step=2");
     } catch (err) {
       console.error("Failed to save scopes", err);
+      setStepError("Network error saving regulatory scopes.");
     } finally {
       setSavingScope(false);
     }
@@ -98,8 +112,10 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
   // Submit Step 2
   const handleProductSubmit = async (skip = false) => {
     setSavingProduct(true);
+    setStepError(null);
+    setStepErrorStatus(null);
     try {
-      await fetch("/api/marketing-shield/v1/onboarding/product-truth", {
+      const res = await fetch("/api/marketing-shield/v1/onboarding/product-truth", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -110,10 +126,18 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
           skip,
         }),
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const parsed = extractApiError(res.status, json, "Failed to save product truth");
+        setStepErrorStatus(parsed.status);
+        setStepError(parsed.message);
+        return;
+      }
       setCurrentStep(3);
       router.push("/onboarding?step=3");
     } catch (err) {
       console.error("Failed to seed product truth", err);
+      setStepError("Network error seeding product truth.");
     } finally {
       setSavingProduct(false);
     }
@@ -130,19 +154,28 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
 
   // Step 3: Accept Compliant Rewrite
   const handleAcceptRewrite = async () => {
-    setRewriteApplied(true);
-    setRawCopy(
-      "Instant loans up to ₦500,000 subject to credit evaluation and eligibility. Transparent monthly interest with explicit fee disclosure in full compliance with FCCPC Digital Lending Regulations and CBN Consumer Protection Guidelines.",
-    );
-    setCelebrationModalOpen(true);
-
+    setStepError(null);
+    setStepErrorStatus(null);
     try {
-      await fetch("/api/marketing-shield/v1/onboarding/complete", {
+      const res = await fetch("/api/marketing-shield/v1/onboarding/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
       });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const parsed = extractApiError(res.status, json, "Failed to finalize onboarding");
+        setStepErrorStatus(parsed.status);
+        setStepError(parsed.message);
+        return;
+      }
+      setRewriteApplied(true);
+      setRawCopy(
+        "Instant loans up to ₦500,000 subject to credit evaluation and eligibility. Transparent monthly interest with explicit fee disclosure in full compliance with FCCPC Digital Lending Regulations and CBN Consumer Protection Guidelines.",
+      );
+      setCelebrationModalOpen(true);
     } catch (err) {
       console.error("Failed to mark onboarding complete", err);
+      setStepError("Network error finalizing onboarding.");
     }
   };
 
@@ -222,6 +255,22 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
 
       {/* Main Container */}
       <div className="w-full max-w-4xl bg-white rounded-2xl border border-[#E4E4E7] shadow-sm p-8">
+        {stepError && (
+          <div className="mb-6 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" />
+              <span>{stepError}</span>
+            </div>
+            {stepErrorStatus === 401 && (
+              <Link
+                href="/sign-in"
+                className="px-3 py-1 rounded-lg bg-red-700 text-white font-semibold hover:bg-red-800 shrink-0"
+              >
+                Sign In →
+              </Link>
+            )}
+          </div>
+        )}
         {/* STEP 1: Institution Scope */}
         {currentStep === 1 && (
           <div className="space-y-6">
