@@ -91,7 +91,7 @@ DO $$ BEGIN
     ) THEN
         CREATE POLICY "Users can view their tenant subscription" ON public.tenant_subscriptions
             FOR SELECT TO authenticated 
-            USING (tenant_id IN (SELECT tenant_id FROM public.tenant_memberships WHERE user_id = auth.uid()));
+            USING (tenant_id IN (SELECT tenant_id FROM public.tenant_memberships WHERE user_id = auth.uid()::text));
     END IF;
 END $$;
 
@@ -101,7 +101,7 @@ DO $$ BEGIN
     ) THEN
         CREATE POLICY "Users can view their tenant transactions" ON public.billing_transactions
             FOR SELECT TO authenticated 
-            USING (tenant_id IN (SELECT tenant_id FROM public.tenant_memberships WHERE user_id = auth.uid()));
+            USING (tenant_id IN (SELECT tenant_id FROM public.tenant_memberships WHERE user_id = auth.uid()::text));
     END IF;
 END $$;
 
@@ -174,7 +174,9 @@ ON CONFLICT (slug) DO UPDATE SET
     retention_days = EXCLUDED.retention_days,
     features = EXCLUDED.features;
 
--- 8. Seed Default System FX Rate (USD -> NGN)
+-- 8. Seed Default System FX Rate (USD -> NGN) idempotently
 INSERT INTO public.system_fx_rates (currency_pair, rate, source)
-VALUES ('USD_NGN', 1550.0000, 'CENTRAL_BANK_BENCHMARK')
-ON CONFLICT DO NOTHING;
+SELECT 'USD_NGN', 1550.0000, 'CENTRAL_BANK_BENCHMARK'
+WHERE NOT EXISTS (
+    SELECT 1 FROM public.system_fx_rates WHERE currency_pair = 'USD_NGN'
+);
