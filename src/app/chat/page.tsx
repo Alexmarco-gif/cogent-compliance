@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth, OrganizationSwitcher } from "@clerk/nextjs";
 import { ConversationSidebar } from "@/components/chat/ConversationSidebar";
 import { AdaptiveMessageRenderer } from "@/components/chat/AdaptiveMessageRenderer";
@@ -52,7 +53,9 @@ interface ActiveAssetState {
 }
 
 export default function ChatPage() {
+  const router = useRouter();
   const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
+  const [onboardingReady, setOnboardingReady] = useState(false);
   const [conversations, setConversations] = useState<ConversationRecord[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
@@ -128,10 +131,57 @@ export default function ChatPage() {
     }
   }, [applyApiFailure]);
 
+  // Gate /chat behind sign-in, active organization, and completed onboarding
   useEffect(() => {
     if (!clerkLoaded) return;
+
+    if (!isSignedIn) {
+      setOnboardingReady(false);
+      router.replace("/sign-in?redirect_url=/chat");
+      return;
+    }
+
+    if (!orgId) {
+      setOnboardingReady(false);
+      router.replace("/onboarding");
+      return;
+    }
+
+    let cancelled = false;
+    fetch("/api/marketing-shield/v1/onboarding/status")
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.status === 401) {
+          router.replace("/sign-in?redirect_url=/chat");
+          return;
+        }
+        if (res.status === 403) {
+          router.replace("/onboarding");
+          return;
+        }
+        const status = await res.json().catch(() => null);
+        if (cancelled) return;
+        if (status && status.onboardingCompleted === false) {
+          router.replace("/onboarding");
+          return;
+        }
+        setOnboardingReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOnboardingReady(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clerkLoaded, isSignedIn, orgId, router]);
+
+  useEffect(() => {
+    if (!clerkLoaded || !isSignedIn || !orgId || !onboardingReady) return;
     loadConversations();
-  }, [clerkLoaded, isSignedIn, orgId, loadConversations]);
+  }, [clerkLoaded, isSignedIn, orgId, onboardingReady, loadConversations]);
 
   // Load campaign and assessment details when active campaign exists
   const loadCampaignData = useCallback(async (campaignId: string) => {
@@ -526,6 +576,14 @@ export default function ChatPage() {
   };
 
   const activeConversation = conversations.find((c) => c.id === activeConvId);
+
+  if (!clerkLoaded || !isSignedIn || !orgId || !onboardingReady) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-canvas text-xs font-medium text-slate-500">
+        Verifying institutional session and onboarding status...
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-canvas overflow-hidden">

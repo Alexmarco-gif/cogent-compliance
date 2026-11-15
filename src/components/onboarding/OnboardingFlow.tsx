@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useAuth, OrganizationList, UserButton } from "@clerk/nextjs";
 import { extractApiError } from "@/lib/api-client";
 import {
   REGULATORY_SCOPES,
@@ -30,13 +31,15 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const stepParam = searchParams.get("step");
+  const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
 
   const [currentStep, setCurrentStep] = useState<number>(
     stepParam ? parseInt(stepParam, 10) : initialStep,
   );
+  const [alreadyCompleted, setAlreadyCompleted] = useState(false);
 
   // Step 1 State: Scope
-  const [orgName, setOrgName] = useState<string>("First Bank of Nigeria (Demo)");
+  const [orgName, setOrgName] = useState<string>("My Financial Institution");
   const [selectedScopes, setSelectedScopes] = useState<RegulatoryScopeKey[]>([
     "DIGITAL_LENDING",
     "PAYMENTS_SWITCHING",
@@ -70,6 +73,38 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
       }
     }
   }, [stepParam]);
+
+  useEffect(() => {
+    if (!clerkLoaded) return;
+    if (!isSignedIn) {
+      router.replace("/sign-in?redirect_url=/onboarding");
+      return;
+    }
+    if (!orgId) return;
+
+    let cancelled = false;
+    fetch("/api/marketing-shield/v1/onboarding/status")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((status) => {
+        if (cancelled || !status) return;
+        if (Array.isArray(status.activeScopes) && status.activeScopes.length > 0) {
+          setSelectedScopes(status.activeScopes as RegulatoryScopeKey[]);
+        }
+        if (status.onboardingCompleted) {
+          setAlreadyCompleted(true);
+        } else if (!stepParam && typeof status.stepCompleted === "number") {
+          const nextStep = Math.min(3, Math.max(1, status.stepCompleted + 1));
+          setCurrentStep(nextStep);
+        }
+      })
+      .catch(() => {
+        // Non-blocking status hydration
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [clerkLoaded, isSignedIn, orgId, stepParam, router]);
 
   const toggleScope = (scope: RegulatoryScopeKey) => {
     setSelectedScopes((prev) =>
@@ -184,10 +219,62 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
     router.push("/chat?onboarding=true");
   };
 
+  if (!clerkLoaded || !isSignedIn) {
+    return (
+      <div className="min-h-screen bg-[#F5F6FA] flex items-center justify-center text-sm font-medium text-neutral-500">
+        Verifying authentication session...
+      </div>
+    );
+  }
+
+  if (!orgId) {
+    return (
+      <div className="min-h-screen bg-[#F5F6FA] text-[#0B0F1A] flex flex-col items-center py-10 px-4">
+        <div className="w-full max-w-4xl flex items-center justify-between mb-8">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-[#2A4BFF] flex items-center justify-center text-white shadow-md">
+              <ShieldCheck className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight text-[#0B0F1A]">
+                Cogent Marketing Shield
+              </h1>
+              <p className="text-xs text-neutral-500">Step 1 of Onboarding: Institution Workspace</p>
+            </div>
+          </div>
+          <UserButton />
+        </div>
+
+        <div className="w-full max-w-2xl bg-white rounded-2xl border border-[#E4E4E7] shadow-sm p-8 text-center space-y-6">
+          <div>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-blue-50 text-[#2A4BFF] mb-2">
+              <Building className="h-3.5 w-3.5" /> Institutional Tenant Provisioning
+            </span>
+            <h2 className="text-2xl font-bold tracking-tight text-[#0B0F1A]">
+              Create or Select Your Financial Institution
+            </h2>
+            <p className="text-sm text-neutral-500 mt-1">
+              Cogent isolates every bank or fintech&apos;s rate cards, playbooks, and audit logs by
+              organization. Select your workspace or create a new institution below to continue.
+            </p>
+          </div>
+
+          <div className="flex justify-center">
+            <OrganizationList
+              hidePersonal
+              afterSelectOrganizationUrl="/onboarding"
+              afterCreateOrganizationUrl="/onboarding"
+            />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#F5F6FA] text-[#0B0F1A] flex flex-col items-center py-10 px-4">
       {/* Top Header */}
-      <div className="w-full max-w-4xl flex items-center justify-between mb-8">
+      <div className="w-full max-w-4xl flex flex-wrap items-center justify-between gap-4 mb-8">
         <div className="flex items-center gap-3">
           <div className="h-10 w-10 rounded-xl bg-[#2A4BFF] flex items-center justify-center text-white shadow-md">
             <ShieldCheck className="h-6 w-6" />
@@ -198,6 +285,18 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
             </h1>
             <p className="text-xs text-neutral-500">Autonomous Regulatory Compliance OS</p>
           </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {alreadyCompleted && (
+            <Link
+              href="/chat"
+              className="px-3 py-1.5 rounded-lg border border-neutral-300 bg-white hover:bg-neutral-50 text-xs font-semibold text-neutral-700 transition-colors"
+            >
+              Return to Copilot →
+            </Link>
+          )}
+          <UserButton />
         </div>
 
         {/* 60-Second Progressive Stepper */}

@@ -198,7 +198,7 @@ export class OnboardingService {
       .single();
 
     const existingSettings = (tenant?.settings || {}) as Record<string, unknown>;
-    await supabase
+    const { error: step2Error } = await supabase
       .from("tenants")
       .update({
         settings: {
@@ -213,6 +213,11 @@ export class OnboardingService {
         },
       })
       .eq("id", tenantId);
+
+    if (step2Error) {
+      logger.error("Failed to persist onboarding step 2 progress", { tenantId, error: step2Error });
+      throw new Error("Failed to save product truth onboarding progress");
+    }
 
     logger.info("Successfully seeded product truth for tenant", {
       tenantId,
@@ -238,7 +243,7 @@ export class OnboardingService {
       .single();
 
     const existingSettings = (tenant?.settings || {}) as Record<string, unknown>;
-    await supabase
+    const { error: completeError } = await supabase
       .from("tenants")
       .update({
         settings: {
@@ -248,6 +253,11 @@ export class OnboardingService {
         },
       })
       .eq("id", tenantId);
+
+    if (completeError) {
+      logger.error("Failed to mark tenant onboarding completed", { tenantId, error: completeError });
+      throw new Error("Failed to finalize institutional onboarding");
+    }
 
     logger.info("Tenant completed 60-second progressive onboarding", { tenantId, completedAt });
 

@@ -27,18 +27,6 @@ const isApiRoute = createRouteMatcher([
   "/api/(.*)",
 ]);
 
-const isDevPreviewRoute = createRouteMatcher([
-  "/",
-  "/chat(.*)",
-  "/drift-monitors(.*)",
-  "/knowledge-base(.*)",
-  "/onboarding(.*)",
-  "/settings(.*)",
-  "/studio(.*)",
-  "/api/marketing-shield/v1/(.*)",
-  "/api/billing(.*)",
-]);
-
 export default clerkMiddleware(async (auth, req) => {
   if (isAlwaysPublicRoute(req)) {
     return;
@@ -50,13 +38,11 @@ export default clerkMiddleware(async (auth, req) => {
     return;
   }
 
-  // Allow frictionless local testing in development/test while protecting all
-  // workspace pages in production deployments.
-  if (process.env.NODE_ENV !== "production" && isDevPreviewRoute(req)) {
-    return;
-  }
-
-  await auth.protect();
+  // Protect all application routes (including /, /onboarding, /chat, /knowledge-base, /drift-monitors)
+  // so unauthenticated visitors always authenticate via /sign-in before onboarding or chat.
+  await auth.protect({
+    unauthenticatedUrl: new URL("/sign-in", req.url).toString(),
+  });
 });
 
 export const config = {
