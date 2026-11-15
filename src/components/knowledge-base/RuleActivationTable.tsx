@@ -27,6 +27,12 @@ export function RuleActivationTable() {
   const [rbacNotice, setRbacNotice] = useState<string | null>(null);
 
   const fetchRules = useCallback(async () => {
+    if (!isSignedIn || !orgId) {
+      setLoading(false);
+      setError(null);
+      setErrorStatus(null);
+      return;
+    }
     try {
       setLoading(true);
       const params = new URLSearchParams();
@@ -36,7 +42,7 @@ export function RuleActivationTable() {
       const res = await fetch(`/api/marketing-shield/v1/knowledge-base/rules?${params.toString()}`);
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.success === false) {
-        const parsed = extractApiError(res.status, json, "Failed to load knowledge rules");
+        const parsed = extractApiError(res.status, json, "Unable to load compliance rules");
         setErrorStatus(parsed.status);
         throw new Error(parsed.message);
       }
@@ -48,7 +54,7 @@ export function RuleActivationTable() {
     } finally {
       setLoading(false);
     }
-  }, [statusFilter, typeFilter]);
+  }, [isSignedIn, orgId, statusFilter, typeFilter]);
 
   useEffect(() => {
     if (!clerkLoaded) return;
@@ -65,7 +71,7 @@ export function RuleActivationTable() {
 
       if (res.status === 403) {
         setRbacNotice(
-          "RBAC Enforcement: Only Legal Counsel, Chief Compliance Officer, or Workspace Admin can activate rules for live campaign assessment (knowledge.publish)."
+          "Only Legal Counsel, Chief Compliance Officer, or Workspace Admin can activate rules for live campaign reviews."
         );
         return;
       }
@@ -90,7 +96,7 @@ export function RuleActivationTable() {
       case "RATE_FEE_LIMIT":
         return "bg-amber-50 text-amber-700 border-amber-200";
       case "REQUIRED_DISCLOSURE":
-        return "bg-blue-50 text-blue-700 border-blue-200";
+        return "bg-zinc-100 text-zinc-800 border-zinc-200";
       case "APPROVED_LANGUAGE":
         return "bg-emerald-50 text-emerald-700 border-emerald-200";
       default:
@@ -101,13 +107,13 @@ export function RuleActivationTable() {
   const getSeverityBadge = (sev: string) => {
     switch (sev) {
       case "CRITICAL":
-        return "bg-red-100 text-red-800";
+        return "bg-rose-50 text-rose-800 border border-rose-200";
       case "HIGH":
-        return "bg-orange-100 text-orange-800";
+        return "bg-amber-50 text-amber-800 border border-amber-200";
       case "MEDIUM":
-        return "bg-amber-100 text-amber-800";
+        return "bg-zinc-100 text-zinc-800 border border-zinc-200";
       default:
-        return "bg-zinc-100 text-zinc-700";
+        return "bg-zinc-50 text-zinc-600 border border-zinc-200";
     }
   };
 
@@ -116,11 +122,11 @@ export function RuleActivationTable() {
       {/* Header controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-200">
         <div>
-          <h2 className="text-sm font-semibold text-zinc-900 uppercase tracking-wider">
-            Internal Marketing Compliance Rules
+          <h2 className="text-sm font-semibold text-zinc-950">
+            Internal Compliance Rules
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Rules extracted from internal playbooks. Activating a rule enforces it across campaign reviews and AI copilot reasoning.
+            Rules extracted from uploaded playbooks. Active rules are checked across campaign reviews.
           </p>
         </div>
 
@@ -128,7 +134,7 @@ export function RuleActivationTable() {
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-1.5 text-xs text-zinc-500">
             <Filter className="w-3.5 h-3.5 text-zinc-400" />
-            <span>Status:</span>
+            <span>Filter:</span>
           </div>
           <select
             value={statusFilter}
@@ -136,8 +142,8 @@ export function RuleActivationTable() {
             className="text-xs px-2 py-1 bg-white border border-zinc-300 rounded focus:outline-hidden focus:border-zinc-900"
           >
             <option value="ALL">All Statuses</option>
-            <option value="DRAFT">Draft (Candidate)</option>
-            <option value="ACTIVE">Active (Enforced)</option>
+            <option value="DRAFT">Draft</option>
+            <option value="ACTIVE">Active</option>
           </select>
 
           <select
@@ -159,41 +165,71 @@ export function RuleActivationTable() {
         <div className="p-3 bg-amber-50 border border-amber-200 rounded-md flex items-start gap-2 text-xs text-amber-800">
           <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
           <div className="flex-1">
-            <span className="font-semibold">Separation of Duties Notice: </span>
+            <span className="font-semibold">Permission required: </span>
             {rbacNotice}
           </div>
         </div>
       )}
 
-      {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-center justify-between gap-3 text-xs text-red-700">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-          {errorStatus === 401 && (
+      {clerkLoaded && !isSignedIn ? (
+        <div className="p-8 text-center border border-dashed border-zinc-200 rounded-lg space-y-2.5">
+          <CheckCircle2 className="w-7 h-7 mx-auto text-zinc-400" />
+          <p className="text-xs font-medium text-zinc-900">Sign in to review compliance rules</p>
+          <p className="text-xs text-zinc-500 max-w-md mx-auto">
+            Extracted policy rules are scoped to your organization workspace.
+          </p>
+          <div className="pt-1">
             <Link
               href="/sign-in"
-              className="px-2.5 py-1 rounded bg-red-700 text-white font-semibold hover:bg-red-800 shrink-0"
+              className="inline-flex items-center px-3.5 py-1.5 rounded-md bg-zinc-900 text-white text-xs font-medium hover:bg-zinc-800 transition-colors"
             >
-              Sign In →
+              Sign in
             </Link>
+          </div>
+        </div>
+      ) : clerkLoaded && isSignedIn && !orgId ? (
+        <div className="p-8 text-center border border-dashed border-zinc-200 rounded-lg space-y-2">
+          <CheckCircle2 className="w-7 h-7 mx-auto text-zinc-400" />
+          <p className="text-xs font-medium text-zinc-900">Select an organization workspace</p>
+          <p className="text-xs text-zinc-500">
+            Choose or create an organization in the sidebar to view and activate rules.
+          </p>
+        </div>
+      ) : error ? (
+        <div className="p-3 bg-rose-50/70 border border-rose-200 rounded-md flex items-center justify-between gap-3 text-xs text-rose-800">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+            <span>{error}</span>
+          </div>
+          {errorStatus === 401 ? (
+            <Link
+              href="/sign-in"
+              className="px-2.5 py-1 rounded bg-zinc-900 text-white font-medium hover:bg-zinc-800 shrink-0"
+            >
+              Sign in
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={fetchRules}
+              className="px-2.5 py-1 rounded border border-rose-200 bg-white text-rose-800 font-medium hover:bg-rose-50 shrink-0 cursor-pointer"
+            >
+              Retry
+            </button>
           )}
         </div>
-      )}
-
-      {loading ? (
+      ) : loading ? (
         <div className="p-8 text-center text-xs text-zinc-500">Loading compliance rules...</div>
       ) : rules.length === 0 ? (
         <div className="p-8 text-center border border-dashed border-zinc-200 rounded-lg">
-          <CheckCircle2 className="w-8 h-8 mx-auto text-zinc-400 mb-2" />
-          <p className="text-xs font-medium text-zinc-700">No matching internal rules found.</p>
-          <p className="text-[11px] text-zinc-500 mt-1">
-            Upload internal playbooks in the &quot;Playbooks &amp; Policies&quot; tab to extract candidate rules.
+          <CheckCircle2 className="w-7 h-7 mx-auto text-zinc-400 mb-2" />
+          <p className="text-xs font-medium text-zinc-800">No matching internal rules found.</p>
+          <p className="text-xs text-zinc-500 mt-1">
+            Upload playbooks in the &quot;Playbooks &amp; Policies&quot; tab to extract draft rules.
           </p>
         </div>
       ) : (
-        <div className="border border-zinc-200 rounded-lg overflow-hidden bg-white shadow-xs">
+        <div className="border border-zinc-200 rounded-lg overflow-hidden bg-white">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-500 font-medium">
@@ -231,7 +267,7 @@ export function RuleActivationTable() {
                     </span>
                   </td>
                   <td className="py-3 px-3 whitespace-nowrap text-zinc-600">
-                    {rule.document_title || "Institutional Playbook"}
+                    {rule.document_title || "Policy Playbook"}
                   </td>
                   <td className="py-3 px-3 whitespace-nowrap">
                     <span
@@ -250,12 +286,12 @@ export function RuleActivationTable() {
                       <button
                         onClick={() => handleActivate(rule.id)}
                         disabled={activatingId === rule.id}
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 rounded disabled:opacity-50 transition-colors cursor-pointer"
+                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 rounded disabled:opacity-50 transition-colors cursor-pointer"
                       >
                         {activatingId === rule.id ? "Activating..." : "Activate Rule"}
                       </button>
                     ) : (
-                      <span className="text-[11px] text-zinc-400 italic">Enforced Live</span>
+                      <span className="text-[11px] text-zinc-400">Active</span>
                     )}
                   </td>
                 </tr>

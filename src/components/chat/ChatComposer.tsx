@@ -1,7 +1,17 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { Send, CornerDownLeft, Paperclip, Loader2, FileUp } from "lucide-react";
+import {
+  ArrowUp,
+  Paperclip,
+  Loader2,
+  Globe,
+  FileImage,
+  Percent,
+  Video,
+  ClipboardCheck,
+  FileText,
+} from "lucide-react";
 import { extractApiError } from "@/lib/api-client";
 
 export interface ChatComposerProps {
@@ -9,25 +19,56 @@ export interface ChatComposerProps {
   onAssetUploaded?: (assetId: string, filename: string) => Promise<void>;
   conversationId?: string;
   disabled?: boolean;
-  showStarterPrompts?: boolean;
+  isZeroState?: boolean;
 }
 
-const STARTER_PROMPTS = [
+const STARTER_CARDS = [
   {
-    title: "FCCPC APR & Fee Disclosures",
-    prompt: "What are the mandatory APR and total fee disclosure requirements under FCCPC DEON Regulations for digital lenders?",
+    icon: FileImage,
+    title: "Audit a campaign flyer",
+    subtitle: "Extract text and check ARCON rules",
+    prompt:
+      "Review this promotional campaign copy for CBN, FCCPC, and ARCON compliance: ",
+    prefillOnly: true,
   },
   {
-    title: "CBN 0% Interest & Cost of Credit",
-    prompt: "Can a Nigerian bank or fintech advertise '0% interest' without disclosing management fees and total cost of credit under CBN Consumer Protection Regulations?",
+    icon: Percent,
+    title: "Verify loan APR & fees",
+    subtitle: "Check copy against internal rate card",
+    prompt:
+      "What are the mandatory APR and fee disclosure requirements under FCCPC DEON Regulations for digital lenders?",
+    prefillOnly: false,
   },
   {
-    title: "ARCON ASP Vetting & Influencer Rules",
-    prompt: "What are the ARCON ASP pre-vetting requirements and penalties for publishing digital marketing campaigns without vetting approval?",
+    icon: Video,
+    title: "Screen influencer script",
+    subtitle: "Check FCCPC & ARCON disclosure rules",
+    prompt:
+      "What are the ARCON ASP pre-vetting and influencer disclosure requirements for digital financial campaigns in Nigeria?",
+    prefillOnly: false,
   },
   {
-    title: "NDPC Consent & Marketing Opt-Out",
-    prompt: "What are the statutory requirements under NDPA 2023 for promotional SMS and unsolicited consumer financial marketing?",
+    icon: Globe,
+    title: "Scan live landing page",
+    subtitle: "Check URL copy for compliance gaps",
+    prompt: "Inspect this live promotional landing page URL for regulatory compliance: https://",
+    prefillOnly: true,
+  },
+  {
+    icon: ClipboardCheck,
+    title: "CBN disclosure checklist",
+    subtitle: "Consumer Protection Framework mandates",
+    prompt:
+      "Can a Nigerian bank or fintech advertise '0% interest' without disclosing management fees and total cost of credit under CBN Consumer Protection Regulations?",
+    prefillOnly: false,
+  },
+  {
+    icon: FileText,
+    title: "Prepare audit dossier",
+    subtitle: "2-year FCCPC retention requirements",
+    prompt:
+      "What promotional records and sign-off evidence must be retained for 2 years under FCCPC consumer protection regulations and NDPA 2023 marketing opt-out rules?",
+    prefillOnly: false,
   },
 ];
 
@@ -36,7 +77,7 @@ export function ChatComposer({
   onAssetUploaded,
   conversationId,
   disabled,
-  showStarterPrompts,
+  isZeroState = false,
 }: ChatComposerProps) {
   const [content, setContent] = useState("");
   const [isUploading, setIsUploading] = useState(false);
@@ -44,7 +85,6 @@ export function ChatComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Auto-resize textarea based on input content
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
@@ -81,13 +121,11 @@ export function ChatComposer({
     setUploadError(null);
 
     try {
-      // 1. Compute SHA-256 hash
       const arrayBuffer = await file.arrayBuffer();
       const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       const sha256_hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 
-      // 2. Obtain presigned upload session
       const sessionRes = await fetch("/api/marketing-shield/v1/assets/upload-session", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -102,13 +140,16 @@ export function ChatComposer({
 
       const sessionJson = await sessionRes.json().catch(() => ({}));
       if (!sessionRes.ok || !sessionJson.success) {
-        const parsed = extractApiError(sessionRes.status, sessionJson, "Failed to create upload session");
+        const parsed = extractApiError(
+          sessionRes.status,
+          sessionJson,
+          "Failed to create upload session",
+        );
         throw new Error(parsed.message);
       }
 
       const { asset_id, presigned_upload_url } = sessionJson.data;
 
-      // 3. Upload binary directly to R2 (or fallback if mock URL)
       if (!presigned_upload_url.includes("mock")) {
         const putRes = await fetch(presigned_upload_url, {
           method: "PUT",
@@ -116,11 +157,10 @@ export function ChatComposer({
           headers: { "Content-Type": file.type },
         });
         if (!putRes.ok) {
-          throw new Error(`Asset binary upload failed (HTTP ${putRes.status})`);
+          throw new Error(`Upload failed (HTTP ${putRes.status})`);
         }
       }
 
-      // 4. Complete upload & queue extraction
       const completeRes = await fetch(`/api/marketing-shield/v1/assets/${asset_id}/complete`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -129,18 +169,20 @@ export function ChatComposer({
 
       const completeJson = await completeRes.json().catch(() => ({}));
       if (!completeRes.ok || !completeJson.success) {
-        const parsed = extractApiError(completeRes.status, completeJson, "Failed to finalize asset extraction");
+        const parsed = extractApiError(
+          completeRes.status,
+          completeJson,
+          "Failed to process uploaded asset",
+        );
         throw new Error(parsed.message);
       }
 
-      // 5. Notify parent callback
       if (onAssetUploaded) {
         await onAssetUploaded(asset_id, file.name);
       }
 
-      // 6. Send automatic conversational trigger
       await onSendMessage(
-        `[Attached Promotional Asset: "${file.name}"] Please extract layout text, verify deterministic mechanical locks, and run compliance assessment against CBN, FCCPC, and ARCON rules.`
+        `Uploaded campaign asset "${file.name}". Please review the extracted copy against CBN, FCCPC, and ARCON requirements.`,
       );
     } catch (err) {
       setUploadError((err as Error).message);
@@ -151,58 +193,36 @@ export function ChatComposer({
   };
 
   return (
-    <div className="w-full max-w-4xl mx-auto space-y-3">
-      {/* Starter Prompts (shown when conversation is new/empty) */}
-      {showStarterPrompts && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pb-2">
-          {STARTER_PROMPTS.map((starter, idx) => (
-            <button
-              key={idx}
-              type="button"
-              onClick={() => {
-                void onSendMessage(starter.prompt);
-              }}
-              disabled={disabled}
-              className="text-left p-3 rounded-xl border border-slate-200/80 bg-surface hover:bg-slate-50 hover:border-slate-300 transition-all text-xs shadow-2xs group cursor-pointer disabled:opacity-50"
-            >
-              <span className="font-semibold text-slate-800 block text-[11px] group-hover:text-brand-primary transition-colors">
-                {starter.title}
-              </span>
-              <p className="text-slate-500 mt-1 line-clamp-2 text-[11px] leading-relaxed">
-                {starter.prompt}
-              </p>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Upload Error Banner */}
+    <div className={isZeroState ? "w-full max-w-2xl mx-auto" : "w-full max-w-3xl mx-auto"}>
       {uploadError && (
-        <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[12px] flex items-center justify-between">
+        <div className="mb-3 px-3.5 py-2.5 rounded-lg bg-rose-50/70 border border-rose-200 text-rose-700 text-[12.5px] flex items-center justify-between gap-3">
           <span>{uploadError}</span>
-          <button onClick={() => setUploadError(null)} className="font-semibold hover:underline">
+          <button
+            type="button"
+            onClick={() => setUploadError(null)}
+            className="font-medium hover:underline shrink-0 cursor-pointer"
+          >
             Dismiss
           </button>
         </div>
       )}
 
-      {/* Input Form */}
+      {/* Unified Multi-Line Composer Dock */}
       <form
         onSubmit={handleSubmit}
-        className="relative rounded-2xl border border-slate-300 bg-surface shadow-xs focus-within:border-brand-primary focus-within:ring-2 focus-within:ring-brand-primary/10 transition-all"
+        className="rounded-xl border border-zinc-200 bg-white shadow-xs focus-within:border-zinc-400 transition-colors p-3"
       >
         <textarea
           ref={textareaRef}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask a Nigerian regulatory question, query Golden 50 Vault, or drop promotional copy/flyer..."
+          placeholder="Paste ad copy, upload a flyer, or ask a CBN / FCCPC compliance question..."
           disabled={disabled || isUploading}
-          rows={1}
-          className="w-full resize-none bg-transparent px-4 py-3.5 pr-28 text-sm text-slate-900 placeholder-slate-400 focus:outline-hidden min-h-[52px] max-h-[180px] leading-relaxed"
+          rows={isZeroState ? 2 : 1}
+          className="w-full resize-none bg-transparent px-1 py-1 text-[14px] text-zinc-950 placeholder:text-zinc-400 focus:outline-hidden min-h-[40px] max-h-[180px] leading-relaxed"
         />
 
-        {/* Hidden File Input */}
         <input
           type="file"
           ref={fileInputRef}
@@ -211,48 +231,87 @@ export function ChatComposer({
           className="hidden"
         />
 
-        <div className="absolute right-2.5 bottom-2.5 flex items-center space-x-1.5">
-          {/* File Attachment Button */}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={disabled || isUploading}
-            className="flex h-8 w-8 items-center justify-center rounded-xl text-slate-500 hover:text-brand-primary hover:bg-slate-100 transition-colors cursor-pointer"
-            title="Upload Promotional Flyer or Document (PNG, JPG, PDF, DOCX)"
-          >
-            {isUploading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-brand-primary" />
-            ) : (
-              <Paperclip className="h-4 w-4" />
-            )}
-          </button>
+        <div className="mt-2 pt-2 border-t border-zinc-100 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={disabled || isUploading}
+              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 px-2.5 py-1 text-[12px] font-medium text-zinc-700 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              {isUploading ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-600" />
+              ) : (
+                <Paperclip className="h-3.5 w-3.5 text-zinc-500" />
+              )}
+              <span>{isUploading ? "Uploading..." : "Attach flyer / PDF"}</span>
+            </button>
 
-          {/* Send Message Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setContent((prev) =>
+                  prev.trim()
+                    ? prev
+                    : "Review this landing page URL for compliance: https://",
+                );
+                textareaRef.current?.focus();
+              }}
+              disabled={disabled || isUploading}
+              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 px-2.5 py-1 text-[12px] font-medium text-zinc-700 transition-colors cursor-pointer disabled:opacity-50"
+            >
+              <Globe className="h-3.5 w-3.5 text-zinc-500" />
+              <span>Scan URL</span>
+            </button>
+          </div>
+
           <button
             type="submit"
             disabled={!content.trim() || disabled || isUploading}
-            className={`flex h-8 w-8 items-center justify-center rounded-xl transition-all cursor-pointer ${
+            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors cursor-pointer ${
               content.trim() && !disabled && !isUploading
-                ? "bg-brand-primary text-white hover:bg-brand-hover shadow-2xs"
-                : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                ? "bg-zinc-900 hover:bg-zinc-800 text-white"
+                : "bg-zinc-100 text-zinc-400 cursor-not-allowed"
             }`}
             aria-label="Send message"
           >
-            <Send className="h-4 w-4" />
+            <ArrowUp className="h-4 w-4" />
           </button>
         </div>
       </form>
 
-      <div className="flex items-center justify-between px-2 text-[11px] text-slate-400">
-        <span className="flex items-center space-x-1">
-          <CornerDownLeft className="h-3 w-3" />
-          <span>Press Enter to send, Shift+Enter for new line</span>
-        </span>
-        <span className="flex items-center gap-1.5">
-          <FileUp className="h-3 w-3 text-slate-400" />
-          <span>Direct R2 Upload • Magic-Byte Verified</span>
-        </span>
-      </div>
+      {/* 2x3 Hairline Starter Grid (Zero State Only) */}
+      {isZeroState && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-5">
+          {STARTER_CARDS.map((card, idx) => {
+            const Icon = card.icon;
+            return (
+              <button
+                key={idx}
+                type="button"
+                disabled={disabled}
+                onClick={() => {
+                  if (card.prefillOnly) {
+                    setContent(card.prompt);
+                    textareaRef.current?.focus();
+                  } else {
+                    void onSendMessage(card.prompt);
+                  }
+                }}
+                className="text-left p-3.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 hover:border-zinc-300 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <div className="flex items-center gap-2 text-[13px] font-medium text-zinc-900">
+                  <Icon className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+                  <span className="truncate">{card.title}</span>
+                </div>
+                <p className="mt-1 text-[12px] text-zinc-500 line-clamp-1">
+                  {card.subtitle}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

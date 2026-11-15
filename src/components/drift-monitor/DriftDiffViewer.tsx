@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { AlertTriangle, CheckCircle, ShieldAlert, ArrowRight, X } from "lucide-react";
+import { AlertTriangle, CheckCircle, ArrowRight, X } from "lucide-react";
 import { CampaignDriftMonitor, DriftDetails, DriftDiscrepancy } from "@/contracts/drift.contracts";
 
 interface DriftDiffViewerProps {
@@ -22,30 +22,30 @@ export const DriftDiffViewer: React.FC<DriftDiffViewerProps> = ({
   const discrepancies: DriftDiscrepancy[] = details?.discrepancies || [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
       <div className="bg-white rounded-xl shadow-2xl border border-zinc-200 w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50/80">
+        <div className="px-6 py-4 border-b border-zinc-200 flex items-center justify-between bg-zinc-50">
           <div className="flex items-center space-x-3">
             {isDrift ? (
-              <div className="h-9 w-9 rounded-lg bg-red-100 flex items-center justify-center text-red-600">
-                <AlertTriangle className="h-5 w-5" />
+              <div className="h-9 w-9 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600">
+                <AlertTriangle className="h-4 w-4" />
               </div>
             ) : (
-              <div className="h-9 w-9 rounded-lg bg-emerald-100 flex items-center justify-center text-emerald-600">
-                <CheckCircle className="h-5 w-5" />
+              <div className="h-9 w-9 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600">
+                <CheckCircle className="h-4 w-4" />
               </div>
             )}
             <div>
               <div className="flex items-center space-x-2">
-                <h2 className="text-sm font-semibold text-zinc-900">
-                  {monitor.campaign_title || "Monitored Campaign"} — Post-Publication Drift Diff
+                <h2 className="text-sm font-semibold text-zinc-950">
+                  {monitor.campaign_title || "Monitored Campaign"} — Drift Comparison
                 </h2>
                 <span
-                  className={`px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide ${
+                  className={`px-2 py-0.5 rounded text-[10px] font-semibold tracking-wide border ${
                     isDrift
-                      ? "bg-red-100 text-red-700 border border-red-200"
-                      : "bg-emerald-100 text-emerald-700 border border-emerald-200"
+                      ? "bg-rose-50 text-rose-700 border-rose-200"
+                      : "bg-emerald-50 text-emerald-700 border-emerald-200"
                   }`}
                 >
                   {monitor.status}
@@ -61,14 +61,14 @@ export const DriftDiffViewer: React.FC<DriftDiffViewerProps> = ({
               <button
                 onClick={onRecheck}
                 disabled={isChecking}
-                className="px-3 py-1.5 rounded text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white disabled:opacity-50 transition-colors cursor-pointer"
+                className="px-3 py-1.5 rounded-md text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-white disabled:opacity-50 transition-colors cursor-pointer"
               >
-                {isChecking ? "Checking Live URL..." : "Re-inspect Live URL"}
+                {isChecking ? "Checking Live URL..." : "Re-check Live URL"}
               </button>
             )}
             <button
               onClick={onClose}
-              className="p-1.5 rounded-md hover:bg-zinc-200 text-zinc-400 hover:text-zinc-600 transition-colors"
+              className="p-1.5 rounded-md hover:bg-zinc-200 text-zinc-400 hover:text-zinc-600 transition-colors cursor-pointer"
             >
               <X className="h-4 w-4" />
             </button>
@@ -81,20 +81,24 @@ export const DriftDiffViewer: React.FC<DriftDiffViewerProps> = ({
           <div
             className={`p-4 rounded-lg border text-xs flex items-start space-x-3 ${
               isDrift
-                ? "bg-red-50/60 border-red-200 text-red-900"
+                ? "bg-rose-50/60 border-rose-200 text-rose-900"
                 : "bg-emerald-50/60 border-emerald-200 text-emerald-900"
             }`}
           >
-            <ShieldAlert className="h-4 w-4 shrink-0 mt-0.5" />
+            {isDrift ? (
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600" />
+            ) : (
+              <CheckCircle className="h-4 w-4 shrink-0 mt-0.5 text-emerald-600" />
+            )}
             <div>
               <p className="font-semibold">
                 {isDrift
-                  ? "Post-Publication Drift Detected: Live promotional page diverges from approved truth."
-                  : "Post-Publication Integrity Verified: Live promotional page matches approved baseline."}
+                  ? "Live webpage diverges from the approved revision."
+                  : "Live webpage matches the approved revision."}
               </p>
               <p className="mt-1 text-zinc-600">
                 {details?.summary ||
-                  "Inspection evaluates live page against Lock 1 (Prohibited Terms), Lock 2 (Product Truth), and Lock 3 (Mandatory Disclosures)."}
+                  "Compares live claims, rates, fees, and mandatory disclosures against the approved baseline."}
               </p>
             </div>
           </div>
@@ -103,7 +107,7 @@ export const DriftDiffViewer: React.FC<DriftDiffViewerProps> = ({
           {discrepancies.length > 0 && (
             <div>
               <h3 className="text-xs font-semibold text-zinc-900 uppercase tracking-wider mb-2">
-                Identified Regulatory Discrepancies ({discrepancies.length})
+                Discrepancies ({discrepancies.length})
               </h3>
               <div className="border border-zinc-200 rounded-lg overflow-hidden divide-y divide-zinc-200 text-xs">
                 {discrepancies.map((d, idx) => (
@@ -111,10 +115,10 @@ export const DriftDiffViewer: React.FC<DriftDiffViewerProps> = ({
                     <div className="space-y-1">
                       <div className="flex items-center space-x-2">
                         <span
-                          className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                          className={`px-1.5 py-0.5 rounded text-[10px] font-semibold border ${
                             d.severity === "CRITICAL"
-                              ? "bg-red-100 text-red-700"
-                              : "bg-amber-100 text-amber-700"
+                              ? "bg-rose-50 text-rose-700 border-rose-200"
+                              : "bg-amber-50 text-amber-700 border-amber-200"
                           }`}
                         >
                           {d.severity}
@@ -126,7 +130,7 @@ export const DriftDiffViewer: React.FC<DriftDiffViewerProps> = ({
                         <div className="flex items-center space-x-2 text-[11px] font-mono text-zinc-500 pt-1">
                           <span className="text-emerald-700">Expected: {d.expectedValue}</span>
                           <ArrowRight className="h-3 w-3 text-zinc-400" />
-                          <span className="text-red-700">Live: {d.actualValue}</span>
+                          <span className="text-rose-700">Live: {d.actualValue}</span>
                         </div>
                       )}
                     </div>
@@ -139,10 +143,10 @@ export const DriftDiffViewer: React.FC<DriftDiffViewerProps> = ({
           {/* Side-by-Side Snapshot Comparison */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {/* Left: Approved Baseline */}
-            <div className="border border-zinc-200 rounded-lg p-4 bg-zinc-50/30 space-y-2">
+            <div className="border border-zinc-200 rounded-lg p-4 bg-zinc-50/40 space-y-2">
               <div className="flex items-center justify-between border-b border-zinc-200 pb-2">
                 <span className="text-xs font-semibold text-zinc-800 uppercase tracking-wider">
-                  Approved Revision Baseline
+                  Approved Baseline
                 </span>
                 <span className="text-[10px] font-mono bg-zinc-200 text-zinc-700 px-1.5 py-0.5 rounded">
                   Revision #{monitor.revision_number || 1}
@@ -153,20 +157,22 @@ export const DriftDiffViewer: React.FC<DriftDiffViewerProps> = ({
               </p>
               <div className="p-3 bg-white border border-zinc-200 rounded text-xs text-zinc-700 font-mono whitespace-pre-wrap max-h-56 overflow-y-auto leading-relaxed">
                 {details?.approved_text_length
-                  ? `[Approved snapshot recorded with length ${details.approved_text_length} chars]`
+                  ? `Approved snapshot recorded (${details.approved_text_length} chars)`
                   : "Approved baseline content active."}
               </div>
             </div>
 
             {/* Right: Live Published URL */}
-            <div className="border border-zinc-200 rounded-lg p-4 bg-zinc-50/30 space-y-2">
+            <div className="border border-zinc-200 rounded-lg p-4 bg-zinc-50/40 space-y-2">
               <div className="flex items-center justify-between border-b border-zinc-200 pb-2">
                 <span className="text-xs font-semibold text-zinc-800 uppercase tracking-wider">
-                  Live Published Webpage
+                  Live Webpage
                 </span>
                 <span
-                  className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
-                    isDrift ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
+                  className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
+                    isDrift
+                      ? "bg-rose-50 text-rose-700 border-rose-200"
+                      : "bg-emerald-50 text-emerald-700 border-emerald-200"
                   }`}
                 >
                   Divergence: {((details?.divergence_score || 0) * 100).toFixed(0)}%
@@ -177,8 +183,8 @@ export const DriftDiffViewer: React.FC<DriftDiffViewerProps> = ({
               </p>
               <div className="p-3 bg-white border border-zinc-200 rounded text-xs text-zinc-700 font-mono whitespace-pre-wrap max-h-56 overflow-y-auto leading-relaxed">
                 {details?.live_text_length
-                  ? `[Live text extracted: ${details.live_text_length} chars. Fingerprint: ${details.live_sha256_hash?.slice(0, 12)}...]`
-                  : "Live URL fetched via SSRF-safe snapshotter."}
+                  ? `Live text extracted (${details.live_text_length} chars • ${details.live_sha256_hash?.slice(0, 12)}...)`
+                  : "Live snapshot recorded."}
               </div>
             </div>
           </div>

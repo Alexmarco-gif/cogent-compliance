@@ -1,16 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import {
   BillingInterval,
   PlanSlug,
 } from "@/contracts/billing.contracts";
-import {
-  ShieldCheck,
-  Check,
-  ArrowRight,
-  Globe,
-} from "lucide-react";
+import { CogentLogo } from "@/components/brand/CogentLogo";
+import { Check, ArrowRight, Globe, ArrowLeft } from "lucide-react";
 
 export default function PricingPage() {
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly");
@@ -59,7 +56,6 @@ export default function PricingPage() {
         throw new Error(data.error || "Unable to initiate Paystack checkout");
       }
 
-      // Redirect to Paystack secure checkout
       window.location.href = data.authorization_url;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Checkout error";
@@ -78,384 +74,409 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F5F6FA] text-[#0B0F1A] flex flex-col items-center py-12 px-4 sm:px-6 lg:px-8">
-      {/* Top Header */}
-      <div className="w-full max-w-6xl text-center mb-10">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-[#2A4BFF] text-xs font-semibold mb-4">
-          <ShieldCheck className="h-4 w-4" />
-          <span>Value-Based Nigerian Regulatory Protection</span>
+    <div className="min-h-screen bg-[#FAFAFA] text-zinc-950 flex flex-col items-center">
+      {/* Clean Top Navigation */}
+      <header className="w-full border-b border-zinc-200 bg-white">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
+          <Link href="/chat">
+            <CogentLogo variant="dark" />
+          </Link>
+          <div className="flex items-center gap-3">
+            <Link
+              href="/chat"
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-600 hover:text-zinc-950 transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Workspace</span>
+            </Link>
+            <Link
+              href="/sign-in"
+              className="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition-colors"
+            >
+              Sign in
+            </Link>
+          </div>
         </div>
-        <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#0B0F1A]">
-          Predictable Pricing Anchor Against ₦100M+ Fines
-        </h1>
-        <p className="max-w-2xl mx-auto text-sm sm:text-base text-neutral-600 mt-3">
-          Deploy autonomous compliance safeguarding. 10x cheaper than an external legal retainer,
-          instant turnaround, and 100% statutory coverage across FCCPC, CBN, ARCON, NDPC, and SEC.
-        </p>
+      </header>
 
-        {/* Live FX Rate Indicator */}
-        <div className="mt-4 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-white border border-[#E4E4E7] text-xs text-neutral-600 shadow-sm font-mono">
-          <Globe className="h-3.5 w-3.5 text-[#2A4BFF]" />
-          <span>Dual-Currency Engine: USD Display • Settled via Paystack at ₦{fxRate.toLocaleString()}/$1</span>
-        </div>
+      <div className="w-full max-w-6xl px-4 sm:px-6 lg:px-8 py-12">
+        {/* Header */}
+        <div className="text-center mb-10">
+          <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-zinc-950">
+            Plans for Compliance Teams
+          </h1>
+          <p className="max-w-xl mx-auto text-sm text-zinc-600 mt-2.5">
+            Pre-publication marketing reviews and evidence dossiers across CBN, FCCPC, ARCON, NDPC, and SEC requirements.
+          </p>
 
-        {/* Interval Selector Toggle */}
-        <div className="mt-8 flex items-center justify-center gap-3">
-          <span
-            className={`text-xs font-semibold ${
-              billingInterval === "monthly" ? "text-[#0B0F1A]" : "text-neutral-400"
-            }`}
-          >
-            Monthly Billing
-          </span>
-          <button
-            onClick={() =>
-              setBillingInterval((prev) => (prev === "monthly" ? "annual" : "monthly"))
-            }
-            className="w-12 h-6 rounded-full bg-[#0B0F1A] p-0.5 transition-colors relative"
-            aria-label="Toggle Billing Interval"
-          >
-            <div
-              className={`w-5 h-5 rounded-full bg-white transition-transform ${
-                billingInterval === "annual" ? "translate-x-6 bg-[#2A4BFF]" : "translate-x-0"
-              }`}
-            />
-          </button>
-          <div className="flex items-center gap-1.5">
+          {/* Live FX Rate Indicator */}
+          <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-white border border-zinc-200 text-xs text-zinc-600 font-mono">
+            <Globe className="h-3.5 w-3.5 text-zinc-500" />
+            <span>Settled via Paystack at ₦{fxRate.toLocaleString()}/$1</span>
+          </div>
+
+          {/* Interval Selector Toggle */}
+          <div className="mt-7 flex items-center justify-center gap-3">
             <span
-              className={`text-xs font-semibold ${
-                billingInterval === "annual" ? "text-[#0B0F1A]" : "text-neutral-400"
+              className={`text-xs font-medium ${
+                billingInterval === "monthly" ? "text-zinc-950" : "text-zinc-400"
               }`}
             >
-              Annual Billing
+              Monthly
             </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-              SAVE 20%
-            </span>
-          </div>
-        </div>
-
-        {checkoutError && (
-          <div className="mt-4 max-w-md mx-auto p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs">
-            {checkoutError}
-          </div>
-        )}
-      </div>
-
-      {/* Plan Cards Matrix */}
-      <div className="w-full max-w-6xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* 1. Evaluation Pilot */}
-        <div className="bg-white rounded-2xl border border-[#E4E4E7] p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition-all">
-          <div>
-            <div className="text-xs font-bold uppercase tracking-wider text-neutral-500 mb-1">
-              Pilot
-            </div>
-            <h3 className="text-xl font-bold text-[#0B0F1A]">Evaluation Pilot</h3>
-            <p className="text-xs text-neutral-500 mt-1 min-h-[32px]">
-              Instant sandbox evaluation for early testing and exploratory audits.
-            </p>
-
-            <div className="mt-6 mb-4">
-              <div className="flex items-baseline gap-1">
-                <span className="text-3xl font-extrabold text-[#0B0F1A]">$0</span>
-                <span className="text-xs text-neutral-400">/ 7 days</span>
-              </div>
-              <div className="text-[11px] text-neutral-400 font-mono mt-0.5">
-                ₦0 • Zero credit card required
-              </div>
-            </div>
-
-            <div className="border-t border-neutral-100 pt-4 space-y-2.5 text-xs">
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>3 Total Campaign Audits</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>2 Team Seats (Mktg + CCO)</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>10 Compliant Rewrites</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>1 Flagship Rate Card</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-400">
-                <span className="w-4 text-center font-bold">✕</span>
-                <span className="line-through">Watermarked PDF Only</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-400">
-                <span className="w-4 text-center font-bold">✕</span>
-                <span className="line-through">URL Drift Monitoring</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8">
             <button
-              onClick={() => handleCheckout("evaluation")}
-              className="w-full py-2.5 rounded-xl border border-neutral-300 hover:bg-neutral-50 text-neutral-700 text-xs font-semibold transition-all"
+              type="button"
+              onClick={() =>
+                setBillingInterval((prev) => (prev === "monthly" ? "annual" : "monthly"))
+              }
+              className="w-11 h-6 rounded-full bg-zinc-900 p-0.5 transition-colors relative cursor-pointer"
+              aria-label="Toggle Billing Interval"
             >
-              Start 7-Day Pilot →
+              <div
+                className={`w-5 h-5 rounded-full bg-white transition-transform ${
+                  billingInterval === "annual" ? "translate-x-5" : "translate-x-0"
+                }`}
+              />
             </button>
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`text-xs font-medium ${
+                  billingInterval === "annual" ? "text-zinc-950" : "text-zinc-400"
+                }`}
+              >
+                Annual
+              </span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                Save 20%
+              </span>
+            </div>
+          </div>
+
+          {checkoutError && (
+            <div className="mt-4 max-w-md mx-auto p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs">
+              {checkoutError}
+            </div>
+          )}
+        </div>
+
+        {/* Plan Cards Matrix */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          {/* 1. Evaluation */}
+          <div className="bg-white rounded-xl border border-zinc-200 p-6 flex flex-col justify-between">
+            <div>
+              <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 mb-1">
+                Pilot
+              </div>
+              <h3 className="text-lg font-semibold text-zinc-950">Evaluation</h3>
+              <p className="text-xs text-zinc-500 mt-1 min-h-[32px]">
+                Initial testing and sample campaign reviews.
+              </p>
+
+              <div className="mt-5 mb-4">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-semibold text-zinc-950 tabular-nums">$0</span>
+                  <span className="text-xs text-zinc-400">/ 7 days</span>
+                </div>
+                <div className="text-[11px] text-zinc-400 font-mono mt-0.5">
+                  ₦0 • No card required
+                </div>
+              </div>
+
+              <div className="border-t border-zinc-100 pt-4 space-y-2.5 text-xs">
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>3 Campaign Reviews</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>2 Seats</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>10 Compliant Rewrites</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>1 Product Schedule</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-400">
+                  <span className="w-3.5 text-center font-medium">–</span>
+                  <span>Watermarked PDF preview</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-400">
+                  <span className="w-3.5 text-center font-medium">–</span>
+                  <span>URL drift monitoring</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <button
+                type="button"
+                onClick={() => handleCheckout("evaluation")}
+                className="w-full py-2.5 rounded-md border border-zinc-300 hover:bg-zinc-50 text-zinc-800 text-xs font-medium transition-colors cursor-pointer"
+              >
+                Start 7-Day Evaluation
+              </button>
+            </div>
+          </div>
+
+          {/* 2. Growth */}
+          <div className="bg-white rounded-xl border border-zinc-200 p-6 flex flex-col justify-between">
+            <div>
+              <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 mb-1">
+                Starter
+              </div>
+              <h3 className="text-lg font-semibold text-zinc-950">Growth</h3>
+              <p className="text-xs text-zinc-500 mt-1 min-h-[32px]">
+                For seed fintechs, digital lenders, and emerging MFBs.
+              </p>
+
+              <div className="mt-5 mb-4">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-semibold text-zinc-950 tabular-nums">
+                    ${billingInterval === "annual" ? "119" : "149"}
+                  </span>
+                  <span className="text-xs text-zinc-400">/ month</span>
+                </div>
+                <div className="text-[11px] text-zinc-500 font-mono mt-0.5">
+                  {billingInterval === "annual"
+                    ? `${formatNaira(Math.round(119 * fxRate * 100))}/mo ($1,428/yr)`
+                    : `${formatNaira(Math.round(149 * fxRate * 100))}/mo`}
+                </div>
+              </div>
+
+              <div className="border-t border-zinc-100 pt-4 space-y-2.5 text-xs">
+                <div className="flex items-center gap-2 text-zinc-800 font-medium">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>25 Reviews / month</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>3 Seats (Role Permissions)</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>Unlimited Rewrites</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>5 Product Schedules</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-800 font-medium">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>Unwatermarked PDF Dossiers</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>90-Day Audit Retention</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <button
+                type="button"
+                onClick={() => handleCheckout("growth")}
+                disabled={checkoutLoading === "growth"}
+                className="w-full py-2.5 rounded-md border border-zinc-900 bg-white hover:bg-zinc-50 text-zinc-950 text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {checkoutLoading === "growth" ? "Preparing..." : "Choose Growth"}
+              </button>
+            </div>
+          </div>
+
+          {/* 3. Scale */}
+          <div className="bg-white rounded-xl border-2 border-zinc-950 p-6 flex flex-col justify-between relative">
+            <div className="absolute -top-2.5 left-5 px-2.5 py-0.5 rounded bg-zinc-950 text-white text-[10px] font-semibold uppercase tracking-wider">
+              Recommended
+            </div>
+
+            <div>
+              <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 mb-1">
+                Pro
+              </div>
+              <h3 className="text-lg font-semibold text-zinc-950">Scale</h3>
+              <p className="text-xs text-zinc-500 mt-1 min-h-[32px]">
+                For Series A/B fintechs, MMOs, and commercial institutions.
+              </p>
+
+              <div className="mt-5 mb-4">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-semibold text-zinc-950 tabular-nums">
+                    ${billingInterval === "annual" ? "359" : "449"}
+                  </span>
+                  <span className="text-xs text-zinc-400">/ month</span>
+                </div>
+                <div className="text-[11px] text-zinc-500 font-mono mt-0.5">
+                  {billingInterval === "annual"
+                    ? `${formatNaira(Math.round(359 * fxRate * 100))}/mo ($4,308/yr)`
+                    : `${formatNaira(Math.round(449 * fxRate * 100))}/mo`}
+                </div>
+              </div>
+
+              <div className="border-t border-zinc-100 pt-4 space-y-2.5 text-xs">
+                <div className="flex items-center gap-2 text-zinc-950 font-semibold">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>Unlimited Campaign Reviews</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>10 Seats</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-900 font-medium">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>15 Live URL Drift Monitors</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>CCO Sign-Off Workflow</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>Signed PDF Dossiers</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>2-Year Record Retention</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <button
+                type="button"
+                onClick={() => handleCheckout("scale")}
+                disabled={checkoutLoading === "scale"}
+                className="w-full py-2.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {checkoutLoading === "scale" ? "Redirecting..." : "Choose Scale"}
+                <ArrowRight className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          </div>
+
+          {/* 4. Enterprise */}
+          <div className="bg-white rounded-xl border border-zinc-200 p-6 flex flex-col justify-between">
+            <div>
+              <div className="text-[11px] font-mono uppercase tracking-wider text-zinc-500 mb-1">
+                Custom
+              </div>
+              <h3 className="text-lg font-semibold text-zinc-950">Enterprise</h3>
+              <p className="text-xs text-zinc-500 mt-1 min-h-[32px]">
+                For Tier-1 commercial banks and holding groups.
+              </p>
+
+              <div className="mt-5 mb-4">
+                <div className="flex items-baseline gap-1">
+                  <span className="text-3xl font-semibold text-zinc-950 tabular-nums">
+                    ${billingInterval === "annual" ? "1,199" : "1,499"}
+                  </span>
+                  <span className="text-xs text-zinc-400">/ month</span>
+                </div>
+                <div className="text-[11px] text-zinc-500 font-mono mt-0.5">
+                  {billingInterval === "annual"
+                    ? `${formatNaira(Math.round(1199 * fxRate * 100))}/mo ($14,388/yr)`
+                    : `${formatNaira(Math.round(1499 * fxRate * 100))}/mo`}
+                </div>
+              </div>
+
+              <div className="border-t border-zinc-100 pt-4 space-y-2.5 text-xs">
+                <div className="flex items-center gap-2 text-zinc-800 font-medium">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>Unlimited Seats &amp; Reviews</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-800 font-medium">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>Unlimited Drift Monitors</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>Custom Policy Libraries</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>Custom Branded PDF Dossiers</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>7-Year BOFIA Retention</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>Dedicated Account Support</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-8">
+              <button
+                type="button"
+                onClick={() => handleCheckout("enterprise")}
+                disabled={checkoutLoading === "enterprise"}
+                className="w-full py-2.5 rounded-md border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-900 text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
+              >
+                {checkoutLoading === "enterprise" ? "Preparing..." : "Choose Enterprise"}
+              </button>
+            </div>
           </div>
         </div>
 
-        {/* 2. Growth (Starter) */}
-        <div className="bg-white rounded-2xl border border-[#E4E4E7] p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition-all">
-          <div>
-            <div className="text-xs font-bold uppercase tracking-wider text-blue-600 mb-1">
-              Starter
-            </div>
-            <h3 className="text-xl font-bold text-[#0B0F1A]">Growth</h3>
-            <p className="text-xs text-neutral-500 mt-1 min-h-[32px]">
-              Ideal for seed fintechs, digital lenders, and emerging MFBs.
-            </p>
+        {/* Regulatory Cost Reference Table */}
+        <div className="max-w-4xl mx-auto mt-14 bg-white rounded-xl border border-zinc-200 p-7">
+          <h3 className="text-base font-semibold text-zinc-950 mb-1">
+            Regulatory Exposure Reference
+          </h3>
+          <p className="text-xs text-zinc-500 mb-5">
+            Standard statutory penalties and external review costs compared with pre-publication review.
+          </p>
 
-            <div className="mt-6 mb-4">
-              <div className="flex items-baseline gap-1">
-                <span className="text-3xl font-extrabold text-[#0B0F1A]">
-                  ${billingInterval === "annual" ? "119" : "149"}
-                </span>
-                <span className="text-xs text-neutral-400">/ month</span>
-              </div>
-              <div className="text-[11px] text-[#2A4BFF] font-mono mt-0.5">
-                {billingInterval === "annual"
-                  ? `${formatNaira(Math.round(119 * fxRate * 100))}/mo (Billed $1,428/yr)`
-                  : `${formatNaira(Math.round(149 * fxRate * 100))}/mo`}
-              </div>
-            </div>
-
-            <div className="border-t border-neutral-100 pt-4 space-y-2.5 text-xs">
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span className="font-semibold">25 Audits / month</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>3 Seats (RBAC Enabled)</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>Unlimited Rewrites</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>5 Rate Cards / Truth Rules</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span className="font-semibold">Unwatermarked PDF Dossiers</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>90-Day Audit Log Retention</span>
-              </div>
-            </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-zinc-200 text-zinc-500 font-medium">
+                  <th className="py-2.5 pr-4">Area</th>
+                  <th className="py-2.5 pr-4">Typical Exposure / Cost</th>
+                  <th className="py-2.5">With Cogent</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                <tr>
+                  <td className="py-3 pr-4 font-medium text-zinc-950">
+                    ARCON Unvetted Ad Penalty
+                  </td>
+                  <td className="py-3 pr-4 text-rose-700 font-mono">
+                    ₦1,000,000 – ₦3,000,000 per ad
+                  </td>
+                  <td className="py-3 text-emerald-700 font-medium">
+                    Pre-checked with ARCON ASP citations
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-3 pr-4 font-medium text-zinc-950">
+                    FCCPC Deceptive Claim Fine
+                  </td>
+                  <td className="py-3 pr-4 text-rose-700 font-mono">
+                    Up to ₦100,000,000 or 1% turnover
+                  </td>
+                  <td className="py-3 text-emerald-700 font-medium">
+                    Rate, fee, and disclosure verification
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-3 pr-4 font-medium text-zinc-950">
+                    External Legal Retainer
+                  </td>
+                  <td className="py-3 pr-4 text-zinc-600 font-mono">
+                    ₦1,500,000 – ₦5,000,000 / mo (5–10 days)
+                  </td>
+                  <td className="py-3 text-emerald-700 font-medium">
+                    From $149/mo with immediate feedback
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-
-          <div className="mt-8">
-            <button
-              onClick={() => handleCheckout("growth")}
-              disabled={checkoutLoading === "growth"}
-              className="w-full py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold transition-all disabled:opacity-50"
-            >
-              {checkoutLoading === "growth" ? "Preparing..." : "Upgrade to Growth"}
-            </button>
-          </div>
-        </div>
-
-        {/* 3. Scale (Pro — Most Popular) */}
-        <div className="bg-white rounded-2xl border-2 border-[#2A4BFF] p-6 flex flex-col justify-between shadow-lg relative">
-          <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-[#2A4BFF] text-white text-[10px] font-extrabold uppercase tracking-widest shadow-sm">
-            MOST POPULAR
-          </div>
-
-          <div>
-            <div className="text-xs font-bold uppercase tracking-wider text-[#2A4BFF] mb-1">
-              Scale (Pro)
-            </div>
-            <h3 className="text-xl font-bold text-[#0B0F1A]">Scale</h3>
-            <p className="text-xs text-neutral-500 mt-1 min-h-[32px]">
-              For Series A/B fintechs, MMOs, and commercial banking institutions.
-            </p>
-
-            <div className="mt-6 mb-4">
-              <div className="flex items-baseline gap-1">
-                <span className="text-3xl font-extrabold text-[#0B0F1A]">
-                  ${billingInterval === "annual" ? "359" : "449"}
-                </span>
-                <span className="text-xs text-neutral-400">/ month</span>
-              </div>
-              <div className="text-[11px] text-[#2A4BFF] font-mono mt-0.5">
-                {billingInterval === "annual"
-                  ? `${formatNaira(Math.round(359 * fxRate * 100))}/mo (Billed $4,308/yr)`
-                  : `${formatNaira(Math.round(449 * fxRate * 100))}/mo`}
-              </div>
-            </div>
-
-            <div className="border-t border-neutral-100 pt-4 space-y-2.5 text-xs">
-              <div className="flex items-center gap-2 text-neutral-900 font-bold">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>UNLIMITED Campaign Audits</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>10 Seats (CCO Lock Enabled)</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-900 font-semibold">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>15 Live URL Drift Monitors</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>CCO Separation-of-Duties Locks</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>Signed Cryptographic Dossiers</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>2-Year Retention (FCCPC Mandate)</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8">
-            <button
-              onClick={() => handleCheckout("scale")}
-              disabled={checkoutLoading === "scale"}
-              className="w-full py-2.5 rounded-xl bg-[#2A4BFF] hover:bg-blue-700 text-white text-xs font-bold shadow-md transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
-            >
-              {checkoutLoading === "scale" ? "Redirecting..." : "Upgrade to Scale"}
-              <ArrowRight className="h-3.5 w-3.5" />
-            </button>
-          </div>
-        </div>
-
-        {/* 4. Enterprise */}
-        <div className="bg-white rounded-2xl border border-[#E4E4E7] p-6 flex flex-col justify-between shadow-sm hover:shadow-md transition-all">
-          <div>
-            <div className="text-xs font-bold uppercase tracking-wider text-purple-600 mb-1">
-              Enterprise
-            </div>
-            <h3 className="text-xl font-bold text-[#0B0F1A]">Enterprise</h3>
-            <p className="text-xs text-neutral-500 mt-1 min-h-[32px]">
-              For Tier-1 commercial banks, conglomerates, and multinational groups.
-            </p>
-
-            <div className="mt-6 mb-4">
-              <div className="flex items-baseline gap-1">
-                <span className="text-3xl font-extrabold text-[#0B0F1A]">
-                  ${billingInterval === "annual" ? "1,199" : "1,499"}
-                </span>
-                <span className="text-xs text-neutral-400">/ month</span>
-              </div>
-              <div className="text-[11px] text-[#2A4BFF] font-mono mt-0.5">
-                {billingInterval === "annual"
-                  ? `${formatNaira(Math.round(1199 * fxRate * 100))}/mo (Billed $14,388/yr)`
-                  : `${formatNaira(Math.round(1499 * fxRate * 100))}/mo`}
-              </div>
-            </div>
-
-            <div className="border-t border-neutral-100 pt-4 space-y-2.5 text-xs">
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span className="font-semibold">Unlimited Seats & Audits</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span className="font-semibold">Unlimited URL Drift Monitors</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>Custom Corpora & Precedents</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>Custom Co-Branded PDF Dossiers</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>7-Year Retention (BOFIA Mandate)</span>
-              </div>
-              <div className="flex items-center gap-2 text-neutral-700">
-                <Check className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                <span>Dedicated Manager (1h SLA)</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-8">
-            <button
-              onClick={() => handleCheckout("enterprise")}
-              disabled={checkoutLoading === "enterprise"}
-              className="w-full py-2.5 rounded-xl bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold transition-all disabled:opacity-50"
-            >
-              {checkoutLoading === "enterprise" ? "Preparing..." : "Contact Enterprise"}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ROI & Fine Comparison Table (Document 11 Section 3) */}
-      <div className="w-full max-w-4xl mt-16 bg-white rounded-2xl border border-[#E4E4E7] p-8 shadow-sm">
-        <h3 className="text-xl font-bold text-[#0B0F1A] mb-1">
-          Why Cogent Delivers an Instant 10x ROI
-        </h3>
-        <p className="text-xs text-neutral-500 mb-6">
-          Compare the cost of platform subscription against standard Nigerian regulatory penalties
-          and traditional legal advisory.
-        </p>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-neutral-200 text-neutral-400 font-semibold uppercase">
-                <th className="py-2.5">Risk / Service Area</th>
-                <th className="py-2.5">Traditional Cost / Exposure</th>
-                <th className="py-2.5 text-[#2A4BFF]">Cogent Marketing Shield</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-neutral-100">
-              <tr>
-                <td className="py-3 font-semibold text-[#0B0F1A]">
-                  ARCON Unvetted Ad Penalty
-                </td>
-                <td className="py-3 text-red-600 font-mono font-medium">
-                  ₦1,000,000 – ₦3,000,000 per post / skit
-                </td>
-                <td className="py-3 text-emerald-700 font-semibold">
-                  Pre-cleared with official ASP citations
-                </td>
-              </tr>
-              <tr>
-                <td className="py-3 font-semibold text-[#0B0F1A]">
-                  FCCPC Deceptive Lending Penalty
-                </td>
-                <td className="py-3 text-red-600 font-mono font-medium">
-                  Up to ₦100,000,000 or 1% of turnover
-                </td>
-                <td className="py-3 text-emerald-700 font-semibold">
-                  100% Truth & APR disclosure verification
-                </td>
-              </tr>
-              <tr>
-                <td className="py-3 font-semibold text-[#0B0F1A]">
-                  External Legal Firm Retainer
-                </td>
-                <td className="py-3 text-neutral-600 font-mono">
-                  ₦1,500,000 – ₦5,000,000 / month (5-10 day turnaround)
-                </td>
-                <td className="py-3 text-emerald-700 font-semibold">
-                  From $149/mo (Instant 3-second audits)
-                </td>
-              </tr>
-            </tbody>
-          </table>
         </div>
       </div>
     </div>

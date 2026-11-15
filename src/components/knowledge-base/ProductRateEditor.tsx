@@ -43,12 +43,18 @@ export function ProductRateEditor() {
   const [saving, setSaving] = useState(false);
 
   const fetchProducts = useCallback(async () => {
+    if (!isSignedIn || !orgId) {
+      setLoading(false);
+      setError(null);
+      setErrorStatus(null);
+      return;
+    }
     try {
       setLoading(true);
       const res = await fetch("/api/marketing-shield/v1/products");
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.success === false) {
-        const parsed = extractApiError(res.status, json, "Failed to load products");
+        const parsed = extractApiError(res.status, json, "Unable to load product schedules");
         setErrorStatus(parsed.status);
         throw new Error(parsed.message);
       }
@@ -60,7 +66,7 @@ export function ProductRateEditor() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isSignedIn, orgId]);
 
   useEffect(() => {
     if (!clerkLoaded) return;
@@ -137,7 +143,7 @@ export function ProductRateEditor() {
         });
         const errJson = await res.json().catch(() => ({}));
         if (!res.ok || errJson.success === false) {
-          throw new Error(extractApiError(res.status, errJson, "Failed to update product truth").message);
+          throw new Error(extractApiError(res.status, errJson, "Failed to update product schedule").message);
         }
       } else {
         const res = await fetch("/api/marketing-shield/v1/products", {
@@ -147,7 +153,7 @@ export function ProductRateEditor() {
         });
         const errJson = await res.json().catch(() => ({}));
         if (!res.ok || errJson.success === false) {
-          throw new Error(extractApiError(res.status, errJson, "Failed to create product truth").message);
+          throw new Error(extractApiError(res.status, errJson, "Failed to create product schedule").message);
         }
       }
 
@@ -161,12 +167,12 @@ export function ProductRateEditor() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this institutional product truth schedule?")) return;
+    if (!confirm("Delete this product schedule?")) return;
     try {
       const res = await fetch(`/api/marketing-shield/v1/products/${id}`, { method: "DELETE" });
       const errJson = await res.json().catch(() => ({}));
       if (!res.ok || errJson.success === false) {
-        throw new Error(extractApiError(res.status, errJson, "Failed to delete product truth").message);
+        throw new Error(extractApiError(res.status, errJson, "Failed to delete product schedule").message);
       }
       await fetchProducts();
     } catch (err) {
@@ -177,49 +183,81 @@ export function ProductRateEditor() {
   return (
     <div className="space-y-6">
       {/* Header controls */}
-      <div className="flex items-center justify-between pb-4 border-b border-zinc-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-200">
         <div>
-          <h2 className="text-sm font-semibold text-zinc-900 uppercase tracking-wider">
-            Approved Product Truth Schedules
+          <h2 className="text-sm font-semibold text-zinc-950">
+            Approved Product Schedules
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Institutional ground truth enforced deterministically by Lock 2 (Rate, Fee & Tenor Matcher).
+            Verified interest rates, fees, tenors, and mandatory disclosures used to check campaign claims.
           </p>
         </div>
-        <button
-          onClick={openCreateModal}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 rounded-md shadow-xs transition-colors cursor-pointer"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>New Product Truth</span>
-        </button>
+        {isSignedIn && orgId && (
+          <button
+            onClick={openCreateModal}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 rounded-md transition-colors cursor-pointer shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>New Product</span>
+          </button>
+        )}
       </div>
 
-      {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-center justify-between gap-3 text-xs text-red-700">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-          {errorStatus === 401 && (
+      {clerkLoaded && !isSignedIn ? (
+        <div className="p-8 text-center border border-dashed border-zinc-200 rounded-lg space-y-2.5">
+          <FileCheck className="w-7 h-7 mx-auto text-zinc-400" />
+          <p className="text-xs font-medium text-zinc-900">Sign in to manage product schedules</p>
+          <p className="text-xs text-zinc-500 max-w-md mx-auto">
+            Product rate cards are scoped to your organization workspace.
+          </p>
+          <div className="pt-1">
             <Link
               href="/sign-in"
-              className="px-2.5 py-1 rounded bg-red-700 text-white font-semibold hover:bg-red-800 shrink-0"
+              className="inline-flex items-center px-3.5 py-1.5 rounded-md bg-zinc-900 text-white text-xs font-medium hover:bg-zinc-800 transition-colors"
             >
-              Sign In →
+              Sign in
             </Link>
+          </div>
+        </div>
+      ) : clerkLoaded && isSignedIn && !orgId ? (
+        <div className="p-8 text-center border border-dashed border-zinc-200 rounded-lg space-y-2">
+          <FileCheck className="w-7 h-7 mx-auto text-zinc-400" />
+          <p className="text-xs font-medium text-zinc-900">Select an organization workspace</p>
+          <p className="text-xs text-zinc-500">
+            Choose or create an organization in the sidebar to view and edit product schedules.
+          </p>
+        </div>
+      ) : error ? (
+        <div className="p-3 bg-rose-50/70 border border-rose-200 rounded-md flex items-center justify-between gap-3 text-xs text-rose-800">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+            <span>{error}</span>
+          </div>
+          {errorStatus === 401 ? (
+            <Link
+              href="/sign-in"
+              className="px-2.5 py-1 rounded bg-zinc-900 text-white font-medium hover:bg-zinc-800 shrink-0"
+            >
+              Sign in
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={fetchProducts}
+              className="px-2.5 py-1 rounded border border-rose-200 bg-white text-rose-800 font-medium hover:bg-rose-50 shrink-0 cursor-pointer"
+            >
+              Retry
+            </button>
           )}
         </div>
-      )}
-
-      {loading ? (
-        <div className="p-8 text-center text-xs text-zinc-500">Loading product truth schedules...</div>
+      ) : loading ? (
+        <div className="p-8 text-center text-xs text-zinc-500">Loading product schedules...</div>
       ) : products.length === 0 ? (
         <div className="p-8 text-center border border-dashed border-zinc-200 rounded-lg">
-          <FileCheck className="w-8 h-8 mx-auto text-zinc-400 mb-2" />
-          <p className="text-xs font-medium text-zinc-700">No product truth schedules configured yet.</p>
-          <p className="text-[11px] text-zinc-500 mt-1">
-            Register your institution&apos;s approved loan, deposit, or investment rate cards to enable Lock 2 enforcement.
+          <FileCheck className="w-7 h-7 mx-auto text-zinc-400 mb-2" />
+          <p className="text-xs font-medium text-zinc-800">No product schedules configured yet.</p>
+          <p className="text-xs text-zinc-500 mt-1">
+            Add your approved loan, deposit, or investment rate cards so campaign reviews verify rates and fees accurately.
           </p>
         </div>
       ) : (
@@ -312,13 +350,13 @@ export function ProductRateEditor() {
         </div>
       )}
 
-      {/* Product Truth Modal */}
+      {/* Product Schedule Modal */}
       {modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
           <div className="bg-white rounded-lg border border-zinc-200 shadow-xl max-w-lg w-full p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-200">
               <h3 className="text-sm font-semibold text-zinc-900">
-                {editingProduct ? "Edit Product Truth Schedule" : "Create Product Truth Schedule"}
+                {editingProduct ? "Edit Product Schedule" : "Create Product Schedule"}
               </h3>
               <button
                 onClick={() => setModalOpen(false)}

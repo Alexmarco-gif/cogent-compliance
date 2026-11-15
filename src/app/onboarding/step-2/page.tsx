@@ -2,16 +2,16 @@ import React, { Suspense } from "react";
 import { OnboardingFlow } from "@/components/onboarding/OnboardingFlow";
 
 export const metadata = {
-  title: "Step 2: Seed Product Truth | Cogent Marketing Shield",
-  description: "Seed Your Flagship Rate and Fee Parameters",
+  title: "Step 2: Products | Cogent Marketing Shield",
+  description: "Add a flagship product schedule",
 };
 
 export default function OnboardingStep2Page() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#F5F6FA] flex items-center justify-center text-sm font-medium text-neutral-500">
-          Loading Step 2...
+        <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center text-sm font-medium text-zinc-500">
+          Loading...
         </div>
       }
     >

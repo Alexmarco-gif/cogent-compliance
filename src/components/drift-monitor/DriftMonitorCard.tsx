@@ -32,16 +32,16 @@ export const DriftMonitorCard: React.FC<DriftMonitorCardProps> = ({
   const discrepancies = details?.discrepancies || [];
 
   return (
-    <div className="bg-white border border-zinc-200 rounded-xl p-5 shadow-2xs hover:shadow-xs transition-shadow flex flex-col justify-between space-y-4">
+    <div className="bg-white border border-zinc-200 rounded-xl p-5 hover:border-zinc-300 transition-colors flex flex-col justify-between space-y-4">
       {/* Top row: Campaign title & Status pill */}
       <div className="flex items-start justify-between space-x-3">
-        <div className="space-y-1">
+        <div className="space-y-1 min-w-0">
           <div className="flex items-center space-x-2">
-            <h3 className="text-sm font-semibold text-zinc-900 truncate max-w-sm">
+            <h3 className="text-sm font-semibold text-zinc-950 truncate max-w-sm">
               {monitor.campaign_title || "Monitored Campaign"}
             </h3>
             {monitor.revision_number && (
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-zinc-100 text-zinc-600 border border-zinc-200">
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200 shrink-0">
                 Rev #{monitor.revision_number}
               </span>
             )}
@@ -50,7 +50,7 @@ export const DriftMonitorCard: React.FC<DriftMonitorCardProps> = ({
             href={monitor.published_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-xs text-brand-primary hover:underline flex items-center space-x-1 font-mono truncate max-w-md"
+            className="text-xs text-zinc-600 hover:text-zinc-950 hover:underline flex items-center space-x-1 font-mono truncate max-w-md"
           >
             <span className="truncate">{monitor.published_url}</span>
             <ExternalLink className="h-3 w-3 shrink-0" />
@@ -58,10 +58,10 @@ export const DriftMonitorCard: React.FC<DriftMonitorCardProps> = ({
         </div>
 
         <span
-          className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold flex items-center space-x-1.5 shrink-0 ${
+          className={`px-2 py-0.5 rounded-md text-[10px] font-semibold flex items-center space-x-1 shrink-0 border ${
             isDrift
-              ? "bg-red-50 text-red-700 border border-red-200"
-              : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+              ? "bg-rose-50 text-rose-700 border-rose-200"
+              : "bg-emerald-50 text-emerald-700 border-emerald-200"
           }`}
         >
           {isDrift ? (
@@ -74,12 +74,12 @@ export const DriftMonitorCard: React.FC<DriftMonitorCardProps> = ({
       </div>
 
       {/* Middle row: Stats & discrepancy highlights */}
-      <div className="bg-zinc-50/80 rounded-lg p-3 border border-zinc-150 text-xs space-y-2">
+      <div className="bg-zinc-50 rounded-lg p-3 border border-zinc-200/80 text-xs space-y-2">
         <div className="flex items-center justify-between text-zinc-600">
           <span className="flex items-center space-x-1.5">
             <Clock className="h-3.5 w-3.5 text-zinc-400" />
             <span>
-              Last Checked:{" "}
+              Last checked:{" "}
               {monitor.last_checked_at
                 ? new Date(monitor.last_checked_at).toLocaleTimeString([], {
                     hour: "2-digit",
@@ -87,21 +87,22 @@ export const DriftMonitorCard: React.FC<DriftMonitorCardProps> = ({
                     month: "short",
                     day: "numeric",
                   })
-                : "Pending first check"}
+                : "Pending"}
             </span>
           </span>
           {details?.divergence_score !== undefined && (
             <span className="font-mono text-zinc-500">
-              Score: {(details.divergence_score * 100).toFixed(0)}%
+              Divergence {(details.divergence_score * 100).toFixed(0)}%
             </span>
           )}
         </div>
 
         {isDrift && discrepancies.length > 0 && (
-          <div className="pt-1 border-t border-zinc-200/80">
-            <p className="text-[11px] text-red-600 font-medium">
-              ⚠️ {discrepancies.length} discrepancy(s) detected:{" "}
-              <span className="text-zinc-700 font-normal truncate">
+          <div className="pt-1.5 border-t border-zinc-200 flex items-start gap-1.5">
+            <AlertTriangle className="h-3.5 w-3.5 text-rose-600 shrink-0 mt-0.5" />
+            <p className="text-[11px] text-rose-700 font-medium leading-snug">
+              {discrepancies.length} {discrepancies.length === 1 ? "issue" : "issues"} detected:{" "}
+              <span className="text-zinc-700 font-normal">
                 {discrepancies[0]?.description}
               </span>
             </p>

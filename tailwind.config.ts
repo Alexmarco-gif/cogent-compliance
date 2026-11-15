@@ -10,43 +10,53 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Canvas & Surface
-        canvas: "#F5F6FA",
-        surface: "#FFFFFF",
-        sidebar: "#0B0F1A",
+        // Document 12 Monochrome Design Tokens
+        "surface-canvas": "#FFFFFF",
+        "surface-subtle": "#FAFAFA",
+        "surface-elevated": "#F4F4F5",
+        "border-hairline": "#E4E4E7",
+        "ink-primary": "#09090B",
+        "ink-secondary": "#52525B",
+        "ink-muted": "#A1A1AA",
+        "action-primary": "#18181B",
 
-        // Brand & Accents
+        // Legacy compatibility aliases mapped to Document 12 monochrome system
+        canvas: "#FAFAFA",
+        surface: "#FFFFFF",
+        sidebar: "#FAFAFA",
+
         brand: {
-          primary: "#2A4BFF",
-          navy: "#0F172A",
-          hover: "#1D3BD4",
+          primary: "#18181B",
+          navy: "#09090B",
+          hover: "#27272A",
+          cobalt: "#2A4BFF",
         },
 
-        // Three-Source Intelligence Badges
+        // Three-Source Intelligence Subtle Tokens
         badge: {
           statutory: {
-            bg: "#EFF6FF",
-            text: "#1D4ED8",
-            border: "#BFDBFE",
+            bg: "#F4F4F5",
+            text: "#18181B",
+            border: "#E4E4E7",
           },
           playbook: {
-            bg: "#F5F3FF",
-            text: "#6D28D9",
-            border: "#DDD6FE",
+            bg: "#F4F4F5",
+            text: "#18181B",
+            border: "#E4E4E7",
           },
           liveweb: {
-            bg: "#ECFEFF",
-            text: "#0E7490",
-            border: "#A5F3FC",
+            bg: "#F4F4F5",
+            text: "#18181B",
+            border: "#E4E4E7",
           },
         },
 
-        // Severity & Lock States
+        // Semantic State Accents
         status: {
           critical: {
-            bg: "#FEF2F2",
-            text: "#B91C1C",
-            border: "#FECACA",
+            bg: "#FFF1F2",
+            text: "#BE123C",
+            border: "#FECDD3",
           },
           warning: {
             bg: "#FFFBEB",
@@ -54,14 +64,14 @@ const config: Config = {
             border: "#FDE68A",
           },
           success: {
-            bg: "#F0FDF4",
-            text: "#15803D",
-            border: "#BBF7D0",
+            bg: "#ECFDF5",
+            text: "#047857",
+            border: "#A7F3D0",
           },
           neutral: {
-            bg: "#F8FAFC",
-            text: "#475569",
-            border: "#E2E8F0",
+            bg: "#F4F4F5",
+            text: "#52525B",
+            border: "#E4E4E7",
           },
         },
       },
@@ -72,13 +82,16 @@ const config: Config = {
           "BlinkMacSystemFont",
           "Segoe UI",
           "Roboto",
-          "Oxygen",
-          "Ubuntu",
-          "Cantarell",
-          "Fira Sans",
-          "Droid Sans",
           "Helvetica Neue",
           "sans-serif",
+        ],
+        serif: [
+          "Instrument Serif",
+          "Newsreader",
+          "Georgia",
+          "Cambria",
+          "Times New Roman",
+          "serif",
         ],
         mono: [
           "JetBrains Mono",
@@ -86,8 +99,6 @@ const config: Config = {
           "Menlo",
           "Monaco",
           "Consolas",
-          "Liberation Mono",
-          "Courier New",
           "monospace",
         ],
       },

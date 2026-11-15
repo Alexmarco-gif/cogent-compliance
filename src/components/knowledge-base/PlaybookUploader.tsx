@@ -35,12 +35,18 @@ export function PlaybookUploader() {
   const [submitting, setSubmitting] = useState(false);
 
   const fetchDocuments = useCallback(async () => {
+    if (!isSignedIn || !orgId) {
+      setLoading(false);
+      setError(null);
+      setErrorStatus(null);
+      return;
+    }
     try {
       setLoading(true);
       const res = await fetch("/api/marketing-shield/v1/knowledge-base/documents");
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.success === false) {
-        const parsed = extractApiError(res.status, json, "Failed to load knowledge documents");
+        const parsed = extractApiError(res.status, json, "Unable to load playbooks");
         setErrorStatus(parsed.status);
         throw new Error(parsed.message);
       }
@@ -52,7 +58,7 @@ export function PlaybookUploader() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isSignedIn, orgId]);
 
   useEffect(() => {
     if (!clerkLoaded) return;
@@ -82,7 +88,7 @@ export function PlaybookUploader() {
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
-        throw new Error(errJson.error?.message || "Failed to register playbook document");
+        throw new Error(errJson.error?.message || "Failed to save playbook document");
       }
 
       setModalOpen(false);
@@ -100,49 +106,81 @@ export function PlaybookUploader() {
   return (
     <div className="space-y-6">
       {/* Header controls */}
-      <div className="flex items-center justify-between pb-4 border-b border-zinc-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-zinc-200">
         <div>
-          <h2 className="text-sm font-semibold text-zinc-900 uppercase tracking-wider">
-            Internal Playbooks & Policy Manuals
+          <h2 className="text-sm font-semibold text-zinc-950">
+            Playbooks &amp; Policy Manuals
           </h2>
           <p className="text-xs text-zinc-500 mt-0.5">
-            Proprietary institutional marketing policies, brand guidelines, and SOPs indexed into private vector chunks.
+            Internal marketing policies, brand guidelines, and standard operating procedures.
           </p>
         </div>
-        <button
-          onClick={() => setModalOpen(true)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-zinc-900 hover:bg-zinc-800 rounded-md shadow-xs transition-colors cursor-pointer"
-        >
-          <Upload className="w-3.5 h-3.5" />
-          <span>Upload Playbook</span>
-        </button>
+        {isSignedIn && orgId && (
+          <button
+            onClick={() => setModalOpen(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 hover:bg-zinc-800 rounded-md transition-colors cursor-pointer shrink-0"
+          >
+            <Upload className="w-3.5 h-3.5" />
+            <span>Upload Playbook</span>
+          </button>
+        )}
       </div>
 
-      {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-md flex items-center justify-between gap-3 text-xs text-red-700">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 shrink-0" />
-            <span>{error}</span>
-          </div>
-          {errorStatus === 401 && (
+      {clerkLoaded && !isSignedIn ? (
+        <div className="p-8 text-center border border-dashed border-zinc-200 rounded-lg space-y-2.5">
+          <BookOpen className="w-7 h-7 mx-auto text-zinc-400" />
+          <p className="text-xs font-medium text-zinc-900">Sign in to manage playbooks</p>
+          <p className="text-xs text-zinc-500 max-w-md mx-auto">
+            Internal policies and manuals are scoped to your organization workspace.
+          </p>
+          <div className="pt-1">
             <Link
               href="/sign-in"
-              className="px-2.5 py-1 rounded bg-red-700 text-white font-semibold hover:bg-red-800 shrink-0"
+              className="inline-flex items-center px-3.5 py-1.5 rounded-md bg-zinc-900 text-white text-xs font-medium hover:bg-zinc-800 transition-colors"
             >
-              Sign In →
+              Sign in
             </Link>
+          </div>
+        </div>
+      ) : clerkLoaded && isSignedIn && !orgId ? (
+        <div className="p-8 text-center border border-dashed border-zinc-200 rounded-lg space-y-2">
+          <BookOpen className="w-7 h-7 mx-auto text-zinc-400" />
+          <p className="text-xs font-medium text-zinc-900">Select an organization workspace</p>
+          <p className="text-xs text-zinc-500">
+            Choose or create an organization in the sidebar to view and upload playbooks.
+          </p>
+        </div>
+      ) : error ? (
+        <div className="p-3 bg-rose-50/70 border border-rose-200 rounded-md flex items-center justify-between gap-3 text-xs text-rose-800">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
+            <span>{error}</span>
+          </div>
+          {errorStatus === 401 ? (
+            <Link
+              href="/sign-in"
+              className="px-2.5 py-1 rounded bg-zinc-900 text-white font-medium hover:bg-zinc-800 shrink-0"
+            >
+              Sign in
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={fetchDocuments}
+              className="px-2.5 py-1 rounded border border-rose-200 bg-white text-rose-800 font-medium hover:bg-rose-50 shrink-0 cursor-pointer"
+            >
+              Retry
+            </button>
           )}
         </div>
-      )}
-
-      {loading ? (
-        <div className="p-8 text-center text-xs text-zinc-500">Loading playbook documents...</div>
+      ) : loading ? (
+        <div className="p-8 text-center text-xs text-zinc-500">Loading playbooks...</div>
       ) : documents.length === 0 ? (
         <div className="p-8 text-center border border-dashed border-zinc-200 rounded-lg">
-          <BookOpen className="w-8 h-8 mx-auto text-zinc-400 mb-2" />
-          <p className="text-xs font-medium text-zinc-700">No internal playbooks uploaded yet.</p>
-          <p className="text-[11px] text-zinc-500 mt-1">
-            Upload your company&apos;s marketing policies, social media guidelines, or compliance SOPs to power institutional AI Q&A.
+          <BookOpen className="w-7 h-7 mx-auto text-zinc-400 mb-2" />
+          <p className="text-xs font-medium text-zinc-800">No playbooks uploaded yet.</p>
+          <p className="text-xs text-zinc-500 mt-1">
+            Upload internal marketing policies, channel guidelines, or compliance manuals for reference during reviews.
           </p>
         </div>
       ) : (
@@ -150,7 +188,7 @@ export function PlaybookUploader() {
           {documents.map((doc) => (
             <div
               key={doc.id}
-              className="bg-white border border-zinc-200 rounded-lg p-4 space-y-3 shadow-xs hover:border-zinc-300 transition-colors"
+              className="bg-white border border-zinc-200 rounded-lg p-4 space-y-3 hover:border-zinc-300 transition-colors"
             >
               <div className="flex items-start justify-between">
                 <div>
@@ -175,15 +213,15 @@ export function PlaybookUploader() {
                 </div>
               </div>
 
-              {/* Chunks & Rules Count Bar */}
+              {/* Sections & Rules Count Bar */}
               <div className="grid grid-cols-3 gap-2 p-2 bg-zinc-50 rounded border border-zinc-100 text-xs">
                 <div>
                   <div className="text-[10px] text-zinc-500 flex items-center gap-1">
                     <Layers className="w-3 h-3 text-zinc-400" />
-                    <span>Chunks</span>
+                    <span>Sections</span>
                   </div>
                   <div className="font-semibold text-zinc-800 mt-0.5">
-                    {doc.chunk_count !== undefined ? doc.chunk_count : "Indexed"}
+                    {doc.chunk_count !== undefined ? doc.chunk_count : "Ready"}
                   </div>
                 </div>
                 <div>
@@ -192,7 +230,7 @@ export function PlaybookUploader() {
                     <span>Extracted Rules</span>
                   </div>
                   <div className="font-semibold text-zinc-800 mt-0.5">
-                    {doc.rule_count !== undefined ? doc.rule_count : "Indexed"}
+                    {doc.rule_count !== undefined ? doc.rule_count : "Ready"}
                   </div>
                 </div>
                 <div>
@@ -215,7 +253,7 @@ export function PlaybookUploader() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4">
           <div className="bg-white rounded-lg border border-zinc-200 shadow-xl max-w-xl w-full p-6 space-y-4">
             <div className="flex items-center justify-between pb-3 border-b border-zinc-200">
-              <h3 className="text-sm font-semibold text-zinc-900">Upload Internal Marketing Playbook</h3>
+              <h3 className="text-sm font-semibold text-zinc-900">Upload Marketing Playbook</h3>
               <button
                 onClick={() => setModalOpen(false)}
                 className="text-zinc-400 hover:text-zinc-700 p-1"
@@ -230,7 +268,7 @@ export function PlaybookUploader() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Q1 2026 Digital Lending Fair Practice Playbook"
+                  placeholder="e.g. Digital Lending Fair Practice Playbook"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden"
@@ -249,7 +287,7 @@ export function PlaybookUploader() {
                     <option value="BRAND_GUIDELINE">Brand Guideline</option>
                     <option value="PRODUCT_DISCLOSURE">Product Disclosure</option>
                     <option value="SOP">Standard Operating Procedure (SOP)</option>
-                    <option value="OTHER">Other Institutional Manual</option>
+                    <option value="OTHER">Other Policy Manual</option>
                   </select>
                 </div>
                 <div>
@@ -276,12 +314,12 @@ export function PlaybookUploader() {
 
               <div>
                 <label className="block font-medium text-zinc-700 mb-1">
-                  Playbook Policy Text * (Will be chunked into 250-800 token vectors)
+                  Policy Text *
                 </label>
                 <textarea
                   required
                   rows={8}
-                  placeholder="Paste internal policy clauses, marketing rules, mandatory disclosures, and prohibited brand statements here..."
+                  placeholder="Paste internal policy clauses, marketing rules, mandatory disclosures, and prohibited statements here..."
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
                   className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden font-mono text-[11px]"
@@ -299,9 +337,9 @@ export function PlaybookUploader() {
                 <button
                   type="submit"
                   disabled={submitting}
-                  className="px-4 py-1.5 text-white bg-zinc-900 hover:bg-zinc-800 rounded font-semibold disabled:opacity-50"
+                  className="px-4 py-1.5 text-white bg-zinc-900 hover:bg-zinc-800 rounded font-medium disabled:opacity-50"
                 >
-                  {submitting ? "Processing Chunks & Rules..." : "Ingest & Index Playbook"}
+                  {submitting ? "Saving playbook..." : "Save Playbook"}
                 </button>
               </div>
             </form>

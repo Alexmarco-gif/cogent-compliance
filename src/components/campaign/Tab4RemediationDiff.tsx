@@ -1,8 +1,3 @@
-/**
- * Cogent Marketing Shield - Tab 4: Remediation, Layer 6 Validation & Revision Diff
- * Document Reference: Document 04 (Section 5.1–5.3), Document 05 (Section 7.1), Document 06, Document 08 (Phase 8)
- */
-
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
@@ -14,14 +9,12 @@ import {
   CompareRevisionsResponse,
 } from "@/contracts/remediation.contracts";
 import {
-  Wand2,
   GitCompare,
   CheckCircle2,
   AlertOctagon,
-  ShieldCheck,
   RefreshCw,
   Edit3,
-  Sparkles,
+  Check,
 } from "lucide-react";
 
 export interface CampaignRevisionItem {
@@ -47,7 +40,6 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
   selectedFinding,
   onRevisionCreated,
 }) => {
-  // Revisions & Diff State
   const [revisions, setRevisions] = useState<CampaignRevisionItem[]>([]);
   const [loadingRevisions, setLoadingRevisions] = useState(false);
   const [fromRevId, setFromRevId] = useState<string>("");
@@ -55,7 +47,6 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
   const [diffData, setDiffData] = useState<CompareRevisionsResponse | null>(null);
   const [loadingDiff, setLoadingDiff] = useState(false);
 
-  // Remediation / AI Rewrite State
   const [activeFinding, setActiveFinding] = useState<Finding | null>(selectedFinding || null);
   const [tone, setTone] = useState<RewriteTone>("PROFESSIONAL");
   const [customInstructions, setCustomInstructions] = useState("");
@@ -67,7 +58,6 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
-  // 1. Fetch all revisions for this campaign
   const fetchRevisions = useCallback(async () => {
     if (!campaignId) return;
     setLoadingRevisions(true);
@@ -95,7 +85,6 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
     fetchRevisions();
   }, [fetchRevisions]);
 
-  // Sync selectedFinding prop
   useEffect(() => {
     if (selectedFinding) {
       setActiveFinding(selectedFinding);
@@ -104,7 +93,6 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
     }
   }, [selectedFinding, findings, activeFinding]);
 
-  // 2. Fetch revision diff when fromRevId & toRevId change
   const fetchDiff = useCallback(async () => {
     if (!campaignId || !fromRevId || !toRevId || fromRevId === toRevId) {
       setDiffData(null);
@@ -113,7 +101,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
     setLoadingDiff(true);
     try {
       const res = await fetch(
-        `/api/marketing-shield/v1/campaigns/${campaignId}/revisions/compare?from_revision_id=${fromRevId}&to_revision_id=${toRevId}`,
+        `/api/marketing-shield/v1/campaigns/${campaignId}/revisions/compare?from_revision_id=${fromRevId}&to_revision_id=${toRevId}`
       );
       const json = await res.json();
       if (json.success) {
@@ -130,7 +118,6 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
     fetchDiff();
   }, [fetchDiff]);
 
-  // 3. Trigger AI Rewrite Generation & Layer 6 Validation
   const handleGenerateRewrite = async () => {
     if (!activeFinding) return;
     setGeneratingRewrite(true);
@@ -147,7 +134,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
             tone,
             custom_instructions: customInstructions || undefined,
           }),
-        },
+        }
       );
       const json = await res.json();
       if (json.success) {
@@ -163,7 +150,6 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
     }
   };
 
-  // 4. Accept Rewrite and Create New Immutable Revision
   const handleAcceptAndSaveRevision = async () => {
     if (!suggestion && !isEditingManually) return;
     const currentRev = revisions[revisions.length - 1];
@@ -184,7 +170,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
           parent_revision_id: currentRev.id,
           content_text: finalText,
           revision_source: isEditingManually ? "USER_EDIT" : "AI_REWRITE_ACCEPTED",
-          change_summary: `Remediated finding "${activeFinding?.title || "compliance violation"}" with Layer 6 validation.`,
+          change_summary: `Updated copy to resolve "${activeFinding?.title || "compliance finding"}".`,
           auto_reassess: true,
         }),
       });
@@ -192,7 +178,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
       const json = await res.json();
       if (json.success) {
         setSuccessMessage(
-          `Revision #${json.data.revision.revision_number} successfully created! Autonomous reassessment initiated.`,
+          `Revision #${json.data.revision.revision_number} saved and queued for re-review.`
         );
         setSuggestion(null);
         setIsEditingManually(false);
@@ -214,26 +200,21 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
     <div className="space-y-6 p-6">
       {/* Top Header */}
       <div className="border-b border-zinc-200 pb-4">
-        <div className="flex items-center gap-2">
-          <span className="text-[12px] font-mono uppercase tracking-wider text-blue-600 bg-blue-50 px-2 py-0.5 rounded font-semibold">
-            Layer 6 Rewrite Safety
-          </span>
-          <span className="text-[11px] font-mono text-zinc-400">
-            Immutable Versioning
-          </span>
-        </div>
-        <h3 className="text-[16px] font-semibold text-zinc-900 mt-1">
-          Remediation & Revision Diff
+        <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+          Copy Editing
+        </span>
+        <h3 className="text-[16px] font-semibold text-zinc-950 mt-0.5">
+          Rewrites &amp; Revision Diff
         </h3>
         <p className="text-[13px] text-zinc-600 mt-0.5">
-          Propose compliant copy alternatives verified against product truth, and review side-by-side revision diffs.
+          Draft compliant alternatives checked against approved product schedules and compare revisions side-by-side.
         </p>
       </div>
 
       {/* Alert Messages */}
       {errorMessage && (
-        <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-[13px] text-red-800 flex items-start gap-2">
-          <AlertOctagon className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+        <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-[13px] text-rose-800 flex items-start gap-2">
+          <AlertOctagon className="h-4 w-4 text-rose-600 shrink-0 mt-0.5" />
           <div>{errorMessage}</div>
         </div>
       )}
@@ -245,17 +226,17 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
         </div>
       )}
 
-      {/* SECTION A: Controlled Remediation Engine */}
-      <div className="rounded-xl border border-zinc-200/90 bg-white p-5 shadow-2xs space-y-4">
+      {/* SECTION A: Compliant Copy Drafting */}
+      <div className="rounded-xl border border-zinc-200 bg-white p-5 space-y-4">
         <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
           <div className="flex items-center gap-2">
-            <Wand2 className="h-4 w-4 text-blue-600" />
-            <h4 className="text-[14px] font-semibold text-zinc-900">
-              Propose Compliant Rewrite
+            <Edit3 className="h-4 w-4 text-zinc-700" />
+            <h4 className="text-[14px] font-semibold text-zinc-950">
+              Draft Compliant Copy
             </h4>
           </div>
           {activeFinding && (
-            <span className="font-mono text-[11px] text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded">
+            <span className="font-mono text-[11px] text-zinc-600 bg-zinc-100 border border-zinc-200 px-2 py-0.5 rounded">
               {activeFinding.finding_code}
             </span>
           )}
@@ -265,7 +246,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
         {findings.length > 0 ? (
           <div>
             <label className="block text-[12px] font-medium text-zinc-700 mb-1.5">
-              Select Finding to Remediate:
+              Finding to Resolve
             </label>
             <select
               value={activeFinding?.id || ""}
@@ -274,7 +255,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
                 setActiveFinding(found || null);
                 setSuggestion(null);
               }}
-              className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-[13px] text-zinc-900 focus:border-blue-500 focus:outline-hidden"
+              className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-[13px] text-zinc-900 focus:border-zinc-900 focus:outline-hidden"
             >
               {findings.map((f) => (
                 <option key={f.id} value={f.id}>
@@ -285,7 +266,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
           </div>
         ) : (
           <div className="rounded-lg bg-zinc-50 p-4 text-center text-[13px] text-zinc-500 border border-zinc-200">
-            No active compliance findings detected on this campaign.
+            No open compliance findings on this campaign.
           </div>
         )}
 
@@ -294,7 +275,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
           <div className="space-y-3 pt-1">
             <div>
               <label className="block text-[12px] font-medium text-zinc-700 mb-1.5">
-                Target Rewrite Tone:
+                Tone
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {REWRITE_TONES.map((t) => (
@@ -302,9 +283,9 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
                     key={t}
                     type="button"
                     onClick={() => setTone(t)}
-                    className={`px-2.5 py-1.5 rounded-lg text-[12px] font-medium border text-center transition-colors ${
+                    className={`px-2.5 py-1.5 rounded-md text-[12px] font-medium border text-center transition-colors cursor-pointer ${
                       tone === t
-                        ? "bg-blue-600 text-white border-blue-600 font-semibold"
+                        ? "bg-zinc-900 text-white border-zinc-900"
                         : "bg-zinc-50 text-zinc-700 border-zinc-200 hover:bg-zinc-100"
                     }`}
                   >
@@ -316,72 +297,72 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
 
             <div>
               <label className="block text-[12px] font-medium text-zinc-700 mb-1.5">
-                Custom Instructions (Optional):
+                Guidance (Optional)
               </label>
               <input
                 type="text"
                 value={customInstructions}
                 onChange={(e) => setCustomInstructions(e.target.value)}
-                placeholder="e.g. Keep under 160 characters for SMS broadcast with CBN license"
-                className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-[13px] text-zinc-900 focus:border-blue-500 focus:outline-hidden"
+                placeholder="e.g. Keep under 160 characters for SMS with CBN license line"
+                className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-[13px] text-zinc-900 focus:border-zinc-900 focus:outline-hidden"
               />
             </div>
 
             <button
+              type="button"
               onClick={handleGenerateRewrite}
               disabled={generatingRewrite}
-              className="inline-flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-zinc-900 text-white text-[13px] font-medium hover:bg-zinc-800 transition-colors disabled:opacity-50"
+              className="inline-flex items-center justify-center gap-2 w-full py-2.5 rounded-md bg-zinc-900 text-white text-[13px] font-medium hover:bg-zinc-800 transition-colors disabled:opacity-50 cursor-pointer"
             >
               {generatingRewrite ? (
                 <>
                   <RefreshCw className="h-4 w-4 animate-spin" />
-                  Generating & Running Layer 6 Validation...
+                  Drafting &amp; Checking Copy...
                 </>
               ) : (
                 <>
-                  <Sparkles className="h-4 w-4 text-amber-300" />
-                  Generate Compliant Rewrite
+                  <Edit3 className="h-4 w-4" />
+                  Draft Compliant Copy
                 </>
               )}
             </button>
           </div>
         )}
 
-        {/* SECTION B: Layer 6 Validation & Suggestion Outcome */}
+        {/* Validation & Suggestion Outcome */}
         {suggestion && (
-          <div className="mt-4 pt-4 border-t border-zinc-200 space-y-4 animate-in fade-in duration-200">
-            {/* Layer 6 Validation Banner */}
+          <div className="mt-4 pt-4 border-t border-zinc-200 space-y-4">
             <div
               className={`rounded-lg border p-4 text-[13px] ${
                 suggestion.layer_6_validation.validation_status === "PASSED"
-                  ? "bg-emerald-50 border-emerald-200 text-emerald-900"
-                  : "bg-red-50 border-red-200 text-red-900"
+                  ? "bg-emerald-50/70 border-emerald-200 text-emerald-900"
+                  : "bg-rose-50/70 border-rose-200 text-rose-900"
               }`}
             >
               <div className="flex items-center gap-2 font-semibold">
                 {suggestion.layer_6_validation.validation_status === "PASSED" ? (
                   <>
-                    <ShieldCheck className="h-4 w-4 text-emerald-600" />
-                    Layer 6 Rewrite Safety: PASSED
+                    <Check className="h-4 w-4 text-emerald-600" />
+                    Validation Passed
                   </>
                 ) : (
                   <>
-                    <AlertOctagon className="h-4 w-4 text-red-600" />
-                    Layer 6 Rewrite Safety: REJECTED (Unsafe Suggestion)
+                    <AlertOctagon className="h-4 w-4 text-rose-600" />
+                    Validation Failed
                   </>
                 )}
               </div>
 
               {suggestion.layer_6_validation.validation_status === "PASSED" ? (
-                <p className="mt-1 text-[12.5px] text-emerald-700 leading-snug">
-                  Original breach resolved. No prohibited lexicon introduced. Advertised rates and fees match approved product truth. Mandatory statutory disclosures preserved.
+                <p className="mt-1 text-[12.5px] text-emerald-800 leading-snug">
+                  Original issue resolved without introducing prohibited claims or mismatched product rates. Mandatory disclosures preserved.
                 </p>
               ) : (
                 <div className="mt-2 space-y-1">
-                  <p className="text-[12px] font-medium text-red-800">
-                    The proposed rewrite failed deterministic mechanical locks:
+                  <p className="text-[12px] font-medium text-rose-800">
+                    The suggested copy failed the following checks:
                   </p>
-                  <ul className="list-disc list-inside text-[12px] text-red-700 space-y-0.5">
+                  <ul className="list-disc list-inside text-[12px] text-rose-700 space-y-0.5">
                     {suggestion.layer_6_validation.failure_reasons.map((r, i) => (
                       <li key={i}>{r}</li>
                     ))}
@@ -392,26 +373,27 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
 
             {/* Side-by-Side Comparison Box */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div className="rounded-lg bg-red-50/50 border border-red-100 p-3.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-red-700">
-                  Original Non-Compliant Claim:
+              <div className="rounded-lg bg-rose-50/50 border border-rose-200 p-3.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-rose-700">
+                  Original Text
                 </span>
-                <p className="mt-1.5 text-[13px] font-mono text-red-900 leading-relaxed">
+                <p className="mt-1.5 text-[13px] font-mono text-rose-950 leading-relaxed">
                   {suggestion.original_text}
                 </p>
               </div>
 
-              <div className="rounded-lg bg-emerald-50/50 border border-emerald-100 p-3.5">
+              <div className="rounded-lg bg-emerald-50/50 border border-emerald-200 p-3.5">
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
-                    Proposed Compliant Copy:
+                    Suggested Copy
                   </span>
                   <button
+                    type="button"
                     onClick={() => setIsEditingManually(!isEditingManually)}
-                    className="text-[11px] text-blue-600 hover:text-blue-800 font-medium inline-flex items-center gap-1"
+                    className="text-[11px] text-zinc-700 hover:text-zinc-950 font-medium inline-flex items-center gap-1 cursor-pointer"
                   >
                     <Edit3 className="h-3 w-3" />
-                    {isEditingManually ? "Done Editing" : "Edit Copy"}
+                    {isEditingManually ? "Done" : "Edit"}
                   </button>
                 </div>
 
@@ -432,7 +414,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
 
             {/* Explanation Note */}
             <div className="rounded-lg bg-zinc-50 border border-zinc-200 p-3 text-[12.5px] text-zinc-700">
-              <span className="font-semibold text-zinc-900">Remediation Rationale: </span>
+              <span className="font-semibold text-zinc-900">Why this change: </span>
               {suggestion.explanation}
             </div>
 
@@ -441,7 +423,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
               <button
                 type="button"
                 onClick={() => setSuggestion(null)}
-                className="px-3 py-2 rounded-lg text-[13px] font-medium text-zinc-600 hover:bg-zinc-100 transition-colors"
+                className="px-3 py-2 rounded-md text-[13px] font-medium text-zinc-600 hover:bg-zinc-100 transition-colors cursor-pointer"
               >
                 Discard
               </button>
@@ -450,19 +432,20 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
                 onClick={handleAcceptAndSaveRevision}
                 disabled={
                   savingRevision ||
-                  (suggestion.layer_6_validation.validation_status === "FAILED" && !isEditingManually)
+                  (suggestion.layer_6_validation.validation_status === "FAILED" &&
+                    !isEditingManually)
                 }
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-[13px] font-semibold hover:bg-blue-700 transition-colors disabled:opacity-50"
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-zinc-900 text-white text-[13px] font-medium hover:bg-zinc-800 transition-colors disabled:opacity-50 cursor-pointer"
               >
                 {savingRevision ? (
                   <>
                     <RefreshCw className="h-4 w-4 animate-spin" />
-                    Creating Revision...
+                    Saving Revision...
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="h-4 w-4" />
-                    Accept & Save as Revision #{revisions.length + 1}
+                    Save as Revision #{revisions.length + 1}
                   </>
                 )}
               </button>
@@ -472,17 +455,17 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
       </div>
 
       {/* SECTION C: Revision Diff & Progression Viewer */}
-      <div className="rounded-xl border border-zinc-200/90 bg-white p-5 shadow-2xs space-y-4">
+      <div className="rounded-xl border border-zinc-200 bg-white p-5 space-y-4">
         <div className="flex items-center justify-between border-b border-zinc-100 pb-3 flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <GitCompare className="h-4 w-4 text-zinc-700" />
-            <h4 className="text-[14px] font-semibold text-zinc-900">
-              Revision Comparison & Resolution Ledger
+            <h4 className="text-[14px] font-semibold text-zinc-950">
+              Revision History &amp; Diff
             </h4>
           </div>
           {revisions.length > 0 && (
             <span className="text-[11.5px] font-mono text-zinc-500">
-              {revisions.length} Total {revisions.length === 1 ? "Revision" : "Revisions"}
+              {revisions.length} {revisions.length === 1 ? "Revision" : "Revisions"}
             </span>
           )}
         </div>
@@ -497,12 +480,12 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
-                Base Revision (From):
+                From Revision
               </label>
               <select
                 value={fromRevId}
                 onChange={(e) => setFromRevId(e.target.value)}
-                className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-[12.5px] font-medium text-zinc-800"
+                className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-[12.5px] font-medium text-zinc-900"
               >
                 {revisions.map((r) => (
                   <option key={r.id} value={r.id}>
@@ -514,12 +497,12 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
 
             <div>
               <label className="block text-[11px] font-semibold uppercase tracking-wider text-zinc-500 mb-1">
-                Target Revision (To):
+                To Revision
               </label>
               <select
                 value={toRevId}
                 onChange={(e) => setToRevId(e.target.value)}
-                className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-[12.5px] font-medium text-zinc-800"
+                className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-[12.5px] font-medium text-zinc-900"
               >
                 {revisions.map((r) => (
                   <option key={r.id} value={r.id}>
@@ -532,7 +515,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
         ) : (
           <div className="rounded-lg bg-zinc-50 p-4 text-center text-[13px] text-zinc-500 border border-zinc-200">
             {revisions.length === 1
-              ? "Campaign is currently at Revision #1. Accept an AI rewrite above to produce Revision #2 and unlock side-by-side comparison."
+              ? "Campaign is at Revision #1. Save a rewrite above to create Revision #2 and compare edits."
               : "No revisions recorded for this campaign."}
           </div>
         )}
@@ -541,7 +524,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
         {loadingDiff && (
           <div className="flex items-center justify-center p-6 text-zinc-500 text-[13px]">
             <RefreshCw className="h-4 w-4 animate-spin mr-2" />
-            Computing word diff and finding resolutions...
+            Comparing revisions...
           </div>
         )}
 
@@ -551,27 +534,27 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div className="rounded-lg bg-emerald-50 border border-emerald-200 p-3 text-center">
                 <span className="text-[11px] font-medium text-emerald-700 uppercase tracking-wider">
-                  Resolved Violations
+                  Resolved
                 </span>
-                <div className="text-[18px] font-bold text-emerald-900 mt-0.5">
-                  ✓ {diffData.resolved_findings_count}
+                <div className="text-[18px] font-semibold text-emerald-900 mt-0.5 tabular-nums">
+                  {diffData.resolved_findings_count}
                 </div>
               </div>
 
               <div className="rounded-lg bg-zinc-50 border border-zinc-200 p-3 text-center">
                 <span className="text-[11px] font-medium text-zinc-600 uppercase tracking-wider">
-                  Remaining Open
+                  Remaining
                 </span>
-                <div className="text-[18px] font-bold text-zinc-900 mt-0.5">
+                <div className="text-[18px] font-semibold text-zinc-900 mt-0.5 tabular-nums">
                   {diffData.remaining_findings_count}
                 </div>
               </div>
 
-              <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-center col-span-2 sm:col-span-1">
-                <span className="text-[11px] font-medium text-blue-700 uppercase tracking-wider">
-                  Lock Breach Delta
+              <div className="rounded-lg bg-zinc-50 border border-zinc-200 p-3 text-center col-span-2 sm:col-span-1">
+                <span className="text-[11px] font-medium text-zinc-600 uppercase tracking-wider">
+                  Net Change
                 </span>
-                <div className="text-[18px] font-bold text-blue-900 mt-0.5">
+                <div className="text-[18px] font-semibold text-zinc-900 mt-0.5 tabular-nums">
                   {diffData.locks_comparison.breaches_delta <= 0
                     ? `${diffData.locks_comparison.breaches_delta}`
                     : `+${diffData.locks_comparison.breaches_delta}`}
@@ -580,19 +563,19 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
             </div>
 
             {/* Word-Level Diff Box */}
-            <div className="rounded-lg border border-zinc-200 bg-zinc-50/50 p-4">
+            <div className="rounded-lg border border-zinc-200 bg-zinc-50/60 p-4">
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
-                  Visual Word Diff (Red: Removed, Green: Added)
+                  Word Diff
                 </span>
               </div>
-              <div className="p-3 bg-white rounded-lg border border-zinc-200/80 font-mono text-[13px] leading-relaxed text-zinc-800 break-words whitespace-pre-wrap">
+              <div className="p-3 bg-white rounded-md border border-zinc-200 font-mono text-[13px] leading-relaxed text-zinc-800 break-words whitespace-pre-wrap">
                 {diffData.text_diff.map((seg, idx) => {
                   if (seg.type === "removed") {
                     return (
                       <span
                         key={idx}
-                        className="bg-red-100/90 text-red-900 line-through decoration-red-600 font-semibold px-1 rounded mr-0.5"
+                        className="bg-rose-100 text-rose-900 line-through decoration-rose-600 font-medium px-1 rounded mr-0.5"
                       >
                         {seg.value}
                       </span>
@@ -602,7 +585,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
                     return (
                       <span
                         key={idx}
-                        className="bg-emerald-100/90 text-emerald-950 font-semibold px-1 rounded mr-0.5"
+                        className="bg-emerald-100 text-emerald-950 font-medium px-1 rounded mr-0.5"
                       >
                         {seg.value}
                       </span>

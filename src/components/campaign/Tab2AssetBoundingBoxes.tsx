@@ -64,12 +64,12 @@ export const Tab2AssetBoundingBoxes: React.FC<Tab2Props> = ({
   if (!asset) {
     return (
       <div className="flex flex-col items-center justify-center p-12 text-center">
-        <ImageIcon className="h-10 w-10 text-zinc-300" />
-        <h4 className="mt-3 text-[15px] font-medium text-zinc-700">
-          No Asset Attached to Campaign
+        <ImageIcon className="h-9 w-9 text-zinc-300" />
+        <h4 className="mt-3 text-[15px] font-medium text-zinc-800">
+          No Asset Attached
         </h4>
         <p className="mt-1 text-[13px] text-zinc-500 max-w-sm">
-          Upload a promotional flyer, social banner, or PDF contract to inspect OCR bounding boxes and verify layout provenance.
+          Attach a flyer, social banner, or PDF to inspect extracted layout segments and OCR coordinates.
         </p>
       </div>
     );
@@ -80,60 +80,63 @@ export const Tab2AssetBoundingBoxes: React.FC<Tab2Props> = ({
       {/* Header Info */}
       <div className="flex items-center justify-between border-b border-zinc-200 pb-4">
         <div>
-          <span className="text-[12px] font-medium uppercase tracking-wider text-zinc-500">
-            Multimodal Layout & OCR Provenance
+          <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
+            Layout &amp; OCR Inspection
           </span>
-          <h3 className="text-[16px] font-semibold text-zinc-900 flex items-center gap-2 mt-0.5">
+          <h3 className="text-[15px] font-semibold text-zinc-950 flex items-center gap-2 mt-0.5">
             <FileText className="h-4 w-4 text-zinc-500" />
             {asset.original_filename}
           </h3>
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded text-[11px] font-mono uppercase bg-zinc-100 text-zinc-700 border border-zinc-200">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono uppercase bg-zinc-100 text-zinc-700 border border-zinc-200">
             {extraction?.extraction_method || "DIRECT_TEXT"}
           </span>
-          <span className="inline-flex items-center px-2.5 py-0.5 rounded text-[11px] font-mono bg-blue-50 text-blue-700 border border-blue-200">
+          <span className="inline-flex items-center px-2 py-0.5 rounded text-[11px] font-mono bg-white text-zinc-700 border border-zinc-200">
             {segments.length} Segments
           </span>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: Visual Flyer Canvas Simulation with Normalized Bounding Boxes */}
+        {/* Left Column: Normalized Layout Canvas */}
         <div className="lg:col-span-6">
-          <div className="sticky top-6 rounded-xl border border-zinc-200 bg-zinc-900 p-4 shadow-sm">
-            <div className="flex items-center justify-between text-zinc-400 text-[12px] pb-2 border-b border-zinc-800">
-              <span className="flex items-center gap-1.5 font-medium text-zinc-300">
-                <Eye className="h-3.5 w-3.5 text-blue-400" />
-                Flyer Canvas (Normalized 0–1000)
+          <div className="sticky top-6 rounded-xl border border-zinc-200 bg-white p-4">
+            <div className="flex items-center justify-between text-zinc-500 text-[12px] pb-2 border-b border-zinc-100">
+              <span className="flex items-center gap-1.5 font-medium text-zinc-800">
+                <Eye className="h-3.5 w-3.5 text-zinc-500" />
+                Layout Regions (0–1000)
               </span>
-              <span className="font-mono text-[11px]">SVG Overlay</span>
+              <span className="font-mono text-[11px] text-zinc-400">
+                {asset.mime_type}
+              </span>
             </div>
 
             {/* Interactive Canvas Surface */}
-            <div className="relative mt-3 aspect-4/5 w-full rounded-lg bg-zinc-950 overflow-hidden border border-zinc-800 flex items-center justify-center">
-              {/* Flyer Background Mock Graphic */}
-              <div className="absolute inset-0 p-6 flex flex-col justify-between text-zinc-200 bg-linear-to-b from-zinc-900 to-zinc-950 select-none pointer-events-none">
-                <div>
-                  <div className="text-[10px] font-bold tracking-widest uppercase text-blue-400">
-                    FINANCIAL PROMO
-                  </div>
-                  <div className="mt-2 text-[20px] font-black tracking-tight text-white leading-tight">
-                    QUICKCREDIT 24-HOUR ADVANCE
-                  </div>
+            <div className="relative mt-3 aspect-4/5 w-full rounded-lg bg-zinc-50 overflow-hidden border border-zinc-200">
+              {/* Subtle Paper Grid & Segment Labels */}
+              <div
+                className="absolute inset-0 p-4 flex flex-col justify-between select-none pointer-events-none"
+                style={{
+                  backgroundImage:
+                    "radial-gradient(circle, #e4e4e7 1px, transparent 1px)",
+                  backgroundSize: "16px 16px",
+                }}
+              >
+                <div className="text-[10px] font-mono text-zinc-400 uppercase tracking-wider truncate">
+                  {asset.original_filename}
                 </div>
-                <div className="text-center my-auto py-8">
-                  <div className="text-[32px] font-extrabold text-blue-400">
-                    22% APR
+                {segments.length === 0 && (
+                  <div className="m-auto text-center px-4">
+                    <p className="text-xs font-medium text-zinc-600">
+                      Direct text extraction
+                    </p>
+                    <p className="text-[11px] text-zinc-400 mt-1">
+                      No spatial coordinates recorded for this asset.
+                    </p>
                   </div>
-                  <div className="text-[12px] text-zinc-400">
-                    Up to ₦1,000,000 with Instant Approval
-                  </div>
-                </div>
-                <div className="text-[8px] text-zinc-500 leading-tight">
-                  Licensed by CBN. Regulated by FCCPC. T&Cs apply.
-                </div>
+                )}
               </div>
 
               {/* Bounding Box SVG Layer */}
@@ -155,15 +158,19 @@ export const Tab2AssetBoundingBoxes: React.FC<Tab2Props> = ({
                         y={`${y}%`}
                         width={`${width}%`}
                         height={`${height}%`}
-                        fill={isHovered ? "rgba(42, 75, 255, 0.25)" : "rgba(42, 75, 255, 0.1)"}
-                        stroke={isHovered ? "#2A4BFF" : "rgba(59, 130, 246, 0.6)"}
-                        strokeWidth={isHovered ? 2.5 : 1.5}
-                        rx="4"
+                        fill={
+                          isHovered
+                            ? "rgba(24, 24, 27, 0.14)"
+                            : "rgba(24, 24, 27, 0.04)"
+                        }
+                        stroke={isHovered ? "#09090B" : "#71717A"}
+                        strokeWidth={isHovered ? 2 : 1}
+                        rx="3"
                       />
                       <text
                         x={`${x + 1}%`}
-                        y={`${y - 1}%`}
-                        fill={isHovered ? "#93C5FD" : "#60A5FA"}
+                        y={`${Math.max(y - 1, 3)}%`}
+                        fill={isHovered ? "#09090B" : "#52525B"}
                         fontSize="10"
                         fontWeight="600"
                         fontFamily="monospace"
@@ -180,9 +187,9 @@ export const Tab2AssetBoundingBoxes: React.FC<Tab2Props> = ({
 
         {/* Right Column: Extracted Segment List with Confidence Badges */}
         <div className="lg:col-span-6 space-y-3">
-          <div className="flex items-center justify-between text-[12px] font-medium text-zinc-500 mb-1">
-            <span>EXTRACTED LAYOUT SEGMENTS</span>
-            <span>CONFIDENCE</span>
+          <div className="flex items-center justify-between text-[11px] font-medium uppercase tracking-wider text-zinc-500 mb-1">
+            <span>Extracted Segments</span>
+            <span>Confidence</span>
           </div>
 
           <div className="space-y-3 max-h-[620px] overflow-y-auto pr-1">
@@ -196,15 +203,15 @@ export const Tab2AssetBoundingBoxes: React.FC<Tab2Props> = ({
                   key={seg.id || i}
                   onMouseEnter={() => setHoveredSegmentIndex(i)}
                   onMouseLeave={() => setHoveredSegmentIndex(null)}
-                  className={`rounded-xl border p-4 transition-all duration-150 ${
+                  className={`rounded-xl border p-4 transition-colors duration-150 ${
                     isHovered
-                      ? "border-blue-500 bg-blue-50/20 shadow-xs ring-1 ring-blue-500/30"
+                      ? "border-zinc-900 bg-zinc-50"
                       : "border-zinc-200 bg-white hover:border-zinc-300"
                   }`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-100 font-mono text-[11px] font-semibold text-zinc-700">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-100 border border-zinc-200 font-mono text-[11px] font-semibold text-zinc-700">
                         {i + 1}
                       </span>
                       {seg.bounding_box?.label && (
@@ -219,10 +226,10 @@ export const Tab2AssetBoundingBoxes: React.FC<Tab2Props> = ({
 
                     <div className="flex items-center gap-2">
                       <span
-                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border ${
                           isLowConfidence
-                            ? "bg-amber-50 text-amber-700 border border-amber-200"
-                            : "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            ? "bg-amber-50 text-amber-700 border-amber-200"
+                            : "bg-emerald-50 text-emerald-700 border-emerald-200"
                         }`}
                       >
                         {isLowConfidence ? (
@@ -234,9 +241,10 @@ export const Tab2AssetBoundingBoxes: React.FC<Tab2Props> = ({
                       </span>
 
                       <button
+                        type="button"
                         onClick={() => setEditingSegment(seg)}
-                        className="rounded p-1 text-zinc-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
-                        title="Correct OCR Text"
+                        className="rounded p-1 text-zinc-400 hover:text-zinc-900 hover:bg-zinc-100 transition-colors cursor-pointer"
+                        title="Edit OCR Text"
                       >
                         <Edit2 className="h-3.5 w-3.5" />
                       </button>
@@ -248,8 +256,8 @@ export const Tab2AssetBoundingBoxes: React.FC<Tab2Props> = ({
                   </p>
 
                   {seg.metadata?.corrected_at && (
-                    <div className="mt-2 text-[11px] text-blue-600 font-medium">
-                      ✓ Manually corrected in compliance audit ledger
+                    <div className="mt-2 text-[11px] text-zinc-600 font-medium">
+                      ✓ Edited by reviewer
                     </div>
                   )}
                 </div>

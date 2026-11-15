@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAuth, OrganizationSwitcher } from "@clerk/nextjs";
-import { ConversationSidebar } from "@/components/chat/ConversationSidebar";
+import { WorkspaceSidebar } from "@/components/shell/WorkspaceSidebar";
+import { WorkspaceHeader } from "@/components/shell/WorkspaceHeader";
 import { AdaptiveMessageRenderer } from "@/components/chat/AdaptiveMessageRenderer";
 import { ChatComposer } from "@/components/chat/ChatComposer";
 import { ToolActivityPill, type ToolActivityProps } from "@/components/chat/ToolActivityPill";
@@ -16,7 +17,7 @@ import type { ExtractionData } from "@/components/campaign/Tab2AssetBoundingBoxe
 import type { ConversationRecord, MessageRecord } from "@/modules/conversations/conversation.service";
 import type { CitationItem, SSEEvent } from "@/contracts/conversation.contracts";
 import { extractApiError, extractSseDataFromBlock } from "@/lib/api-client";
-import { ShieldCheck, Sparkles, PanelRight, AlertTriangle, LogIn, X } from "lucide-react";
+import { PanelRight, AlertTriangle, LogIn, X, Plus } from "lucide-react";
 
 interface DisplayMessage {
   id: string;
@@ -32,6 +33,8 @@ interface ActiveCampaignState {
   channel: string;
   status: string;
   risk_level: string;
+  current_revision_id?: string;
+  approved_revision_id?: string | null;
   [key: string]: unknown;
 }
 
@@ -52,7 +55,7 @@ interface ActiveAssetState {
   [key: string]: unknown;
 }
 
-export default function ChatPage() {
+function ChatWorkspaceContent() {
   const router = useRouter();
   const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
   const [onboardingReady, setOnboardingReady] = useState(false);
@@ -67,7 +70,11 @@ export default function ChatPage() {
   const [authIssue, setAuthIssue] = useState<"UNAUTHENTICATED" | "NO_ORG" | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
 
-  // Phase 7 Campaign & Inspector State
+  // Layout State
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+
+  // Campaign & Studio State
   const [activeCampaign, setActiveCampaign] = useState<ActiveCampaignState | null>(null);
   const [activeAssessment, setActiveAssessment] = useState<ActiveAssessmentState | null>(null);
   const [campaignFindings, setCampaignFindings] = useState<Finding[]>([]);
@@ -94,7 +101,7 @@ export default function ChatPage() {
     const parsed = extractApiError(status, body, fallback);
     if (status === 401 || parsed.code === "UNAUTHENTICATED") {
       setAuthIssue("UNAUTHENTICATED");
-      setChatError("Your session is signed out. Sign in to start or resume a compliance consultation.");
+      setChatError("Your session is signed out. Sign in to start or resume a compliance review.");
     } else if (status === 403 && parsed.code === "TENANT_CONTEXT_INVALID") {
       setAuthIssue("NO_ORG");
       setChatError(parsed.message);
@@ -105,14 +112,13 @@ export default function ChatPage() {
     return parsed;
   }, []);
 
-  // Load conversations on mount and whenever active Clerk auth/org changes
   const loadConversations = useCallback(async () => {
     setLoadingConversations(true);
     try {
       const res = await fetch("/api/marketing-shield/v1/conversations?status=ACTIVE");
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.success) {
-        applyApiFailure(res.status, json, "Failed to load compliance consultations.");
+        applyApiFailure(res.status, json, "Failed to load compliance threads.");
         return;
       }
       setAuthIssue(null);
@@ -125,7 +131,7 @@ export default function ChatPage() {
       }
     } catch (err) {
       console.error("Failed to load conversations", err);
-      setChatError("Unable to reach the compliance gateway. Please check your connection and retry.");
+      setChatError("Unable to reach the workspace server. Check your connection and retry.");
     } finally {
       setLoadingConversations(false);
     }
@@ -183,7 +189,6 @@ export default function ChatPage() {
     loadConversations();
   }, [clerkLoaded, isSignedIn, orgId, onboardingReady, loadConversations]);
 
-  // Load campaign and assessment details when active campaign exists
   const loadCampaignData = useCallback(async (campaignId: string) => {
     try {
       const campRes = await fetch(`/api/marketing-shield/v1/campaigns/${campaignId}`);
@@ -196,7 +201,6 @@ export default function ChatPage() {
           const firstAsset = camp.assets[0];
           setCampaignAsset(firstAsset);
 
-          // Load asset extraction
           const extRes = await fetch(`/api/marketing-shield/v1/assets/${firstAsset.id}/extraction`);
           const extJson = await extRes.json();
           if (extJson.success && extJson.data) {
@@ -208,7 +212,6 @@ export default function ChatPage() {
           setActiveAssessment(camp.latest_assessment);
         }
 
-        // Load findings
         const findRes = await fetch(`/api/marketing-shield/v1/campaigns/${campaignId}/findings`);
         const findJson = await findRes.json();
         if (findJson.success && findJson.data) {
@@ -222,7 +225,6 @@ export default function ChatPage() {
     }
   }, []);
 
-  // Load messages whenever activeConvId changes (unless freshly auto-created mid-send)
   useEffect(() => {
     if (!activeConvId) {
       setMessages([]);
@@ -256,10 +258,12 @@ export default function ChatPage() {
         if (isMounted) setLoadingMessages(false);
       });
 
-    // Check if active conversation has linked campaign
     const conv = conversationsRef.current.find((c) => c.id === activeConvId);
     if (conv?.active_campaign_id) {
       loadCampaignData(conv.active_campaign_id);
+    } else {
+      setActiveCampaign(null);
+      setShowInspector(false);
     }
 
     return () => {
@@ -267,17 +271,16 @@ export default function ChatPage() {
     };
   }, [activeConvId, loadCampaignData]);
 
-  // Handle New Conversation creation
   const handleNewConversation = async () => {
     try {
       const res = await fetch("/api/marketing-shield/v1/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "New Compliance Consultation" }),
+        body: JSON.stringify({ title: "New Audit" }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.success || !json.data) {
-        applyApiFailure(res.status, json, "Failed to start a new compliance consultation.");
+        applyApiFailure(res.status, json, "Failed to start a new audit.");
         return;
       }
       setAuthIssue(null);
@@ -289,11 +292,10 @@ export default function ChatPage() {
       setShowInspector(false);
     } catch (err) {
       console.error("Failed to create conversation", err);
-      setChatError("Network error while creating a new consultation.");
+      setChatError("Network error while creating a new audit.");
     }
   };
 
-  // Handle Rename Conversation
   const handleRename = async (id: string, newTitle: string) => {
     try {
       const res = await fetch(`/api/marketing-shield/v1/conversations/${id}`, {
@@ -303,19 +305,18 @@ export default function ChatPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.success) {
-        applyApiFailure(res.status, json, "Failed to rename consultation.");
+        applyApiFailure(res.status, json, "Failed to rename thread.");
         return;
       }
       setConversations((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, title: newTitle } : c))
+        prev.map((c) => (c.id === id ? { ...c, title: newTitle } : c)),
       );
     } catch (err) {
       console.error("Failed to rename conversation", err);
-      setChatError("Network error while renaming consultation.");
+      setChatError("Network error while renaming thread.");
     }
   };
 
-  // Handle Archive Conversation
   const handleArchive = async (id: string) => {
     try {
       const res = await fetch(`/api/marketing-shield/v1/conversations/${id}/archive`, {
@@ -323,7 +324,7 @@ export default function ChatPage() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.success) {
-        applyApiFailure(res.status, json, "Failed to archive consultation.");
+        applyApiFailure(res.status, json, "Failed to archive thread.");
         return;
       }
       setConversations((prev) => prev.filter((c) => c.id !== id));
@@ -333,40 +334,42 @@ export default function ChatPage() {
       }
     } catch (err) {
       console.error("Failed to archive conversation", err);
-      setChatError("Network error while archiving consultation.");
+      setChatError("Network error while archiving thread.");
     }
   };
 
-  // Handle Asset Upload completion from ChatComposer
-  const handleAssetUploaded = async (assetId: string, filename: string) => {
-    let currentConvId = activeConvId;
+  const handleAssetUploaded = async (_assetId: string, filename: string) => {
+    let currentConvId = activeConvId ?? activeConvIdRef.current;
+    const baseTitle = filename.replace(/\.[^/.]+$/, "").trim();
+    const safeTitle = baseTitle.length >= 3 ? baseTitle : `${baseTitle || "Campaign"} Asset`;
 
     if (!currentConvId) {
       const convRes = await fetch("/api/marketing-shield/v1/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: `Audit: ${filename}` }),
+        body: JSON.stringify({ title: safeTitle }),
       });
       const convJson = await convRes.json().catch(() => ({}));
       if (!convRes.ok || !convJson.success || !convJson.data) {
-        applyApiFailure(convRes.status, convJson, "Failed to initialize consultation for uploaded asset.");
+        applyApiFailure(convRes.status, convJson, "Failed to initialize audit for uploaded asset.");
         return;
       }
       currentConvId = convJson.data.id;
+      activeConvIdRef.current = currentConvId;
+      skipNextLoadForConvRef.current = currentConvId;
       setActiveConvId(currentConvId);
       setConversations((prev) => [convJson.data, ...prev]);
     }
 
-    // Auto-create marketing campaign linked to asset
     try {
       const campRes = await fetch("/api/marketing-shield/v1/campaigns", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conversation_id: currentConvId,
-          campaign_name: filename.replace(/\.[^/.]+$/, ""),
+          campaign_name: safeTitle,
           channel: "SOCIAL_MEDIA",
-          initial_content_text: `Campaign asset ${filename} uploaded for compliance audit.`,
+          initial_content_text: `Campaign asset ${filename} uploaded for compliance review.`,
         }),
       });
 
@@ -383,41 +386,40 @@ export default function ChatPage() {
     }
   };
 
-  // Send Message & Stream Assistant SSE Response
   const handleSendMessage = async (text: string): Promise<boolean> => {
     setChatError(null);
-    let currentConvId = activeConvId;
+    let currentConvId = activeConvId ?? activeConvIdRef.current;
 
     if (!currentConvId) {
       try {
         const createRes = await fetch("/api/marketing-shield/v1/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: text.slice(0, 48) + "..." }),
+          body: JSON.stringify({ title: text.slice(0, 48) }),
         });
         const createJson = await createRes.json().catch(() => ({}));
         if (!createRes.ok || !createJson.success || !createJson.data) {
-          applyApiFailure(createRes.status, createJson, "Unable to create compliance consultation.");
+          applyApiFailure(createRes.status, createJson, "Unable to create compliance audit.");
           return false;
         }
         currentConvId = createJson.data.id;
+        activeConvIdRef.current = currentConvId;
         skipNextLoadForConvRef.current = currentConvId;
         setAuthIssue(null);
         setActiveConvId(currentConvId);
         setConversations((prev) => [createJson.data, ...prev]);
       } catch (err) {
         console.error("Failed to create initial conversation", err);
-        setChatError("Unable to reach the compliance gateway. Please check your connection and try again.");
+        setChatError("Unable to reach the workspace server. Check your connection and try again.");
         return false;
       }
     }
 
     if (!currentConvId) {
-      setChatError("Unable to initialize consultation session. Please try again.");
+      setChatError("Unable to initialize audit session. Please try again.");
       return false;
     }
 
-    // Append user message immediately
     const tempUserMsgId = `user_${Date.now()}`;
     const userMsg: DisplayMessage = {
       id: tempUserMsgId,
@@ -426,7 +428,6 @@ export default function ChatPage() {
       isStreaming: false,
     };
 
-    // Prepare assistant streaming message slot
     const tempAssistantMsgId = `assistant_${Date.now()}`;
     const assistantMsg: DisplayMessage = {
       id: tempAssistantMsgId,
@@ -447,7 +448,7 @@ export default function ChatPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ content: text }),
-        }
+        },
       );
 
       if (!response.ok || !response.body) {
@@ -455,7 +456,7 @@ export default function ChatPage() {
         const parsed = applyApiFailure(
           response.status,
           errBody,
-          `HTTP ${response.status}: Failed to connect to streaming endpoint`
+          `HTTP ${response.status}: Failed to connect to streaming endpoint`,
         );
         throw new Error(parsed.message);
       }
@@ -475,10 +476,8 @@ export default function ChatPage() {
             const delta = event.data.text_delta;
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === tempAssistantMsgId
-                  ? { ...m, content: m.content + delta }
-                  : m
-              )
+                m.id === tempAssistantMsgId ? { ...m, content: m.content + delta } : m,
+              ),
             );
           } else if (event.type === "tool.started") {
             setActiveTool({
@@ -503,11 +502,11 @@ export default function ChatPage() {
                       citations: event.data.citations || m.citations,
                       isStreaming: false,
                     }
-                  : m
-              )
+                  : m,
+              ),
             );
           } else if (event.type === "message.failed") {
-            const failMsg = event.data.message || "Regulatory analysis failed.";
+            const failMsg = event.data.message || "Compliance review failed.";
             setChatError(failMsg);
             setMessages((prev) =>
               prev.map((m) =>
@@ -515,12 +514,12 @@ export default function ChatPage() {
                   ? {
                       ...m,
                       content: m.content
-                        ? `${m.content}\n\n*Regulatory analysis failed: ${failMsg}*`
-                        : `*Regulatory analysis failed: ${failMsg}*`,
+                        ? `${m.content}\n\n*Compliance review interrupted: ${failMsg}*`
+                        : `*Compliance review interrupted: ${failMsg}*`,
                       isStreaming: false,
                     }
-                  : m
-              )
+                  : m,
+              ),
             );
           }
         } catch (parseErr) {
@@ -545,28 +544,25 @@ export default function ChatPage() {
         processSseBlock(buffer);
       }
 
-      // Ensure message never remains stuck in streaming state if stream ended without terminal event
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === tempAssistantMsgId && m.isStreaming ? { ...m, isStreaming: false } : m
-        )
+          m.id === tempAssistantMsgId && m.isStreaming ? { ...m, isStreaming: false } : m,
+        ),
       );
       return true;
     } catch (err) {
       console.error("Streaming error", err);
-      const errMsg = err instanceof Error ? err.message : "Streaming communication interrupted.";
+      const errMsg = err instanceof Error ? err.message : "Connection interrupted.";
       setMessages((prev) =>
         prev.map((m) =>
           m.id === tempAssistantMsgId
             ? {
                 ...m,
-                content:
-                  m.content +
-                  `\n\n*Regulatory analysis interrupted: ${errMsg}*`,
+                content: m.content + `\n\n*Review interrupted: ${errMsg}*`,
                 isStreaming: false,
               }
-            : m
-        )
+            : m,
+        ),
       );
       return true;
     } finally {
@@ -576,85 +572,87 @@ export default function ChatPage() {
   };
 
   const activeConversation = conversations.find((c) => c.id === activeConvId);
+  const isZeroState = !loadingMessages && messages.length === 0;
 
   if (!clerkLoaded || !isSignedIn || !orgId || !onboardingReady) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-canvas text-xs font-medium text-slate-500">
-        Verifying institutional session and onboarding status...
+      <div className="flex min-h-screen items-center justify-center bg-white text-[13px] text-zinc-500">
+        Verifying session and workspace setup...
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen bg-canvas overflow-hidden">
-      {/* 1. Deep Slate Sidebar */}
-      <ConversationSidebar
+    <div className="flex h-screen bg-white text-zinc-950 overflow-hidden">
+      {/* 1. Monochrome Navigation Sidebar */}
+      <WorkspaceSidebar
         conversations={conversations}
-        activeId={activeConvId}
-        onSelect={(id) => setActiveConvId(id)}
-        onNew={handleNewConversation}
-        onRename={handleRename}
-        onArchive={handleArchive}
-        loading={loadingConversations}
+        activeConversationId={activeConvId}
+        onSelectConversation={(id) => setActiveConvId(id)}
+        onNewAudit={handleNewConversation}
+        onRenameConversation={handleRename}
+        onArchiveConversation={handleArchive}
+        loadingConversations={loadingConversations}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={() => setSidebarCollapsed(true)}
+        mobileOpen={mobileSidebarOpen}
+        onCloseMobile={() => setMobileSidebarOpen(false)}
       />
 
       {/* 2. Main Conversational Canvas */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden min-w-0">
-        {/* Top Navbar */}
-        <header className="h-14 border-b border-slate-200 bg-surface px-6 flex items-center justify-between shrink-0">
-          <div className="flex items-center space-x-3 truncate">
-            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-50 border border-blue-200 text-blue-700">
-              <ShieldCheck className="h-4 w-4" />
-            </span>
-            <div className="truncate">
-              <h2 className="text-xs font-semibold text-slate-900 truncate">
-                {activeConversation?.title || "Conversational Compliance Copilot"}
-              </h2>
-              <p className="text-[10px] text-slate-400">
-                Grounding: Golden 50 Vault (CBN, FCCPC, ARCON, NDPC, SEC)
-              </p>
-            </div>
-          </div>
+      <div className="flex-1 flex flex-col h-screen overflow-hidden min-w-0 bg-white">
+        <WorkspaceHeader
+          section="Marketing Shield"
+          title={activeConversation?.title || "New Audit"}
+          sidebarCollapsed={sidebarCollapsed}
+          onExpandSidebar={() => setSidebarCollapsed(false)}
+          onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
+          rightActions={
+            <>
+              {activeCampaign && (
+                <button
+                  type="button"
+                  onClick={() => setShowInspector(!showInspector)}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12.5px] font-medium border transition-colors cursor-pointer ${
+                    showInspector
+                      ? "bg-zinc-100 text-zinc-950 border-zinc-300"
+                      : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50"
+                  }`}
+                >
+                  <PanelRight className="h-3.5 w-3.5" />
+                  <span>Studio</span>
+                  {campaignFindings.length > 0 && (
+                    <span className="ml-0.5 rounded-full bg-rose-100 text-rose-700 px-1.5 py-0.2 font-mono text-[10.5px] font-semibold">
+                      {campaignFindings.length}
+                    </span>
+                  )}
+                </button>
+              )}
 
-          <div className="flex items-center space-x-3">
-            {activeCampaign && (
               <button
-                onClick={() => setShowInspector(!showInspector)}
-                className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-lg text-[12px] font-semibold border transition-all ${
-                  showInspector
-                    ? "bg-blue-600 text-white border-blue-600 shadow-xs"
-                    : "bg-white text-zinc-700 border-zinc-200 hover:bg-zinc-50"
-                }`}
+                type="button"
+                onClick={handleNewConversation}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-[12.5px] font-medium transition-colors cursor-pointer"
               >
-                <PanelRight className="h-3.5 w-3.5" />
-                Campaign Inspector
-                {campaignFindings.length > 0 && (
-                  <span className="ml-1 rounded-full bg-red-100 text-red-800 px-1.5 py-0.2 text-[10px] font-bold">
-                    {campaignFindings.length}
-                  </span>
-                )}
+                <Plus className="h-3.5 w-3.5" />
+                <span>New Audit</span>
               </button>
-            )}
+            </>
+          }
+        />
 
-            <span className="inline-flex items-center space-x-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Statutory Vault Live</span>
-            </span>
-          </div>
-        </header>
-
-        {/* Actionable Auth / API Error Banner */}
+        {/* Auth / API Error Banner */}
         {(authIssue || chatError) && (
-          <div className="mx-6 mt-4 rounded-xl border border-amber-200 bg-amber-50/90 px-4 py-3 text-xs text-amber-950 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0 shadow-2xs">
+          <div className="mx-6 mt-4 rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 text-[12.5px] text-amber-950 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 shrink-0">
             <div className="flex items-start gap-2.5">
-              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <AlertTriangle className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
               <div>
-                <p className="font-semibold">
+                <p className="font-medium">
                   {authIssue === "UNAUTHENTICATED"
-                    ? "Authentication Required"
+                    ? "Sign in required"
                     : authIssue === "NO_ORG"
-                      ? "Institutional Organization Required"
-                      : "Consultation Error"}
+                      ? "Organization required"
+                      : "Notice"}
                 </p>
                 <p className="text-amber-800 mt-0.5">{chatError}</p>
               </div>
@@ -664,10 +662,10 @@ export default function ChatPage() {
               {authIssue === "UNAUTHENTICATED" && (
                 <Link
                   href="/sign-in"
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-brand-primary hover:bg-brand-hover text-white font-semibold text-xs transition-colors"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-[12px] transition-colors"
                 >
                   <LogIn className="h-3.5 w-3.5" />
-                  <span>Sign In →</span>
+                  <span>Sign in</span>
                 </Link>
               )}
 
@@ -685,8 +683,8 @@ export default function ChatPage() {
                   setChatError(null);
                   setAuthIssue(null);
                 }}
-                className="p-1 rounded-md text-amber-700 hover:bg-amber-100 transition-colors"
-                aria-label="Dismiss error banner"
+                className="p-1 rounded text-amber-700 hover:bg-amber-100 transition-colors cursor-pointer"
+                aria-label="Dismiss notice"
               >
                 <X className="h-3.5 w-3.5" />
               </button>
@@ -694,69 +692,71 @@ export default function ChatPage() {
           </div>
         )}
 
-        {/* Message Scroll Area */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
-          {loadingMessages && (
-            <div className="py-20 text-center text-xs text-slate-400">
-              Loading consultation history...
-            </div>
-          )}
+        {/* Zero-State Centered Canvas OR Active Scrollable Stream */}
+        {isZeroState ? (
+          <div className="flex-1 overflow-y-auto px-4 sm:px-6 flex flex-col items-center justify-center py-12">
+            <div className="w-full max-w-2xl">
+              <h1 className="font-serif text-[32px] sm:text-[38px] leading-[1.15] tracking-tight text-zinc-950 text-center mb-6">
+                Verify every claim before it goes live.
+              </h1>
 
-          {!loadingMessages && messages.length === 0 && (
-            <div className="py-16 text-center max-w-lg mx-auto space-y-3">
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 border border-blue-200">
-                <Sparkles className="h-6 w-6" />
-              </div>
-              <h3 className="text-base font-bold text-slate-900 tracking-tight">
-                Sovereign Regulatory Copilot & Intake
-              </h3>
-              <p className="text-xs text-slate-500 leading-relaxed">
-                Consult Nigerian banking, consumer protection, advertising vetting, and data privacy
-                rules, or drop a promotional flyer/banner for multimodal OCR and 7-layer guardrail
-                compliance assessment.
-              </p>
-            </div>
-          )}
-
-          {messages.map((msg) => (
-            <AdaptiveMessageRenderer
-              key={msg.id}
-              role={msg.role}
-              content={msg.content}
-              citations={msg.citations}
-              isStreaming={msg.isStreaming}
-              onInspectEvidence={(clauseId) => setInspectClauseId(clauseId)}
-            />
-          ))}
-
-          {/* Real-time Tool Activity Indicator */}
-          {activeTool && (
-            <div className="my-2">
-              <ToolActivityPill
-                toolName={activeTool.toolName}
-                displayLabel={activeTool.displayLabel}
-                status={activeTool.status}
-                summary={activeTool.summary}
+              <ChatComposer
+                onSendMessage={handleSendMessage}
+                onAssetUploaded={handleAssetUploaded}
+                conversationId={activeConvId || undefined}
+                disabled={isStreaming}
+                isZeroState={true}
               />
             </div>
-          )}
+          </div>
+        ) : (
+          <>
+            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
+              {loadingMessages && (
+                <div className="py-20 text-center text-[12.5px] text-zinc-400">
+                  Loading thread...
+                </div>
+              )}
 
-          <div ref={messagesEndRef} />
-        </div>
+              {messages.map((msg) => (
+                <AdaptiveMessageRenderer
+                  key={msg.id}
+                  role={msg.role}
+                  content={msg.content}
+                  citations={msg.citations}
+                  isStreaming={msg.isStreaming}
+                  onInspectEvidence={(clauseId) => setInspectClauseId(clauseId)}
+                />
+              ))}
 
-        {/* Bottom Composer with Asset Attachment */}
-        <footer className="p-4 bg-surface border-t border-slate-200/80">
-          <ChatComposer
-            onSendMessage={handleSendMessage}
-            onAssetUploaded={handleAssetUploaded}
-            conversationId={activeConvId || undefined}
-            disabled={isStreaming}
-            showStarterPrompts={messages.length === 0}
-          />
-        </footer>
-      </main>
+              {activeTool && (
+                <div className="my-2">
+                  <ToolActivityPill
+                    toolName={activeTool.toolName}
+                    displayLabel={activeTool.displayLabel}
+                    status={activeTool.status}
+                    summary={activeTool.summary}
+                  />
+                </div>
+              )}
 
-      {/* 3. Contextual Campaign Inspector (Tabs 1-3) */}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <footer className="px-4 sm:px-6 py-3.5 bg-white border-t border-zinc-200 shrink-0">
+              <ChatComposer
+                onSendMessage={handleSendMessage}
+                onAssetUploaded={handleAssetUploaded}
+                conversationId={activeConvId || undefined}
+                disabled={isStreaming}
+                isZeroState={false}
+              />
+            </footer>
+          </>
+        )}
+      </div>
+
+      {/* 3. Split-Screen Compliance Studio */}
       {showInspector && activeCampaign && (
         <ContextualCampaignInspector
           campaign={activeCampaign}
@@ -771,12 +771,26 @@ export default function ChatPage() {
         />
       )}
 
-      {/* 4. Slide-over Evidence Drawer */}
+      {/* 4. Slide-Over Statutory Source Drawer */}
       <EvidenceDrawer
         clauseId={inspectClauseId}
         isOpen={Boolean(inspectClauseId)}
         onClose={() => setInspectClauseId(null)}
       />
     </div>
+  );
+}
+
+export default function ChatPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex h-screen items-center justify-center bg-white text-[13px] text-zinc-400">
+          Loading workspace...
+        </div>
+      }
+    >
+      <ChatWorkspaceContent />
+    </Suspense>
   );
 }
