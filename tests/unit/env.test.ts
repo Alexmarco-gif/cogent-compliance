@@ -64,4 +64,19 @@ describe("Environment Configuration & Validation (src/lib/env.ts)", () => {
     expect(parsed.CLERK_SECRET_KEY).toBe("mock_clerk_secret_key");
     expect(parsed.NEXT_PUBLIC_SUPABASE_URL).toBe("https://mock.supabase.co");
   });
+
+  it("should accept Supabase publishable and secret key aliases", () => {
+    const aliasEnv = { ...validMockEnv } as Record<string, string | undefined>;
+    delete aliasEnv.SUPABASE_SERVICE_ROLE_KEY;
+    delete aliasEnv.NEXT_PUBLIC_SUPABASE_URL;
+    delete aliasEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    aliasEnv.SUPABASE_SECRET_KEY = "sb_secret_test_123";
+    aliasEnv.SUPABASE_URL = "https://igrcwfojsliohdhivhby.supabase.co";
+    aliasEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY = "sb_publishable_test_123";
+
+    const parsed = validateEnv(aliasEnv);
+    expect(parsed.SUPABASE_SERVICE_ROLE_KEY).toBe("sb_secret_test_123");
+    expect(parsed.NEXT_PUBLIC_SUPABASE_URL).toBe("https://igrcwfojsliohdhivhby.supabase.co");
+    expect(parsed.NEXT_PUBLIC_SUPABASE_ANON_KEY).toBe("sb_publishable_test_123");
+  });
 });

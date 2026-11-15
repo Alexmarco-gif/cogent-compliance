@@ -9,6 +9,7 @@ import { AuthTenancyError, CanonicalRole, TenantContext } from "./types";
 import { getPermissionsForRole, mapClerkRoleToCanonical } from "./permissions";
 import { syncClerkOrganizationCreated } from "./clerk.sync";
 import { logger } from "@/lib/logger";
+import { env } from "@/lib/env";
 
 export interface ResolveTenantOptions {
   /** Test context override exclusively active during automated unit testing */
@@ -151,11 +152,22 @@ export async function resolveTenantContext(
   }
 
   if (tenantError || !tenant) {
+    let supabaseHost = "unknown";
+    try {
+      if (env.NEXT_PUBLIC_SUPABASE_URL) {
+        supabaseHost = new URL(env.NEXT_PUBLIC_SUPABASE_URL).host;
+      }
+    } catch {
+      supabaseHost = "invalid-url";
+    }
     logger.warn("Tenant not found in Supabase for active Clerk org", {
       clerkOrgId: orgId,
+      supabaseHost,
       provisionFailureReason,
     });
-    const detail = provisionFailureReason ? ` (${provisionFailureReason})` : "";
+    const detail = provisionFailureReason
+      ? ` (host=${supabaseHost}; ${provisionFailureReason})`
+      : ` (host=${supabaseHost})`;
     throw new AuthTenancyError(
       "TENANT_CONTEXT_INVALID",
       `Institution tenant for organization ${orgId} is not provisioned or recognized in the database.${detail}`,

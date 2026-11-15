@@ -86,7 +86,19 @@ export type Env = ServerEnv & ClientEnv;
  * Returns validated typed environment object or throws descriptive error.
  */
 export function validateEnv(customEnv?: Record<string, string | undefined>): Env {
-  const rawEnv = customEnv || process.env;
+  const sourceEnv = customEnv || process.env;
+  const rawEnv: Record<string, string | undefined> = {
+    ...sourceEnv,
+    SUPABASE_SERVICE_ROLE_KEY:
+      sourceEnv.SUPABASE_SERVICE_ROLE_KEY || sourceEnv.SUPABASE_SECRET_KEY,
+    NEXT_PUBLIC_SUPABASE_URL:
+      sourceEnv.NEXT_PUBLIC_SUPABASE_URL || sourceEnv.SUPABASE_URL,
+    NEXT_PUBLIC_SUPABASE_ANON_KEY:
+      sourceEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      sourceEnv.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+      sourceEnv.SUPABASE_PUBLISHABLE_KEY ||
+      sourceEnv.SUPABASE_ANON_KEY,
+  };
   const isTestRuntime = !customEnv && process.env.NODE_ENV === "test";
   const shouldSkip =
     rawEnv.SKIP_ENV_VALIDATION === "true" ||
