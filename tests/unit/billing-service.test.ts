@@ -83,6 +83,11 @@ describe("PaystackBillingService & Dual-Currency Engine", () => {
       const isValid = paystackBillingService.verifyWebhookSignature("{}", null);
       expect(isValid).toBe(false);
     });
+
+    it("rejects signatures with mismatched byte lengths without throwing", () => {
+      const isValid = paystackBillingService.verifyWebhookSignature("{}", "short_sig");
+      expect(isValid).toBe(false);
+    });
   });
 
   describe("Charge Success Idempotency", () => {

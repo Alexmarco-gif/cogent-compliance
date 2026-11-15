@@ -205,54 +205,58 @@ export class PaystackBillingService {
 
     // If live Paystack secret is available, call the actual Paystack API
     if (!isMock) {
-      try {
-        const response = await fetch("https://api.paystack.co/transaction/initialize", {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${paystackSecret}`,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            email: userEmail,
-            amount: amountKobo,
-            currency: "NGN",
-            reference,
-            callback_url:
-              callbackUrl ||
-              `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/settings/billing?checkout=success&ref=${reference}`,
-            metadata: {
-              tenant_id: tenantId,
-              plan_id: plan.id,
-              plan_slug: plan.slug,
-              billing_interval: billingInterval,
-              usd_cents: priceUsdCents,
-              fx_rate: fxRate,
-            },
-          }),
-        });
-
-        const paystackData = await response.json();
-        if (paystackData.status && paystackData.data) {
-          return {
-            authorization_url: paystackData.data.authorization_url,
-            access_code: paystackData.data.access_code,
-            reference,
-            amount_kobo: amountKobo,
-            amount_usd_cents: priceUsdCents,
+      const response = await fetch("https://api.paystack.co/transaction/initialize", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${paystackSecret}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          email: userEmail,
+          amount: amountKobo,
+          currency: "NGN",
+          reference,
+          callback_url:
+            callbackUrl ||
+            `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/settings/billing?checkout=success&ref=${reference}`,
+          metadata: {
+            tenant_id: tenantId,
+            plan_id: plan.id,
+            plan_slug: plan.slug,
+            billing_interval: billingInterval,
+            usd_cents: priceUsdCents,
             fx_rate: fxRate,
-            currency: "NGN",
-          };
-        }
+          },
+        }),
+      });
 
-        logger.warn("Paystack live initialization returned false status", { paystackData });
-      } catch (liveErr) {
-        logger.error("Live Paystack initialization failed, generating resilient checkout token", {
-          error: liveErr,
+      const paystackData = await response.json();
+      if (!response.ok || !paystackData.status || !paystackData.data) {
+        logger.error("Paystack live transaction initialization failed", {
+          status: response.status,
+          paystackData,
+          tenantId,
+          planSlug,
         });
+        throw new Error(paystackData.message || "Paystack checkout initialization failed");
       }
+
+      return {
+        authorization_url: paystackData.data.authorization_url,
+        access_code: paystackData.data.access_code,
+        reference,
+        amount_kobo: amountKobo,
+        amount_usd_cents: priceUsdCents,
+        fx_rate: fxRate,
+        currency: "NGN",
+      };
     }
 
-    // Resilient sandbox checkout session
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("PAYSTACK_SECRET_KEY is not configured for production checkout");
+    }
+
+    // Deterministic sandbox checkout session strictly for NODE_ENV=test or dev mock keys
     const accessCode = `acc_${crypto.randomBytes(8).toString("hex")}`;
     const defaultCallback =
       callbackUrl ||
@@ -271,13 +275,24 @@ export class PaystackBillingService {
   }
 
   /**
-   * Verifies HMAC-SHA512 signature on Paystack webhooks
+   * Verifies HMAC-SHA512 signature on Paystack webhooks (timing-safe & length-safe)
    */
   public verifyWebhookSignature(rawBody: string, signature: string | null): boolean {
     if (!signature) return false;
-    const secret = process.env.PAYSTACK_SECRET_KEY || "sk_test_mock_paystack_secret_key";
+    const secret =
+      process.env.PAYSTACK_SECRET_KEY ||
+      (process.env.NODE_ENV === "test" ? "sk_test_mock_paystack_secret_key" : "");
+    if (!secret) {
+      logger.error("PAYSTACK_SECRET_KEY is not configured for webhook verification");
+      return false;
+    }
     const computed = crypto.createHmac("sha512", secret).update(rawBody).digest("hex");
-    return crypto.timingSafeEqual(Buffer.from(computed), Buffer.from(signature));
+    const computedBuf = Buffer.from(computed, "utf8");
+    const sigBuf = Buffer.from(signature, "utf8");
+    if (computedBuf.length !== sigBuf.length) {
+      return false;
+    }
+    return crypto.timingSafeEqual(computedBuf, sigBuf);
   }
 
   /**
