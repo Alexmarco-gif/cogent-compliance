@@ -58,16 +58,13 @@ export class WebSearchRouter {
   ): Promise<LiveWebSearchResponse> {
     const validatedArgs = liveWebSearchArgsSchema.parse(rawArgs);
     const { query, prioritize_official_regulators } = validatedArgs;
+    const todayIso = new Date().toISOString().split("T")[0];
 
     const prompt = prioritize_official_regulators
-      ? `You are an autonomous intelligence researcher specializing in Nigerian financial, fintech, legal, and regulatory compliance.
-Conduct an open, real-time web search across the Nigerian and global internet — including major Nigerian financial news platforms (such as Nairametrics, BusinessDay, Premium Times, TechCabal), law firm advisories, corporate press releases, and official regulatory bodies (CBN, FCCPC, ARCON, NDPC, SEC) — for: "${query}".
-Synthesize the latest factual developments, market impacts, industry discussions, and regulatory compliance implications, citing live, verified URLs.`
-      : `You are an autonomous real-time intelligence researcher specializing in Nigerian commerce, banking, marketing, and fintech.
-Conduct an open live web search across the internet (including news publications, blogs, industry commentaries, and corporate announcements) for: "${query}".
-Synthesize the latest factual information, current events, and practical implications, citing live, verified URLs.`;
+      ? `Today's date is ${todayIso}. Run an open, real-time live web search across the internet for the latest information, news, official regulatory circulars, market updates, and current developments regarding: "${query}". Include any recent Nigerian regulatory announcements (CBN, FCCPC, ARCON, NDPC, SEC) as well as authoritative financial news, legal advisories, and live public web sources. Be concise, factual, and up to date.`
+      : `Today's date is ${todayIso}. Run an open, real-time live web search across the internet for the latest factual information, news, updates, and authoritative sources regarding: "${query}". Be concise, factual, and up to date.`;
 
-    logger.info("Executing Two-Step Live Web Search Router", {
+    logger.info("Executing Dynamic Live Web Search Router", {
       query,
       tenantId,
       prioritizeRegulators: prioritize_official_regulators,
@@ -77,13 +74,20 @@ Synthesize the latest factual information, current events, and practical implica
     const supabase = createAdminSupabaseClient();
 
     try {
-      const response = await this.client.models.generateContent({
+      const searchPromise = this.client.models.generateContent({
         model: this.searchModel,
         contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
         },
       });
+
+      const response = await Promise.race([
+        searchPromise,
+        new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error("Live web search timed out after 12000ms")), 12000);
+        }),
+      ]);
 
       const candidate = response.candidates?.[0];
       const groundingMetadata = candidate?.groundingMetadata as
@@ -93,53 +97,84 @@ Synthesize the latest factual information, current events, and practical implica
           }
         | undefined;
 
-      const summaryText = response.text || "";
+      const summaryText = (response.text || "").trim();
       const chunks = groundingMetadata?.groundingChunks || [];
 
-      if (chunks.length > 0) {
-        for (const chunk of chunks) {
-          const uri = chunk.web?.uri;
-          const title = chunk.web?.title || "Live Web Intelligence Citation";
-          if (!uri) continue;
-
-          // Deduplicate within the same call
-          if (retrievedResults.some((r) => r.retrieved_url === uri)) continue;
-
-          const isOfficialRegulator = NIGERIAN_REGULATORY_DOMAINS.some((domain) =>
-            uri.toLowerCase().includes(domain.toLowerCase())
-          );
-
-          // Persist each verified web citation to live_web_retrievals
-          const { data: record, error } = await supabase
-            .from("live_web_retrievals")
-            .insert({
-              tenant_id: tenantId,
-              search_query: query,
-              retrieved_url: uri,
-              page_title: title,
-              snippet_content:
-                summaryText.slice(0, 500) || `Live web search result for: ${query}`,
-              source_class: "LIVE_WEB_INTELLIGENCE",
-              metadata: {
-                prioritize_official_regulators,
-                is_official_regulator: isOfficialRegulator,
-                webSearchQueries: groundingMetadata?.webSearchQueries || [],
-              },
-            })
-            .select("id, retrieved_at")
-            .single();
-
-          if (!error && record) {
-            retrievedResults.push({
-              live_web_retrieval_id: record.id,
-              page_title: title,
-              retrieved_url: uri,
-              snippet_content: summaryText.slice(0, 500),
-              retrieved_at: record.retrieved_at,
-              source_class: "LIVE_WEB_INTELLIGENCE",
-            });
-          }
+      // Deduplicate and cap to top 6 unique verified URLs
+      const uniqueChunks: Array<{ uri: string; title: string }> = [];
+      const seenUris = new Set<string>();
+      for (const chunk of chunks) {
+        const uri = chunk.web?.uri?.trim();
+        if (!uri || seenUris.has(uri)) continue;
+        try {
+          new URL(uri);
+        } catch {
+          continue;
         }
+        seenUris.add(uri);
+        uniqueChunks.push({
+          uri,
+          title: chunk.web?.title?.trim() || new URL(uri).hostname,
+        });
+        if (uniqueChunks.length >= 6) break;
+      }
+
+      if (uniqueChunks.length > 0) {
+        const snippetPreview = summaryText.slice(0, 800) || `Live web search result for: ${query}`;
+        const persisted = await Promise.all(
+          uniqueChunks.map(async (chunk) => {
+            const isOfficialRegulator = NIGERIAN_REGULATORY_DOMAINS.some((domain) =>
+              chunk.uri.toLowerCase().includes(domain.toLowerCase())
+            );
+
+            try {
+              const { data: record, error } = await supabase
+                .from("live_web_retrievals")
+                .insert({
+                  tenant_id: tenantId,
+                  search_query: query,
+                  retrieved_url: chunk.uri,
+                  page_title: chunk.title,
+                  snippet_content: snippetPreview,
+                  source_class: "LIVE_WEB_INTELLIGENCE",
+                  metadata: {
+                    prioritize_official_regulators,
+                    is_official_regulator: isOfficialRegulator,
+                    webSearchQueries: groundingMetadata?.webSearchQueries || [],
+                  },
+                })
+                .select("id, retrieved_at")
+                .single();
+
+              if (!error && record) {
+                return {
+                  live_web_retrieval_id: record.id,
+                  page_title: chunk.title,
+                  retrieved_url: chunk.uri,
+                  snippet_content: snippetPreview,
+                  retrieved_at: record.retrieved_at,
+                  source_class: "LIVE_WEB_INTELLIGENCE" as const,
+                };
+              }
+            } catch (dbErr) {
+              logger.warn("Live web retrieval DB log skipped", {
+                error: (dbErr as Error).message,
+                uri: chunk.uri,
+              });
+            }
+
+            return {
+              live_web_retrieval_id: crypto.randomUUID(),
+              page_title: chunk.title,
+              retrieved_url: chunk.uri,
+              snippet_content: snippetPreview,
+              retrieved_at: new Date().toISOString(),
+              source_class: "LIVE_WEB_INTELLIGENCE" as const,
+            };
+          })
+        );
+
+        retrievedResults.push(...persisted);
       }
 
       if (retrievedResults.length === 0) {
@@ -150,6 +185,7 @@ Synthesize the latest factual information, current events, and practical implica
         return {
           source_class: "LIVE_WEB_INTELLIGENCE",
           results: [],
+          ...(summaryText ? { web_summary: summaryText.slice(0, 2500) } : {}),
           status: "no_verified_live_results",
         };
       }
@@ -157,6 +193,7 @@ Synthesize the latest factual information, current events, and practical implica
       return {
         source_class: "LIVE_WEB_INTELLIGENCE",
         results: retrievedResults,
+        ...(summaryText ? { web_summary: summaryText.slice(0, 2500) } : {}),
       };
     } catch (err: unknown) {
       logger.error("Live web search failed", {
@@ -165,7 +202,7 @@ Synthesize the latest factual information, current events, and practical implica
         tenantId,
       });
 
-      // Task 3: Never invent fallback citations. Return empty results honestly.
+      // Never invent fallback citations. Return empty results honestly.
       return {
         source_class: "LIVE_WEB_INTELLIGENCE",
         results: [],

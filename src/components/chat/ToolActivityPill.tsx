@@ -15,7 +15,7 @@ function humanizeToolName(toolName: string): string {
     return "Checking statutory provisions";
   }
   if (toolName.includes("live_web") || toolName.includes("fetch_live")) {
-    return "Checking official regulator publications";
+    return "Searching live web & statutory updates";
   }
   if (toolName.includes("knowledge") || toolName.includes("playbook") || toolName.includes("product")) {
     return "Checking internal playbooks and rate cards";
