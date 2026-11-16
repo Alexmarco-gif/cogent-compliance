@@ -15,6 +15,9 @@ import { notificationService } from "@/lib/notifications";
 import { webSearchRouter } from "@/modules/live-web-intelligence/web-search.router";
 import { productService } from "@/modules/knowledge-base/product.service";
 import { mechanicalLocksEngine } from "@/modules/compliance-assessment/mechanical-locks";
+import { aprCalculatorService } from "@/modules/compliance-assessment/apr-calculator.service";
+import { appStoreAuditorService } from "@/modules/compliance-assessment/app-store-auditor.service";
+import { regulatoryRippleService } from "@/modules/regulatory-vault/regulatory-ripple.service";
 import {
   CreateDriftMonitorInput,
   QueryDriftMonitorsInput,
@@ -353,7 +356,52 @@ export class DriftService {
       }
     }
 
-    // Check D: Text & Hash Divergence
+    // Check D: Autonomous Forensic Audits (APR Drip-Pricing & App Store / DEON / NDPA) when live content diverged from baseline
+    if (liveText.trim() !== approvedText.trim()) {
+      const aprAudit = aprCalculatorService.analyzeCopyAgainstProductTruth(
+        liveText,
+        productTruth,
+      );
+
+      if (aprAudit?.dripPricingDetected) {
+        const primaryAprSpot = aprAudit.blindSpots[0];
+        discrepancies.push({
+          type: "RATE_MISMATCH",
+          severity: "CRITICAL",
+          description:
+            primaryAprSpot?.whatYouMissed ||
+            `Effective APR (${aprAudit.effectiveNominalAprPercent}%) diverges from implied headline APR (${aprAudit.advertisedImpliedAprPercent}%).`,
+          expectedValue: `${aprAudit.effectiveNominalAprPercent}% Effective APR (with KFS)`,
+          actualValue: `${aprAudit.advertisedImpliedAprPercent}% Implied APR`,
+        });
+      }
+
+      const appStoreAudit = appStoreAuditorService.auditListingOrLandingPage({
+        listingText: liveText,
+        url: monitor.published_url,
+        product: productTruth,
+      });
+
+      if (
+        appStoreAudit.hasShortTenorViolation ||
+        appStoreAudit.hasBannedPrivacyOrRecoveryTrap ||
+        appStoreAudit.hasBundledConsentDarkPattern
+      ) {
+        for (const spot of appStoreAudit.blindSpots) {
+          if (spot.severity === "CRITICAL") {
+            discrepancies.push({
+              type: "PROHIBITED_TERM",
+              severity: "CRITICAL",
+              description: spot.whatYouMissed,
+              expectedValue: spot.oneClickFix,
+              actualValue: spot.violatedStatute,
+            });
+          }
+        }
+      }
+    }
+
+    // Check E: Text & Hash Divergence
     const textLengthDiff = Math.abs(liveText.length - approvedText.length);
     const divergenceScore =
       discrepancies.length > 0
@@ -370,6 +418,62 @@ export class DriftService {
       ? `Drift detected on ${monitor.published_url}: ${discrepancies.length} discrepancy(s) found (${discrepancies.map((d) => d.type).join(", ")}).`
       : `Live promotional URL matches approved compliance baseline cleanly.`;
 
+    // Zero-Prompt Workflow: Automatically spawn an Incident Conversation thread when drift is detected
+    let incidentConversationId: string | null = monitor.incident_conversation_id || null;
+    if (isDriftDetected && !incidentConversationId) {
+      try {
+        const convQuery = supabase.from("conversations");
+        if (convQuery && typeof convQuery.insert === "function") {
+          const { data: incidentConv } = await convQuery
+            .insert({
+              tenant_id: tenantId,
+              created_by: actorId || "system_drift_sentinel",
+              title: `[Drift Sentinel Alert] ${monitor.campaign_title || monitor.published_url}`,
+              context_type: "CAMPAIGN",
+              active_campaign_id: monitor.campaign_id,
+              status: "ACTIVE",
+            })
+            .select("id")
+            .single();
+
+          if (incidentConv?.id) {
+            incidentConversationId = incidentConv.id;
+            const msgQuery = supabase.from("messages");
+            if (msgQuery && typeof msgQuery.insert === "function") {
+              const driftMarkdown = [
+                `### Zero-Prompt URL Drift Sentinel Alert`,
+                `**Monitored Live URL:** ${monitor.published_url}`,
+                `**Campaign:** \`${monitor.campaign_title || monitor.campaign_id}\``,
+                "",
+                ...discrepancies.map(
+                  (d, idx) =>
+                    `${idx + 1}. **What You Missed (The Blind Spot):** ${d.description}\n   - **What It Costs You (The Consequence):** Continuing to serve unapproved live terms violates FCCPA Section 115 / CBN CPD 2019 and risks immediate regulatory takedown or fine.\n   - **One-Click Resolution (The Done-For-You Fix):** Restore expected baseline: \`${d.expectedValue || "Approved Revision Snapshot"}\`.`,
+                ),
+              ].join("\n");
+
+              await msgQuery.insert({
+                conversation_id: incidentConv.id,
+                tenant_id: tenantId,
+                role: "ASSISTANT",
+                content: driftMarkdown,
+                metadata: {
+                  zero_prompt_source: "DRIFT_SENTINEL",
+                  monitor_id: monitor.id,
+                  published_url: monitor.published_url,
+                  discrepancies,
+                },
+              });
+            }
+          }
+        }
+      } catch (incErr) {
+        logger.warn("Could not spawn Zero-Prompt drift incident conversation", {
+          monitorId,
+          error: (incErr as Error).message,
+        });
+      }
+    }
+
     const details: DriftDetails = {
       status: isDriftDetected ? "DRIFT_DETECTED" : "COMPLIANT",
       checked_at: nowIso,
@@ -380,6 +484,7 @@ export class DriftService {
       approved_text_length: approvedText.length,
       approved_sha256_hash: approvedHash,
       summary,
+      incident_conversation_id: incidentConversationId,
     };
 
     // 5. Update database monitor record
@@ -424,6 +529,7 @@ export class DriftService {
         divergenceScore,
         discrepancyCount: discrepancies.length,
         status: newStatus,
+        incidentConversationId,
       },
     });
 
@@ -463,6 +569,7 @@ export class DriftService {
         campaign_title: monitor.campaign_title,
         campaign_status: monitor.campaign_status,
         revision_number: monitor.revision_number,
+        incident_conversation_id: incidentConversationId,
       },
       details,
     };
@@ -622,6 +729,22 @@ export class DriftService {
         documentVersionId: docVer.id,
       },
     });
+
+    // 5. Trigger Zero-Prompt Regulatory Ripple Sentinel across tenant rate cards & campaigns
+    try {
+      await regulatoryRippleService.scanTenantForCircularRipple(tenantId, {
+        instrumentId: instrument.id,
+        regulator,
+        title,
+        summaryText: retrieval.snippet_content || title,
+        sourceUrl,
+      });
+    } catch (rippleErr) {
+      logger.warn("Regulatory ripple scan after queueing circular failed", {
+        tenantId,
+        error: (rippleErr as Error).message,
+      });
+    }
 
     logger.info("Successfully queued discovered circular into Statutory Vault", {
       tenantId,

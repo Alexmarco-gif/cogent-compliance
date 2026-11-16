@@ -112,13 +112,27 @@ export const DriftMonitorCard: React.FC<DriftMonitorCardProps> = ({
 
       {/* Bottom row: Actions */}
       <div className="flex items-center justify-between pt-1 border-t border-zinc-100">
-        <button
-          onClick={() => onInspect(monitor)}
-          className="flex items-center space-x-1 text-xs font-medium text-zinc-700 hover:text-zinc-900 transition-colors cursor-pointer"
-        >
-          <FileSearch className="h-3.5 w-3.5 text-zinc-500" />
-          <span>Inspect Diff</span>
-        </button>
+        <div className="flex items-center space-x-3">
+          <button
+            onClick={() => onInspect(monitor)}
+            className="flex items-center space-x-1 text-xs font-medium text-zinc-700 hover:text-zinc-900 transition-colors cursor-pointer"
+          >
+            <FileSearch className="h-3.5 w-3.5 text-zinc-500" />
+            <span>Inspect Diff</span>
+          </button>
+
+          {(monitor.incident_conversation_id || details?.incident_conversation_id) && (
+            <a
+              href={`/chat?conversationId=${
+                monitor.incident_conversation_id || details?.incident_conversation_id
+              }`}
+              className="flex items-center space-x-1 text-xs font-medium text-rose-700 hover:text-rose-900 transition-colors"
+            >
+              <span>Open Incident Audit</span>
+              <ExternalLink className="h-3 w-3" />
+            </a>
+          )}
+        </div>
 
         <div className="flex items-center space-x-2">
           <button

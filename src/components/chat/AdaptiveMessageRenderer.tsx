@@ -2,13 +2,25 @@
 
 import React from "react";
 import { FileText, BookOpen, Globe, ExternalLink } from "lucide-react";
-import type { CitationItem } from "@/contracts/conversation.contracts";
+import type {
+  CitationItem,
+  ExecutionPlanStep,
+  StructuredComplianceReport,
+} from "@/contracts/conversation.contracts";
+import {
+  AgentExecutionPlanCard,
+  AutonomousAnalystWorkbench,
+} from "@/components/chat/AutonomousAnalystWorkbench";
 
 export interface AdaptiveMessageRendererProps {
   content: string;
   role: "USER" | "ASSISTANT" | "SYSTEM" | "TOOL";
   citations?: CitationItem[];
+  planSteps?: ExecutionPlanStep[];
+  structuredReport?: StructuredComplianceReport;
   onInspectEvidence?: (clauseId: string) => void;
+  onApplyCompliantRewrite?: (rewrittenCopy: string) => Promise<void> | void;
+  onApproveAndSealDossier?: (rewrittenCopy: string) => Promise<void> | void;
   isStreaming?: boolean;
 }
 
@@ -16,7 +28,11 @@ export function AdaptiveMessageRenderer({
   content,
   role,
   citations = [],
+  planSteps = [],
+  structuredReport,
   onInspectEvidence,
+  onApplyCompliantRewrite,
+  onApproveAndSealDossier,
   isStreaming,
 }: AdaptiveMessageRendererProps) {
   if (role === "USER") {
@@ -33,6 +49,9 @@ export function AdaptiveMessageRenderer({
 
   return (
     <div className="max-w-3xl mx-auto my-5 space-y-4">
+      {/* Autonomous Multi-Step Execution Plan */}
+      {planSteps.length > 0 && <AgentExecutionPlanCard steps={planSteps} />}
+
       {/* Unboxed Editorial Prose on White Canvas */}
       <div className="space-y-3 text-[14.5px] text-zinc-800 leading-relaxed font-sans">
         {renderedContent}
@@ -40,6 +59,16 @@ export function AdaptiveMessageRenderer({
           <span className="inline-block h-3.5 w-1.5 animate-pulse bg-zinc-900 ml-1 align-middle" />
         )}
       </div>
+
+      {/* Autonomous Analyst Workbench (Problem -> Risk -> Fix + KFS + 1-Click HITL) */}
+      {structuredReport && (
+        <AutonomousAnalystWorkbench
+          report={structuredReport}
+          onInspectEvidence={onInspectEvidence}
+          onApplyCompliantRewrite={onApplyCompliantRewrite}
+          onApproveAndSealDossier={onApproveAndSealDossier}
+        />
+      )}
 
       {/* Monochrome Citation Footnote Chips */}
       {citations.length > 0 && (

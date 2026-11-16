@@ -1,6 +1,6 @@
 /**
- * Cogent Marketing Shield - Conversation & Copilot Contracts
- * Document Reference: Document 04 (Section 3, Section 7), Document 08 (Phase 6)
+ * Cogent Marketing Shield - Conversation, Autonomous Analyst & SSE Contracts
+ * Document Reference: Document 04 (Section 3, Section 7), Document 08 (Phase 6), Document 13
  */
 
 import { z } from "zod";
@@ -90,6 +90,79 @@ export interface CitationItem {
   live_web_retrieval_id?: string;
 }
 
+export interface ExecutionPlanStep {
+  step_id: string;
+  step_number: number;
+  title: string;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+  summary?: string;
+}
+
+export interface BlindSpotFindingItem {
+  finding_id?: string;
+  finding_code: string;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+  what_you_missed: string;
+  what_it_costs_you: string;
+  one_click_fix: string;
+  violated_statute: string;
+  exact_quote: string;
+  regulatory_clause_id?: string;
+}
+
+export interface StructuredComplianceReport {
+  pre_flight_gate: {
+    verdict: "PASS" | "CONDITIONAL" | "BLOCK";
+    risk_score: number;
+    lock_summary: {
+      lock1_prohibited_terms: "PASS" | "FAIL";
+      lock2_product_rate_match: "PASS" | "FAIL";
+      lock3_mandatory_disclosures: "PASS" | "FAIL";
+      total_breaches: number;
+    };
+    apr_audit?: {
+      product_name: string;
+      principal_ngn: number;
+      tenor_days: number;
+      advertised_implied_apr: number;
+      effective_nominal_apr: number;
+      effective_net_disbursed_apr: number;
+      upfront_fees_ngn: number;
+      net_disbursed_ngn: number;
+      total_repayment_ngn: number;
+      drip_pricing_detected: boolean;
+      short_tenor_violation: boolean;
+    } | null;
+  };
+  blind_spot_findings: BlindSpotFindingItem[];
+  artifacts: {
+    compliant_rewrite?: {
+      channel: string;
+      rewritten_copy: string;
+      sms_160_char?: string;
+      verified_by_locks: boolean;
+    };
+    kfs_table?: {
+      product_name: string;
+      rows: Array<{
+        field: string;
+        value: string;
+        statutoryBasis: string;
+      }>;
+      markdown_table: string;
+    };
+    arcon_asp_memo?: string;
+  };
+  campaign_context?: {
+    campaign_id?: string | null;
+    campaign_name?: string | null;
+    revision_id?: string | null;
+    revision_number?: number;
+    product_id?: string | null;
+    product_name?: string | null;
+  } | null;
+}
+
 export type SSEEvent =
   | {
       type: "message.started";
@@ -97,6 +170,20 @@ export type SSEEvent =
         user_message_id: string;
         assistant_message_id: string;
         sequence_number: number;
+      };
+    }
+  | {
+      type: "plan.created";
+      data: {
+        steps: ExecutionPlanStep[];
+      };
+    }
+  | {
+      type: "plan.step_updated";
+      data: {
+        step_id: string;
+        status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+        summary?: string;
       };
     }
   | {
@@ -117,6 +204,26 @@ export type SSEEvent =
       };
     }
   | {
+      type: "campaign.created";
+      data: {
+        campaign_id: string;
+        revision_id: string;
+        revision_number: number;
+        campaign_name: string;
+        status: string;
+      };
+    }
+  | {
+      type: "assessment.completed";
+      data: {
+        assessment_id?: string;
+        campaign_id?: string;
+        revision_id?: string;
+        overall_risk_level: "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+        structured_report: StructuredComplianceReport;
+      };
+    }
+  | {
       type: "assistant.delta";
       data: {
         text_delta: string;
@@ -129,6 +236,7 @@ export type SSEEvent =
         finish_reason: string;
         citations: CitationItem[];
         conversation_title?: string;
+        structured_report?: StructuredComplianceReport;
       };
     }
   | {

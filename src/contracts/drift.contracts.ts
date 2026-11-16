@@ -70,6 +70,7 @@ export interface DriftDetails {
   approved_text_length: number;
   approved_sha256_hash: string;
   summary: string;
+  incident_conversation_id?: string | null;
 }
 
 export interface CampaignDriftMonitor {
@@ -84,6 +85,8 @@ export interface CampaignDriftMonitor {
   drift_details: DriftDetails | Record<string, unknown>;
   created_at: string;
   updated_at: string;
+  monitor_target_type?: string;
+  incident_conversation_id?: string | null;
   // Joined fields
   campaign_title?: string;
   campaign_status?: string;

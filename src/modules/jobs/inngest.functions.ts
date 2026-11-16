@@ -546,6 +546,76 @@ export const playbookIngestionJob = inngest.createFunction(
   }
 );
 
+/**
+ * Scheduled Zero-Prompt Regulatory Ripple Sentinel executing every 12 hours.
+ * Scans newly queued circulars from CBN, FCCPC, ARCON, NDPC, and SEC against
+ * each tenant's saved Product Rate Cards and active campaigns.
+ */
+export const scheduledRegulatoryRippleJob = inngest.createFunction(
+  {
+    id: "scheduled-regulatory-ripple-sentinel",
+    triggers: [{ cron: "0 */12 * * *" }],
+  },
+  async ({ step }) => {
+    const supabase = createAdminSupabaseClient();
+    const { regulatoryRippleService } = await import(
+      "@/modules/regulatory-vault/regulatory-ripple.service"
+    );
+
+    const recentCirculars = await step.run("load-recent-circulars", async () => {
+      const { data, error } = await supabase
+        .from("regulatory_instruments")
+        .select("id, title, description, instrument_type")
+        .eq("status", "ACTIVE")
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (error || !data) {
+        return [];
+      }
+      return data;
+    });
+
+    const activeTenants = await step.run("load-active-tenants", async () => {
+      const { data, error } = await supabase
+        .from("tenants")
+        .select("id")
+        .limit(50);
+
+      if (error || !data) {
+        return [];
+      }
+      return data;
+    });
+
+    let totalAlertsCreated = 0;
+
+    for (const tenant of activeTenants) {
+      for (const circ of recentCirculars) {
+        await step.run(`ripple-scan-${tenant.id}-${circ.id}`, async () => {
+          const alerts = await regulatoryRippleService.scanTenantForCircularRipple(
+            tenant.id,
+            {
+              instrumentId: circ.id,
+              regulator: "CBN",
+              title: circ.title,
+              summaryText: circ.description || circ.title,
+            },
+          );
+          totalAlertsCreated += alerts.length;
+        });
+      }
+    }
+
+    return {
+      success: true,
+      scannedTenants: activeTenants.length,
+      scannedCirculars: recentCirculars.length,
+      totalAlertsCreated,
+    };
+  }
+);
+
 export const inngestFunctions = [
   assessmentExecutionJob,
   regulatoryEmbeddingJob,
@@ -554,4 +624,5 @@ export const inngestFunctions = [
   dossierGenerationJob,
   assetExtractionJob,
   playbookIngestionJob,
+  scheduledRegulatoryRippleJob,
 ];

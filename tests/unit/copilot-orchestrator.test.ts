@@ -316,4 +316,49 @@ describe("CopilotOrchestrator (Unit)", () => {
     expect(deltas).toContain("FCCPA 2018");
     expect(events.some((e) => e.type === "message.completed")).toBe(true);
   });
+
+  it("should emit plan.created, assessment.completed, and a Lock-verified StructuredComplianceReport with KFS and APR audit on promotional loan prompts", async () => {
+    mockGenAi.models.generateContent.mockResolvedValueOnce({
+      candidates: [
+        {
+          content: {
+            parts: [
+              {
+                text: "### 1. What You Missed\nYour flyer implies 60% APR, but the true APR is higher.",
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const orchestrator = new CopilotOrchestrator(mockGenAi as unknown as GoogleGenAI);
+    const events = [];
+    for await (const event of orchestrator.streamChat({
+      tenantId: "00000000-0000-0000-0000-000000000001",
+      userId: "user_officer",
+      conversationId: "conv_test_promo_report",
+      userPrompt:
+        "Review this flyer: Get ₦50,000 in 5 minutes at 5% monthly with ₦2,500 processing fee for 15 days!",
+    })) {
+      events.push(event);
+    }
+
+    const planCreated = events.find((e) => e.type === "plan.created");
+    expect(planCreated).toBeDefined();
+    expect(planCreated?.data.steps).toHaveLength(5);
+
+    const assessmentCompleted = events.find((e) => e.type === "assessment.completed");
+    expect(assessmentCompleted).toBeDefined();
+    const report = assessmentCompleted?.data.structured_report;
+    expect(report).toBeDefined();
+    expect(report?.pre_flight_gate.verdict).toBe("BLOCK");
+    expect(report?.pre_flight_gate.apr_audit?.advertised_implied_apr).toBe(60);
+    expect(report?.pre_flight_gate.apr_audit?.effective_nominal_apr).toBeCloseTo(182.5, 1);
+    expect(report?.blind_spot_findings.length).toBeGreaterThan(0);
+    expect(report?.artifacts.compliant_rewrite?.verified_by_locks).toBe(true);
+    expect(report?.artifacts.kfs_table?.rows.length).toBeGreaterThanOrEqual(10);
+    expect(report?.artifacts.arcon_asp_memo).toContain("ARCON Act 2022");
+  });
 });
+

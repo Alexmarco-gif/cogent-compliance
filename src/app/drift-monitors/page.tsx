@@ -30,9 +30,25 @@ interface CampaignItem {
   approved_revision_id?: string | null;
 }
 
+interface RippleAlertItem {
+  id: string;
+  regulator: string;
+  circular_title: string;
+  impacted_product_name?: string | null;
+  impacted_campaign_name?: string | null;
+  incident_conversation_id?: string | null;
+  blind_spot_summary: string;
+  consequence_summary: string;
+  recommended_fix: string;
+  severity: "CRITICAL" | "HIGH" | "MEDIUM";
+  status: "OPEN" | "ACKNOWLEDGED" | "RESOLVED";
+  created_at: string;
+}
+
 export default function DriftMonitorsPage() {
   const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
   const [monitors, setMonitors] = useState<CampaignDriftMonitor[]>([]);
+  const [rippleAlerts, setRippleAlerts] = useState<RippleAlertItem[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -93,11 +109,25 @@ export default function DriftMonitorsPage() {
     }
   }, [isSignedIn, orgId]);
 
+  const loadRippleAlerts = useCallback(async () => {
+    if (!isSignedIn || !orgId) return;
+    try {
+      const res = await fetch("/api/marketing-shield/v1/ripple-alerts");
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success && Array.isArray(json.data?.alerts)) {
+        setRippleAlerts(json.data.alerts);
+      }
+    } catch {
+      // Non-blocking
+    }
+  }, [isSignedIn, orgId]);
+
   useEffect(() => {
     if (!clerkLoaded) return;
     loadMonitors();
     loadCampaigns();
-  }, [clerkLoaded, isSignedIn, orgId, loadMonitors, loadCampaigns]);
+    loadRippleAlerts();
+  }, [clerkLoaded, isSignedIn, orgId, loadMonitors, loadCampaigns, loadRippleAlerts]);
 
   const handleCheckNow = async (monitorId: string) => {
     try {
@@ -383,6 +413,80 @@ export default function DriftMonitorsPage() {
                     isChecking={checkingMonitorId === m.id}
                   />
                 ))}
+              </div>
+            )}
+
+            {/* Zero-Prompt Regulatory Ripple Alerts */}
+            {rippleAlerts.length > 0 && (
+              <div className="pt-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-sm font-semibold text-zinc-950">
+                      Zero-Prompt Regulatory Ripple Alerts ({rippleAlerts.length})
+                    </h2>
+                    <p className="text-xs text-zinc-500">
+                      Automatic cross-checks of new CBN, FCCPC, ARCON, NDPC & SEC circulars against your Product Rate Cards.
+                    </p>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {rippleAlerts.map((alert) => (
+                    <div
+                      key={alert.id}
+                      className="bg-white border border-zinc-200 rounded-xl p-4 space-y-2.5"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded bg-zinc-900 text-white">
+                            {alert.regulator}
+                          </span>
+                          <span className="text-xs font-semibold text-zinc-950">
+                            {alert.circular_title}
+                          </span>
+                          {alert.impacted_product_name && (
+                            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
+                              Impacts: {alert.impacted_product_name}
+                            </span>
+                          )}
+                        </div>
+                        {alert.incident_conversation_id && (
+                          <Link
+                            href={`/chat?conversationId=${alert.incident_conversation_id}`}
+                            className="text-xs font-medium text-zinc-900 hover:underline shrink-0"
+                          >
+                            Open Incident Audit →
+                          </Link>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
+                        <div className="rounded-lg bg-zinc-50 border border-zinc-200 p-2.5">
+                          <p className="font-semibold text-zinc-900 mb-0.5">
+                            1. What You Missed (Blind Spot)
+                          </p>
+                          <p className="text-zinc-600 leading-relaxed">
+                            {alert.blind_spot_summary}
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-rose-50/60 border border-rose-200 p-2.5">
+                          <p className="font-semibold text-rose-900 mb-0.5">
+                            2. What It Costs You (Consequence)
+                          </p>
+                          <p className="text-rose-800 leading-relaxed">
+                            {alert.consequence_summary}
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-emerald-50/60 border border-emerald-200 p-2.5">
+                          <p className="font-semibold text-emerald-900 mb-0.5">
+                            3. One-Click Resolution (Fix)
+                          </p>
+                          <p className="text-emerald-800 leading-relaxed">
+                            {alert.recommended_fix}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </>

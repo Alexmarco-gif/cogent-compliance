@@ -16,7 +16,12 @@ import type { LockResult } from "@/components/campaign/Tab1LocksOverview";
 import type { ExtractionData } from "@/components/campaign/Tab2AssetBoundingBoxes";
 import type { ConversationRecord, MessageRecord } from "@/modules/conversations/conversation.service";
 import { deriveConversationTopicTitle } from "@/modules/conversations/topic-title";
-import type { CitationItem, SSEEvent } from "@/contracts/conversation.contracts";
+import type {
+  CitationItem,
+  ExecutionPlanStep,
+  SSEEvent,
+  StructuredComplianceReport,
+} from "@/contracts/conversation.contracts";
 import { extractApiError, extractSseDataFromBlock, unwrapApiList } from "@/lib/api-client";
 import { PanelRight, AlertTriangle, LogIn, X, Plus } from "lucide-react";
 
@@ -25,6 +30,8 @@ interface DisplayMessage {
   role: "USER" | "ASSISTANT" | "SYSTEM" | "TOOL";
   content: string;
   citations?: CitationItem[];
+  planSteps?: ExecutionPlanStep[];
+  structuredReport?: StructuredComplianceReport;
   isStreaming?: boolean;
 }
 
@@ -296,6 +303,8 @@ function ChatWorkspaceContent() {
             role: m.role,
             content: m.content,
             citations: (m.metadata?.citations as CitationItem[]) || [],
+            structuredReport:
+              (m.metadata?.structured_report as StructuredComplianceReport) || undefined,
             isStreaming: false,
           }));
           setMessages(loaded);
@@ -389,7 +398,7 @@ function ChatWorkspaceContent() {
     }
   };
 
-  const handleAssetUploaded = async (_assetId: string, filename: string) => {
+  const handleAssetUploaded = async (assetId: string, filename: string) => {
     let currentConvId = activeConvId ?? activeConvIdRef.current;
     const selectedProduct = products.find((p) => p.id === selectedProductId);
     const baseTitle = filename.replace(/\.[^/.]+$/, "").trim();
@@ -429,6 +438,7 @@ function ChatWorkspaceContent() {
           channel: "SOCIAL_MEDIA",
           product_id: selectedProductId || undefined,
           initial_content_text: `Campaign asset ${filename} uploaded for compliance review.`,
+          asset_ids: assetId ? [assetId] : undefined,
         }),
       });
 
@@ -442,6 +452,120 @@ function ChatWorkspaceContent() {
     } catch (err) {
       console.error("Failed to initialize campaign for uploaded asset", err);
       setChatError("Network error initializing campaign for uploaded asset.");
+    }
+  };
+
+  const ensureActiveCampaignWithCopy = async (rewrittenCopy: string): Promise<{
+    campaignId: string;
+    revisionId: string;
+  } | null> => {
+    const currentConvId = activeConvId ?? activeConvIdRef.current;
+    if (activeCampaign?.id && activeCampaign.current_revision_id) {
+      const revRes = await fetch(
+        `/api/marketing-shield/v1/campaigns/${activeCampaign.id}/revisions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parent_revision_id: activeCampaign.current_revision_id,
+            content_text: rewrittenCopy,
+            revision_source: "AI_REWRITE_ACCEPTED",
+            change_summary: "Applied Layer-6 verified rewrite from Autonomous Compliance Analyst",
+            auto_reassess: true,
+          }),
+        },
+      );
+      const revJson = await revRes.json().catch(() => ({}));
+      if (!revRes.ok || !revJson.success || !revJson.data) {
+        applyApiFailure(revRes.status, revJson, "Failed to create compliant campaign revision.");
+        return null;
+      }
+      await loadCampaignData(activeCampaign.id);
+      const newRevisionId =
+        revJson.data.revision?.id || revJson.data.id || activeCampaign.current_revision_id;
+      return { campaignId: activeCampaign.id, revisionId: newRevisionId };
+    }
+
+    const selectedProduct = products.find((p) => p.id === selectedProductId);
+    const campName = selectedProduct
+      ? `${selectedProduct.product_name} Compliant Campaign`
+      : "Autonomous Compliance Audit Campaign";
+    const campRes = await fetch("/api/marketing-shield/v1/campaigns", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        conversation_id: currentConvId || undefined,
+        campaign_name: campName,
+        channel: "SOCIAL_MEDIA",
+        product_id: selectedProductId || undefined,
+        initial_content_text: rewrittenCopy,
+      }),
+    });
+    const campJson = await campRes.json().catch(() => ({}));
+    if (!campRes.ok || !campJson.success || !campJson.data) {
+      applyApiFailure(campRes.status, campJson, "Failed to create campaign for compliant rewrite.");
+      return null;
+    }
+    const createdCamp = campJson.data;
+    await loadCampaignData(createdCamp.id);
+    return {
+      campaignId: createdCamp.id,
+      revisionId: createdCamp.current_revision_id,
+    };
+  };
+
+  const handleApplyCompliantRewrite = async (rewrittenCopy: string) => {
+    try {
+      await ensureActiveCampaignWithCopy(rewrittenCopy);
+    } catch (err) {
+      console.error("Failed to apply compliant rewrite", err);
+      setChatError("Network error while applying compliant rewrite.");
+    }
+  };
+
+  const handleApproveAndSealDossier = async (rewrittenCopy: string) => {
+    try {
+      const target = await ensureActiveCampaignWithCopy(rewrittenCopy);
+      if (!target) return;
+
+      const appRes = await fetch(
+        `/api/marketing-shield/v1/campaigns/${target.campaignId}/approvals`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            revision_id: target.revisionId,
+            decision: "APPROVED",
+            decision_reason:
+              "Approved and sealed via Autonomous Compliance Analyst Workbench after Lock 1-3 & KFS verification.",
+          }),
+        },
+      );
+      const appJson = await appRes.json().catch(() => ({}));
+      if (!appRes.ok || !appJson.success) {
+        applyApiFailure(appRes.status, appJson, "Failed to record CCO campaign approval.");
+        return;
+      }
+
+      const dosRes = await fetch(
+        `/api/marketing-shield/v1/campaigns/${target.campaignId}/dossiers`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            revision_id: target.revisionId,
+          }),
+        },
+      );
+      const dosJson = await dosRes.json().catch(() => ({}));
+      if (dosRes.ok && dosJson.success && dosJson.data?.download_url) {
+        window.open(dosJson.data.download_url, "_blank", "noopener,noreferrer");
+      }
+
+      await loadCampaignData(target.campaignId);
+    } catch (err) {
+      console.error("Failed to approve and seal dossier", err);
+      setChatError("Network error while sealing 2-year FCCPC audit dossier.");
     }
   };
 
@@ -502,12 +626,17 @@ function ChatWorkspaceContent() {
       role: "ASSISTANT",
       content: "",
       citations: [],
+      planSteps: [],
       isStreaming: true,
     };
 
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setIsStreaming(true);
     setActiveTool(null);
+
+    const extractedUrls = Array.from(
+      new Set(text.match(/https?:\/\/[^\s<>"{}|\\^`[\]]+/gi) || []),
+    ).slice(0, 3);
 
     try {
       const response = await fetch(
@@ -518,6 +647,9 @@ function ChatWorkspaceContent() {
           body: JSON.stringify({
             content: text,
             referenced_product_id: selectedProductId || undefined,
+            active_campaign_id: activeCampaign?.id || undefined,
+            attachment_asset_ids: campaignAsset?.id ? [campaignAsset.id] : undefined,
+            campaign_urls: extractedUrls.length > 0 ? extractedUrls : undefined,
           }),
         },
       );
@@ -550,6 +682,31 @@ function ChatWorkspaceContent() {
                 m.id === tempAssistantMsgId ? { ...m, content: m.content + delta } : m,
               ),
             );
+          } else if (event.type === "plan.created") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempAssistantMsgId ? { ...m, planSteps: event.data.steps } : m,
+              ),
+            );
+          } else if (event.type === "plan.step_updated") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempAssistantMsgId
+                  ? {
+                      ...m,
+                      planSteps: (m.planSteps || []).map((s) =>
+                        s.step_id === event.data.step_id
+                          ? {
+                              ...s,
+                              status: event.data.status,
+                              summary: event.data.summary || s.summary,
+                            }
+                          : s,
+                      ),
+                    }
+                  : m,
+              ),
+            );
           } else if (event.type === "tool.started") {
             setActiveTool({
               toolName: event.data.tool_name,
@@ -563,6 +720,16 @@ function ChatWorkspaceContent() {
               status: event.data.status,
               summary: event.data.summary,
             });
+          } else if (event.type === "campaign.created") {
+            loadCampaignData(event.data.campaign_id);
+          } else if (event.type === "assessment.completed") {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === tempAssistantMsgId
+                  ? { ...m, structuredReport: event.data.structured_report }
+                  : m,
+              ),
+            );
           } else if (event.type === "message.completed") {
             setMessages((prev) =>
               prev.map((m) =>
@@ -571,6 +738,8 @@ function ChatWorkspaceContent() {
                       ...m,
                       id: event.data.assistant_message_id || m.id,
                       citations: event.data.citations || m.citations,
+                      structuredReport:
+                        event.data.structured_report || m.structuredReport,
                       isStreaming: false,
                     }
                   : m,
@@ -804,8 +973,12 @@ function ChatWorkspaceContent() {
                   role={msg.role}
                   content={msg.content}
                   citations={msg.citations}
+                  planSteps={msg.planSteps}
+                  structuredReport={msg.structuredReport}
                   isStreaming={msg.isStreaming}
                   onInspectEvidence={(clauseId) => setInspectClauseId(clauseId)}
+                  onApplyCompliantRewrite={handleApplyCompliantRewrite}
+                  onApproveAndSealDossier={handleApproveAndSealDossier}
                 />
               ))}
 
