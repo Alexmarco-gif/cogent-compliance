@@ -38,6 +38,7 @@ export const sendMessageStreamSchema = z.object({
   attachment_asset_ids: z.array(z.string().uuid()).default([]).optional(),
   campaign_urls: z.array(z.string().url()).default([]).optional(),
   active_campaign_id: z.string().uuid().nullable().optional(),
+  referenced_product_id: z.string().uuid().nullable().optional(),
 });
 
 export const searchRegulatoryEvidenceArgsSchema = z.object({
@@ -127,6 +128,7 @@ export type SSEEvent =
         assistant_message_id: string;
         finish_reason: string;
         citations: CitationItem[];
+        conversation_title?: string;
       };
     }
   | {

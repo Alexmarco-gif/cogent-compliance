@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Plus,
   Search,
@@ -50,7 +50,7 @@ export interface WorkspaceSidebarProps {
 }
 
 export function WorkspaceSidebar({
-  conversations = [],
+  conversations,
   activeConversationId,
   onSelectConversation,
   onNewAudit,
@@ -63,6 +63,7 @@ export function WorkspaceSidebar({
   onCloseMobile,
 }: WorkspaceSidebarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const activeKbTab = searchParams.get("tab") || "products";
   const { isLoaded, isSignedIn, orgId } = useAuth();
@@ -73,7 +74,13 @@ export function WorkspaceSidebar({
   const [editTitle, setEditTitle] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [subSummary, setSubSummary] = useState<SubscriptionSummary | null>(null);
+  const [selfConversations, setSelfConversations] = useState<ConversationRecord[]>([]);
+  const [loadingSelfConversations, setLoadingSelfConversations] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+
+  const managesOwnThreads = conversations === undefined;
+  const resolvedConversations = conversations ?? selfConversations;
+  const resolvedLoading = managesOwnThreads ? loadingSelfConversations : loadingConversations;
 
   // Keyboard shortcut Cmd/Ctrl + K focuses sidebar search
   useEffect(() => {
@@ -86,6 +93,28 @@ export function WorkspaceSidebar({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // Load saved threads on non-chat pages (e.g. /knowledge-base, /drift-monitors) so history stays accessible
+  useEffect(() => {
+    if (!managesOwnThreads || !isLoaded || !isSignedIn || !orgId) return;
+    let active = true;
+    setLoadingSelfConversations(true);
+    fetch("/api/marketing-shield/v1/conversations?status=ACTIVE")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!active || !json?.success) return;
+        setSelfConversations(json.data?.conversations || []);
+      })
+      .catch(() => {
+        // Silent fail on navigation pages
+      })
+      .finally(() => {
+        if (active) setLoadingSelfConversations(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [managesOwnThreads, isLoaded, isSignedIn, orgId]);
 
   // Load current plan summary quietly when authenticated with an active org
   useEffect(() => {
@@ -117,13 +146,43 @@ export function WorkspaceSidebar({
     };
   }, [isLoaded, isSignedIn, orgId]);
 
-  const filteredConversations = conversations.filter((c) =>
+  const filteredConversations = resolvedConversations.filter((c) =>
     c.title.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
+  const handleRenameInternal = async (id: string, newTitle: string) => {
+    if (onRenameConversation) {
+      await onRenameConversation(id, newTitle);
+      return;
+    }
+    const res = await fetch(`/api/marketing-shield/v1/conversations/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: newTitle }),
+    });
+    if (res.ok) {
+      setSelfConversations((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, title: newTitle } : c)),
+      );
+    }
+  };
+
+  const handleArchiveInternal = async (id: string) => {
+    if (onArchiveConversation) {
+      await onArchiveConversation(id);
+      return;
+    }
+    const res = await fetch(`/api/marketing-shield/v1/conversations/${id}/archive`, {
+      method: "POST",
+    });
+    if (res.ok) {
+      setSelfConversations((prev) => prev.filter((c) => c.id !== id));
+    }
+  };
+
   const handleSaveRename = async (id: string) => {
-    if (editTitle.trim() && onRenameConversation) {
-      await onRenameConversation(id, editTitle.trim());
+    if (editTitle.trim()) {
+      await handleRenameInternal(id, editTitle.trim());
     }
     setEditingId(null);
   };
@@ -203,7 +262,7 @@ export function WorkspaceSidebar({
               </button>
             ) : (
               <Link
-                href="/chat"
+                href="/chat?new=1"
                 onClick={onCloseMobile}
                 className={navLinkClass(pathname === "/chat")}
               >
@@ -262,14 +321,14 @@ export function WorkspaceSidebar({
             </Link>
           </div>
 
-          {/* Group 3: Recent Threads (when on /chat or conversations provided) */}
-          {(conversations.length > 0 || loadingConversations) && (
+          {/* Group 3: Recent Threads (persisted across all workspace views) */}
+          {(resolvedConversations.length > 0 || resolvedLoading) && (
             <div className="space-y-0.5">
               <div className="px-2.5 pb-1 text-[11px] font-medium text-zinc-400">
                 Recent Threads
               </div>
 
-              {loadingConversations && conversations.length === 0 ? (
+              {resolvedLoading && resolvedConversations.length === 0 ? (
                 <div className="px-2.5 py-2 text-[12px] text-zinc-400">
                   Loading threads...
                 </div>
@@ -279,17 +338,20 @@ export function WorkspaceSidebar({
                 </div>
               ) : (
                 filteredConversations.map((conv) => {
-                  const isActive = conv.id === activeConversationId;
+                  const isActive = pathname === "/chat" && conv.id === activeConversationId;
                   const isEditing = conv.id === editingId;
 
                   return (
                     <div
                       key={conv.id}
                       onClick={() => {
-                        if (!isEditing && onSelectConversation) {
+                        if (isEditing) return;
+                        if (onSelectConversation) {
                           onSelectConversation(conv.id);
-                          onCloseMobile?.();
+                        } else {
+                          router.push(`/chat?conversationId=${conv.id}`);
                         }
+                        onCloseMobile?.();
                       }}
                       className={`group relative flex items-center justify-between rounded-md px-2.5 py-1.5 text-[12.5px] transition-colors cursor-pointer ${
                         isActive
@@ -329,56 +391,50 @@ export function WorkspaceSidebar({
                           <Check className="h-3.5 w-3.5" />
                         </button>
                       ) : (
-                        (onRenameConversation || onArchiveConversation) && (
-                          <div className="relative shrink-0">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setMenuOpenId(menuOpenId === conv.id ? null : conv.id);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-zinc-400 hover:text-zinc-900 transition-opacity"
-                              aria-label="Thread options"
-                            >
-                              <MoreHorizontal className="h-3.5 w-3.5" />
-                            </button>
+                        <div className="relative shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuOpenId(menuOpenId === conv.id ? null : conv.id);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-zinc-400 hover:text-zinc-900 transition-opacity"
+                            aria-label="Thread options"
+                          >
+                            <MoreHorizontal className="h-3.5 w-3.5" />
+                          </button>
 
-                            {menuOpenId === conv.id && (
-                              <div
-                                className="absolute right-0 top-6 z-30 w-28 bg-white border border-zinc-200 rounded-md shadow-md py-1 text-[12px]"
-                                onClick={(e) => e.stopPropagation()}
+                          {menuOpenId === conv.id && (
+                            <div
+                              className="absolute right-0 top-6 z-30 w-28 bg-white border border-zinc-200 rounded-md shadow-md py-1 text-[12px]"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingId(conv.id);
+                                  setEditTitle(conv.title);
+                                  setMenuOpenId(null);
+                                }}
+                                className="w-full text-left px-2.5 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-1.5"
                               >
-                                {onRenameConversation && (
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      setEditingId(conv.id);
-                                      setEditTitle(conv.title);
-                                      setMenuOpenId(null);
-                                    }}
-                                    className="w-full text-left px-2.5 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-1.5"
-                                  >
-                                    <Edit2 className="h-3 w-3" />
-                                    <span>Rename</span>
-                                  </button>
-                                )}
-                                {onArchiveConversation && (
-                                  <button
-                                    type="button"
-                                    onClick={async () => {
-                                      setMenuOpenId(null);
-                                      await onArchiveConversation(conv.id);
-                                    }}
-                                    className="w-full text-left px-2.5 py-1.5 text-rose-700 hover:bg-rose-50 flex items-center gap-1.5"
-                                  >
-                                    <Archive className="h-3 w-3" />
-                                    <span>Archive</span>
-                                  </button>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        )
+                                <Edit2 className="h-3 w-3" />
+                                <span>Rename</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  setMenuOpenId(null);
+                                  await handleArchiveInternal(conv.id);
+                                }}
+                                className="w-full text-left px-2.5 py-1.5 text-rose-700 hover:bg-rose-50 flex items-center gap-1.5"
+                              >
+                                <Archive className="h-3 w-3" />
+                                <span>Archive</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   );

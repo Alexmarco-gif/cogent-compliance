@@ -20,7 +20,7 @@ export interface MechanicalLocksInput {
     productType: string;
     interestRateMin?: number;
     interestRateMax?: number;
-    interestRateType?: "APR" | "MONTHLY" | "FLAT";
+    interestRateType?: "APR" | "MONTHLY" | "FLAT" | "DAILY";
     processingFeePercent?: number;
     managementFeePercent?: number;
     tenorMinDays?: number;

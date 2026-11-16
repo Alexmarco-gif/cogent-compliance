@@ -2,12 +2,12 @@
 
 import React, { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth, OrganizationSwitcher } from "@clerk/nextjs";
 import { WorkspaceSidebar } from "@/components/shell/WorkspaceSidebar";
 import { WorkspaceHeader } from "@/components/shell/WorkspaceHeader";
 import { AdaptiveMessageRenderer } from "@/components/chat/AdaptiveMessageRenderer";
-import { ChatComposer } from "@/components/chat/ChatComposer";
+import { ChatComposer, type ProductOption } from "@/components/chat/ChatComposer";
 import { ToolActivityPill, type ToolActivityProps } from "@/components/chat/ToolActivityPill";
 import { EvidenceDrawer } from "@/components/chat/EvidenceDrawer";
 import { ContextualCampaignInspector } from "@/components/campaign/ContextualCampaignInspector";
@@ -15,8 +15,9 @@ import type { Finding } from "@/components/campaign/FindingCard";
 import type { LockResult } from "@/components/campaign/Tab1LocksOverview";
 import type { ExtractionData } from "@/components/campaign/Tab2AssetBoundingBoxes";
 import type { ConversationRecord, MessageRecord } from "@/modules/conversations/conversation.service";
+import { deriveConversationTopicTitle } from "@/modules/conversations/topic-title";
 import type { CitationItem, SSEEvent } from "@/contracts/conversation.contracts";
-import { extractApiError, extractSseDataFromBlock } from "@/lib/api-client";
+import { extractApiError, extractSseDataFromBlock, unwrapApiList } from "@/lib/api-client";
 import { PanelRight, AlertTriangle, LogIn, X, Plus } from "lucide-react";
 
 interface DisplayMessage {
@@ -57,6 +58,10 @@ interface ActiveAssetState {
 
 function ChatWorkspaceContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedConvId = searchParams.get("conversationId");
+  const isExplicitNewAudit = searchParams.get("new") === "1";
+
   const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
   const [onboardingReady, setOnboardingReady] = useState(false);
   const [conversations, setConversations] = useState<ConversationRecord[]>([]);
@@ -69,6 +74,10 @@ function ChatWorkspaceContent() {
   const [inspectClauseId, setInspectClauseId] = useState<string | null>(null);
   const [authIssue, setAuthIssue] = useState<"UNAUTHENTICATED" | "NO_ORG" | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
+
+  // Referenced Product Schedule State
+  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
 
   // Layout State
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -88,6 +97,9 @@ function ChatWorkspaceContent() {
   const conversationsRef = useRef<ConversationRecord[]>([]);
   conversationsRef.current = conversations;
   const skipNextLoadForConvRef = useRef<string | null>(null);
+  const explicitNewRef = useRef<boolean>(isExplicitNewAudit);
+  const requestedConvIdRef = useRef<string | null>(requestedConvId);
+  requestedConvIdRef.current = requestedConvId;
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -125,6 +137,18 @@ function ChatWorkspaceContent() {
       setChatError(null);
       const list: ConversationRecord[] = json.data?.conversations || [];
       setConversations(list);
+
+      if (explicitNewRef.current) {
+        setActiveConvId(null);
+        return;
+      }
+
+      const targetFromUrl = requestedConvIdRef.current;
+      if (targetFromUrl && list.some((c) => c.id === targetFromUrl)) {
+        setActiveConvId(targetFromUrl);
+        return;
+      }
+
       const firstConv = list[0];
       if (firstConv && !activeConvIdRef.current) {
         setActiveConvId(firstConv.id);
@@ -187,7 +211,31 @@ function ChatWorkspaceContent() {
   useEffect(() => {
     if (!clerkLoaded || !isSignedIn || !orgId || !onboardingReady) return;
     loadConversations();
+
+    fetch("/api/marketing-shield/v1/products?status=ACTIVE")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!json) return;
+        const items = unwrapApiList<ProductOption>(json);
+        setProducts(items);
+      })
+      .catch(() => {
+        // Non-blocking: product list stays empty on network failure
+      });
   }, [clerkLoaded, isSignedIn, orgId, onboardingReady, loadConversations]);
+
+  useEffect(() => {
+    if (isExplicitNewAudit) {
+      explicitNewRef.current = true;
+      setActiveConvId(null);
+      setMessages([]);
+      setActiveCampaign(null);
+      setShowInspector(false);
+    } else if (requestedConvId) {
+      explicitNewRef.current = false;
+      setActiveConvId(requestedConvId);
+    }
+  }, [isExplicitNewAudit, requestedConvId]);
 
   const loadCampaignData = useCallback(async (campaignId: string) => {
     try {
@@ -271,29 +319,27 @@ function ChatWorkspaceContent() {
     };
   }, [activeConvId, loadCampaignData]);
 
-  const handleNewConversation = async () => {
-    try {
-      const res = await fetch("/api/marketing-shield/v1/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "New Audit" }),
-      });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || !json.success || !json.data) {
-        applyApiFailure(res.status, json, "Failed to start a new audit.");
-        return;
-      }
-      setAuthIssue(null);
-      setChatError(null);
-      setConversations((prev) => [json.data, ...prev]);
-      setActiveConvId(json.data.id);
-      setMessages([]);
-      setActiveCampaign(null);
-      setShowInspector(false);
-    } catch (err) {
-      console.error("Failed to create conversation", err);
-      setChatError("Network error while creating a new audit.");
-    }
+  const handleSelectConversation = (id: string) => {
+    explicitNewRef.current = false;
+    setActiveConvId(id);
+    setChatError(null);
+    router.replace(`/chat?conversationId=${id}`, { scroll: false });
+  };
+
+  const handleNewConversation = () => {
+    explicitNewRef.current = true;
+    activeConvIdRef.current = null;
+    setActiveConvId(null);
+    setMessages([]);
+    setActiveCampaign(null);
+    setActiveAssessment(null);
+    setCampaignFindings([]);
+    setCampaignAsset(null);
+    setAssetExtraction(null);
+    setShowInspector(false);
+    setChatError(null);
+    setAuthIssue(null);
+    router.replace("/chat?new=1", { scroll: false });
   };
 
   const handleRename = async (id: string, newTitle: string) => {
@@ -327,10 +373,15 @@ function ChatWorkspaceContent() {
         applyApiFailure(res.status, json, "Failed to archive thread.");
         return;
       }
-      setConversations((prev) => prev.filter((c) => c.id !== id));
+      const remaining = conversations.filter((c) => c.id !== id);
+      setConversations(remaining);
       if (activeConvId === id) {
-        const remaining = conversations.filter((c) => c.id !== id);
-        setActiveConvId(remaining[0]?.id || null);
+        const nextId = remaining[0]?.id || null;
+        explicitNewRef.current = !nextId;
+        setActiveConvId(nextId);
+        router.replace(nextId ? `/chat?conversationId=${nextId}` : "/chat?new=1", {
+          scroll: false,
+        });
       }
     } catch (err) {
       console.error("Failed to archive conversation", err);
@@ -340,14 +391,19 @@ function ChatWorkspaceContent() {
 
   const handleAssetUploaded = async (_assetId: string, filename: string) => {
     let currentConvId = activeConvId ?? activeConvIdRef.current;
+    const selectedProduct = products.find((p) => p.id === selectedProductId);
     const baseTitle = filename.replace(/\.[^/.]+$/, "").trim();
-    const safeTitle = baseTitle.length >= 3 ? baseTitle : `${baseTitle || "Campaign"} Asset`;
+    const safeTitle = deriveConversationTopicTitle("", {
+      productName: selectedProduct?.product_name,
+      attachmentName: filename,
+    });
+    const campaignName = baseTitle.length >= 3 ? baseTitle : `${baseTitle || "Campaign"} Asset`;
 
     if (!currentConvId) {
       const convRes = await fetch("/api/marketing-shield/v1/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: safeTitle }),
+        body: JSON.stringify({ title: safeTitle, context_type: "CAMPAIGN" }),
       });
       const convJson = await convRes.json().catch(() => ({}));
       if (!convRes.ok || !convJson.success || !convJson.data) {
@@ -355,10 +411,12 @@ function ChatWorkspaceContent() {
         return;
       }
       currentConvId = convJson.data.id;
+      explicitNewRef.current = false;
       activeConvIdRef.current = currentConvId;
       skipNextLoadForConvRef.current = currentConvId;
       setActiveConvId(currentConvId);
       setConversations((prev) => [convJson.data, ...prev]);
+      router.replace(`/chat?conversationId=${currentConvId}`, { scroll: false });
     }
 
     try {
@@ -367,8 +425,9 @@ function ChatWorkspaceContent() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           conversation_id: currentConvId,
-          campaign_name: safeTitle,
+          campaign_name: campaignName,
           channel: "SOCIAL_MEDIA",
+          product_id: selectedProductId || undefined,
           initial_content_text: `Campaign asset ${filename} uploaded for compliance review.`,
         }),
       });
@@ -389,13 +448,20 @@ function ChatWorkspaceContent() {
   const handleSendMessage = async (text: string): Promise<boolean> => {
     setChatError(null);
     let currentConvId = activeConvId ?? activeConvIdRef.current;
+    const selectedProduct = products.find((p) => p.id === selectedProductId);
 
     if (!currentConvId) {
+      const topicTitle = deriveConversationTopicTitle(text, {
+        productName: selectedProduct?.product_name,
+      });
       try {
         const createRes = await fetch("/api/marketing-shield/v1/conversations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ title: text.slice(0, 48) }),
+          body: JSON.stringify({
+            title: topicTitle,
+            context_type: selectedProduct ? "CAMPAIGN" : "GENERAL",
+          }),
         });
         const createJson = await createRes.json().catch(() => ({}));
         if (!createRes.ok || !createJson.success || !createJson.data) {
@@ -403,11 +469,13 @@ function ChatWorkspaceContent() {
           return false;
         }
         currentConvId = createJson.data.id;
+        explicitNewRef.current = false;
         activeConvIdRef.current = currentConvId;
         skipNextLoadForConvRef.current = currentConvId;
         setAuthIssue(null);
         setActiveConvId(currentConvId);
         setConversations((prev) => [createJson.data, ...prev]);
+        router.replace(`/chat?conversationId=${currentConvId}`, { scroll: false });
       } catch (err) {
         console.error("Failed to create initial conversation", err);
         setChatError("Unable to reach the workspace server. Check your connection and try again.");
@@ -447,7 +515,10 @@ function ChatWorkspaceContent() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ content: text }),
+          body: JSON.stringify({
+            content: text,
+            referenced_product_id: selectedProductId || undefined,
+          }),
         },
       );
 
@@ -505,6 +576,12 @@ function ChatWorkspaceContent() {
                   : m,
               ),
             );
+            const updatedTitle = event.data.conversation_title;
+            if (updatedTitle && currentConvId) {
+              setConversations((prev) =>
+                prev.map((c) => (c.id === currentConvId ? { ...c, title: updatedTitle } : c)),
+              );
+            }
           } else if (event.type === "message.failed") {
             const failMsg = event.data.message || "Compliance review failed.";
             setChatError(failMsg);
@@ -588,7 +665,7 @@ function ChatWorkspaceContent() {
       <WorkspaceSidebar
         conversations={conversations}
         activeConversationId={activeConvId}
-        onSelectConversation={(id) => setActiveConvId(id)}
+        onSelectConversation={handleSelectConversation}
         onNewAudit={handleNewConversation}
         onRenameConversation={handleRename}
         onArchiveConversation={handleArchive}
@@ -706,6 +783,9 @@ function ChatWorkspaceContent() {
                 conversationId={activeConvId || undefined}
                 disabled={isStreaming}
                 isZeroState={true}
+                products={products}
+                selectedProductId={selectedProductId}
+                onSelectProduct={setSelectedProductId}
               />
             </div>
           </div>
@@ -750,6 +830,9 @@ function ChatWorkspaceContent() {
                 conversationId={activeConvId || undefined}
                 disabled={isStreaming}
                 isZeroState={false}
+                products={products}
+                selectedProductId={selectedProductId}
+                onSelectProduct={setSelectedProductId}
               />
             </footer>
           </>

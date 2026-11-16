@@ -64,6 +64,7 @@ export async function POST(
             attachmentAssetIds: validated.attachment_asset_ids,
             campaignUrls: validated.campaign_urls,
             activeCampaignId: validated.active_campaign_id,
+            referencedProductId: validated.referenced_product_id,
           })) {
             if (isStreamClosed) break;
             const frame = `event: ${sseEvent.type}\ndata: ${JSON.stringify(sseEvent)}\n\n`;

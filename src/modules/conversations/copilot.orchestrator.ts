@@ -13,6 +13,9 @@ import {
   type ToolExecutionContext,
 } from "@/modules/ai-orchestration/tools/statutory-tools";
 import { conversationService } from "@/modules/conversations/conversation.service";
+import { deriveConversationTopicTitle } from "@/modules/conversations/topic-title";
+import { productService } from "@/modules/knowledge-base/product.service";
+import { mechanicalLocksEngine } from "@/modules/compliance-assessment/mechanical-locks";
 import type { CitationItem, SSEEvent } from "@/contracts/conversation.contracts";
 
 export interface StreamCopilotOptions {
@@ -23,6 +26,7 @@ export interface StreamCopilotOptions {
   attachmentAssetIds?: string[];
   campaignUrls?: string[];
   activeCampaignId?: string | null;
+  referencedProductId?: string | null;
 }
 
 export class CopilotOrchestrator {
@@ -82,6 +86,7 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
       metadata: {
         attachment_asset_ids: options.attachmentAssetIds || [],
         campaign_urls: options.campaignUrls || [],
+        referenced_product_id: options.referencedProductId || null,
       },
     });
 
@@ -143,6 +148,107 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
     }
 
     const collectedCitations: CitationItem[] = [];
+    let resolvedProductName: string | null = null;
+
+    // 3b. If the user explicitly referenced an approved product schedule, run deterministic Locks 1-3 + inject product truth
+    if (options.referencedProductId) {
+      const lockCallId = `tc_lock_${Date.now()}`;
+      yield {
+        type: "tool.started",
+        data: {
+          tool_call_id: lockCallId,
+          tool_name: "deterministic_mechanical_locks",
+          display_label: "Running Lock 1-3 & product rate truth verification...",
+        },
+      };
+
+      try {
+        const product = await productService.getProductTruth(options.tenantId, {
+          productId: options.referencedProductId,
+        });
+
+        if (product) {
+          resolvedProductName = product.product_name;
+          const terms = product.approved_terms || {};
+          const lockResult = await mechanicalLocksEngine.executeLocks({
+            tenantId: options.tenantId,
+            contentText: options.userPrompt,
+            productTruth: {
+              productName: product.product_name,
+              productType: product.product_type,
+              interestRateMin: terms.interest_rate_min,
+              interestRateMax: terms.interest_rate_max,
+              interestRateType: terms.interest_rate_type,
+              processingFeePercent: terms.processing_fee_percent,
+              managementFeePercent: terms.management_fee_percent,
+              tenorMinDays: terms.tenor_min_days,
+              tenorMaxDays: terms.tenor_max_days,
+              requiredDisclosures: terms.required_disclosures,
+            },
+          });
+
+          collectedCitations.push({
+            source_class: "INTERNAL_PLAYBOOK",
+            badge_label: "Approved Product Schedule",
+            instrument_title: `${product.product_name} (${product.product_type})`,
+            clause_reference: "Institutional Rate & Fee Truth",
+            regulatory_clause_id: product.id,
+          });
+
+          const lastUserTurn = contents[contents.length - 1];
+          if (lastUserTurn && lastUserTurn.role === "user") {
+            lastUserTurn.parts.push({
+              text: `\n<referenced_product_and_lock_scan>\n${JSON.stringify(
+                {
+                  product_id: product.id,
+                  product_name: product.product_name,
+                  product_type: product.product_type,
+                  approved_terms: product.approved_terms,
+                  deterministic_locks: lockResult,
+                },
+                null,
+                2,
+              )}\n</referenced_product_and_lock_scan>\nEvaluate the user's promotional copy strictly against this authoritative product schedule and explicitly report every Lock 1, Lock 2, and Lock 3 breach returned above.`,
+            });
+          }
+
+          yield {
+            type: "tool.completed",
+            data: {
+              tool_call_id: lockCallId,
+              tool_name: "deterministic_mechanical_locks",
+              status: "COMPLETED",
+              summary: `${product.product_name}: ${lockResult.totalBreachCount} lock breach(es) detected`,
+            },
+          };
+        } else {
+          yield {
+            type: "tool.completed",
+            data: {
+              tool_call_id: lockCallId,
+              tool_name: "deterministic_mechanical_locks",
+              status: "COMPLETED",
+              summary: "Referenced product not active; ran statutory evaluation",
+            },
+          };
+        }
+      } catch (prodErr) {
+        logger.warn("Referenced product lock scan failed softly", {
+          error: (prodErr as Error).message,
+          referencedProductId: options.referencedProductId,
+        });
+        yield {
+          type: "tool.completed",
+          data: {
+            tool_call_id: lockCallId,
+            tool_name: "deterministic_mechanical_locks",
+            status: "FAILED",
+            summary: "Product schedule lookup encountered an error",
+          },
+        };
+      }
+    }
+
     let fullResponseText = "";
     let toolRounds = 0;
     const maxToolRounds = 3;
@@ -449,6 +555,28 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
         },
       });
 
+      // 4b. Contextually refine conversation title on the first turn
+      let refinedTitle: string | undefined;
+      if (recentMessages.length <= 1) {
+        const firstHeading = fullResponseText.match(/^#{2,3}\s+(.+)$/m)?.[1] || null;
+        refinedTitle = deriveConversationTopicTitle(options.userPrompt, {
+          productName: resolvedProductName,
+          assistantHeading: firstHeading,
+        });
+        if (typeof conversationService.updateConversation === "function") {
+          try {
+            await conversationService.updateConversation(options.tenantId, options.conversationId, {
+              title: refinedTitle,
+            });
+          } catch (titleErr) {
+            logger.warn("Unable to update contextual conversation title", {
+              conversationId: options.conversationId,
+              error: (titleErr as Error).message,
+            });
+          }
+        }
+      }
+
       // Deduplicate citations by ID or URL
       const uniqueCitations: CitationItem[] = [];
       const seenKeys = new Set<string>();
@@ -466,6 +594,7 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC):
           assistant_message_id: asstMsg.id,
           finish_reason: "STOP",
           citations: uniqueCitations,
+          ...(refinedTitle ? { conversation_title: refinedTitle } : {}),
         },
       };
     } catch (streamError) {

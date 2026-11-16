@@ -11,8 +11,15 @@ import {
   Video,
   ClipboardCheck,
   FileText,
+  Tag,
 } from "lucide-react";
 import { extractApiError } from "@/lib/api-client";
+
+export interface ProductOption {
+  id: string;
+  product_name: string;
+  product_type: string;
+}
 
 export interface ChatComposerProps {
   onSendMessage: (content: string) => Promise<boolean | void>;
@@ -20,6 +27,9 @@ export interface ChatComposerProps {
   conversationId?: string;
   disabled?: boolean;
   isZeroState?: boolean;
+  products?: ProductOption[];
+  selectedProductId?: string | null;
+  onSelectProduct?: (productId: string | null) => void;
 }
 
 const STARTER_CARDS = [
@@ -78,6 +88,9 @@ export function ChatComposer({
   conversationId,
   disabled,
   isZeroState = false,
+  products = [],
+  selectedProductId = null,
+  onSelectProduct,
 }: ChatComposerProps) {
   const [content, setContent] = useState("");
   const [isUploading, setIsUploading] = useState(false);
@@ -263,6 +276,40 @@ export function ChatComposer({
               <Globe className="h-3.5 w-3.5 text-zinc-500" />
               <span>Scan URL</span>
             </button>
+
+            {onSelectProduct && (
+              <label
+                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12px] font-medium transition-colors cursor-pointer ${
+                  selectedProductId
+                    ? "border-zinc-900 bg-zinc-900 text-white"
+                    : "border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700"
+                }`}
+              >
+                <Tag
+                  className={`h-3.5 w-3.5 shrink-0 ${
+                    selectedProductId ? "text-zinc-200" : "text-zinc-500"
+                  }`}
+                />
+                <select
+                  aria-label="Reference approved product"
+                  value={selectedProductId || ""}
+                  onChange={(e) => onSelectProduct(e.target.value || null)}
+                  disabled={disabled || isUploading}
+                  className={`bg-transparent text-[12px] font-medium focus:outline-hidden cursor-pointer max-w-[170px] truncate ${
+                    selectedProductId ? "text-white" : "text-zinc-700"
+                  }`}
+                >
+                  <option value="" className="text-zinc-900 bg-white">
+                    {products.length > 0 ? "Ref: Product rate card" : "No products added"}
+                  </option>
+                  {products.map((prod) => (
+                    <option key={prod.id} value={prod.id} className="text-zinc-900 bg-white">
+                      {prod.product_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
 
           <button
