@@ -6,8 +6,15 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth, OrganizationSwitcher } from "@clerk/nextjs";
 import { WorkspaceSidebar } from "@/components/shell/WorkspaceSidebar";
 import { WorkspaceHeader } from "@/components/shell/WorkspaceHeader";
-import { AdaptiveMessageRenderer } from "@/components/chat/AdaptiveMessageRenderer";
-import { ChatComposer, type ProductOption } from "@/components/chat/ChatComposer";
+import {
+  AdaptiveMessageRenderer,
+  type MessageAttachmentChip,
+} from "@/components/chat/AdaptiveMessageRenderer";
+import {
+  ChatComposer,
+  type PendingAttachment,
+  type ProductOption,
+} from "@/components/chat/ChatComposer";
 import { ToolActivityPill, type ToolActivityProps } from "@/components/chat/ToolActivityPill";
 import { EvidenceDrawer } from "@/components/chat/EvidenceDrawer";
 import { ContextualCampaignInspector } from "@/components/campaign/ContextualCampaignInspector";
@@ -32,6 +39,7 @@ interface DisplayMessage {
   citations?: CitationItem[];
   planSteps?: ExecutionPlanStep[];
   structuredReport?: StructuredComplianceReport;
+  attachments?: MessageAttachmentChip[];
   isStreaming?: boolean;
 }
 
@@ -398,69 +406,6 @@ function ChatWorkspaceContent() {
     }
   };
 
-  const handleAssetUploaded = async (
-    assetId: string,
-    filename: string,
-    extractedText?: string,
-  ) => {
-    let currentConvId = activeConvId ?? activeConvIdRef.current;
-    const selectedProduct = products.find((p) => p.id === selectedProductId);
-    const baseTitle = filename.replace(/\.[^/.]+$/, "").trim();
-    const safeTitle = deriveConversationTopicTitle("", {
-      productName: selectedProduct?.product_name,
-      attachmentName: filename,
-    });
-    const campaignName = baseTitle.length >= 3 ? baseTitle : `${baseTitle || "Campaign"} Asset`;
-
-    if (!currentConvId) {
-      const convRes = await fetch("/api/marketing-shield/v1/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: safeTitle, context_type: "CAMPAIGN" }),
-      });
-      const convJson = await convRes.json().catch(() => ({}));
-      if (!convRes.ok || !convJson.success || !convJson.data) {
-        applyApiFailure(convRes.status, convJson, "Failed to initialize audit for uploaded asset.");
-        return;
-      }
-      currentConvId = convJson.data.id;
-      explicitNewRef.current = false;
-      activeConvIdRef.current = currentConvId;
-      skipNextLoadForConvRef.current = currentConvId;
-      setActiveConvId(currentConvId);
-      setConversations((prev) => [convJson.data, ...prev]);
-      router.replace(`/chat?conversationId=${currentConvId}`, { scroll: false });
-    }
-
-    try {
-      const campRes = await fetch("/api/marketing-shield/v1/campaigns", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversation_id: currentConvId,
-          campaign_name: campaignName,
-          channel: "SOCIAL_MEDIA",
-          product_id: selectedProductId || undefined,
-          asset_ids: assetId ? [assetId] : undefined,
-          initial_content_text:
-            extractedText?.trim() ||
-            `Campaign asset ${filename} uploaded for compliance review.`,
-        }),
-      });
-
-      const campJson = await campRes.json().catch(() => ({}));
-      if (!campRes.ok || !campJson.success || !campJson.data) {
-        applyApiFailure(campRes.status, campJson, "Failed to initialize campaign for uploaded asset.");
-        return;
-      }
-      const campaign = campJson.data;
-      await loadCampaignData(campaign.id);
-    } catch (err) {
-      console.error("Failed to initialize campaign for uploaded asset", err);
-      setChatError("Network error initializing campaign for uploaded asset.");
-    }
-  };
-
   const ensureActiveCampaignWithCopy = async (rewrittenCopy: string): Promise<{
     campaignId: string;
     revisionId: string;
@@ -577,15 +522,21 @@ function ChatWorkspaceContent() {
 
   const handleSendMessage = async (
     text: string,
-    msgOptions?: { attachmentAssetIds?: string[] },
+    msgOptions?: {
+      attachmentAssetIds?: string[];
+      attachments?: PendingAttachment[];
+    },
   ): Promise<boolean> => {
     setChatError(null);
     let currentConvId = activeConvId ?? activeConvIdRef.current;
     const selectedProduct = products.find((p) => p.id === selectedProductId);
+    const attachedAssets = msgOptions?.attachments || [];
+    const attachmentAssetIds = msgOptions?.attachmentAssetIds || [];
 
     if (!currentConvId) {
       const topicTitle = deriveConversationTopicTitle(text, {
         productName: selectedProduct?.product_name,
+        attachmentName: attachedAssets[0]?.filename,
       });
       try {
         const createRes = await fetch("/api/marketing-shield/v1/conversations", {
@@ -593,7 +544,7 @@ function ChatWorkspaceContent() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             title: topicTitle,
-            context_type: selectedProduct ? "CAMPAIGN" : "GENERAL",
+            context_type: selectedProduct || attachmentAssetIds.length > 0 ? "CAMPAIGN" : "GENERAL",
           }),
         });
         const createJson = await createRes.json().catch(() => ({}));
@@ -621,11 +572,46 @@ function ChatWorkspaceContent() {
       return false;
     }
 
+    if (attachmentAssetIds.length > 0 && !activeCampaign) {
+      const firstFilename = attachedAssets[0]?.filename || "Campaign Asset";
+      const baseTitle = firstFilename.replace(/\.[^/.]+$/, "").trim();
+      const campaignName = baseTitle.length >= 3 ? baseTitle : `${baseTitle || "Campaign"} Asset`;
+      const combinedExtracted = attachedAssets
+        .map((a) => a.extractedText?.trim())
+        .filter(Boolean)
+        .join("\n\n");
+
+      void fetch("/api/marketing-shield/v1/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: currentConvId,
+          campaign_name: campaignName,
+          channel: "SOCIAL_MEDIA",
+          product_id: selectedProductId || undefined,
+          asset_ids: attachmentAssetIds,
+          initial_content_text:
+            combinedExtracted || `Campaign asset ${firstFilename} uploaded for compliance review.`,
+        }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((campJson) => {
+          if (campJson?.success && campJson.data?.id) {
+            void loadCampaignData(campJson.data.id);
+          }
+        })
+        .catch(() => {});
+    }
+
     const tempUserMsgId = `user_${Date.now()}`;
     const userMsg: DisplayMessage = {
       id: tempUserMsgId,
       role: "USER",
       content: text,
+      attachments: attachedAssets.map((a) => ({
+        assetId: a.assetId,
+        filename: a.filename,
+      })),
       isStreaming: false,
     };
 
@@ -655,11 +641,12 @@ function ChatWorkspaceContent() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             content: text,
-            attachment_asset_ids: msgOptions?.attachmentAssetIds?.length
-              ? msgOptions.attachmentAssetIds
-              : campaignAsset?.id
-                ? [campaignAsset.id]
-                : undefined,
+            attachment_asset_ids:
+              attachmentAssetIds.length > 0
+                ? attachmentAssetIds
+                : campaignAsset?.id
+                  ? [campaignAsset.id]
+                  : undefined,
             referenced_product_id: selectedProductId || undefined,
             active_campaign_id: activeCampaign?.id || undefined,
             campaign_urls: extractedUrls.length > 0 ? extractedUrls : undefined,
@@ -961,7 +948,6 @@ function ChatWorkspaceContent() {
 
               <ChatComposer
                 onSendMessage={handleSendMessage}
-                onAssetUploaded={handleAssetUploaded}
                 conversationId={activeConvId || undefined}
                 disabled={isStreaming}
                 isZeroState={true}
@@ -988,6 +974,7 @@ function ChatWorkspaceContent() {
                   citations={msg.citations}
                   planSteps={msg.planSteps}
                   structuredReport={msg.structuredReport}
+                  attachments={msg.attachments}
                   isStreaming={msg.isStreaming}
                   onInspectEvidence={(clauseId) => setInspectClauseId(clauseId)}
                   onApplyCompliantRewrite={handleApplyCompliantRewrite}
@@ -1012,7 +999,6 @@ function ChatWorkspaceContent() {
             <footer className="px-4 sm:px-6 py-3.5 bg-white border-t border-zinc-200 shrink-0">
               <ChatComposer
                 onSendMessage={handleSendMessage}
-                onAssetUploaded={handleAssetUploaded}
                 conversationId={activeConvId || undefined}
                 disabled={isStreaming}
                 isZeroState={false}

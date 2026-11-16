@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { FileText, BookOpen, Globe, ExternalLink } from "lucide-react";
+import { FileText, BookOpen, Globe, ExternalLink, Paperclip } from "lucide-react";
 import type {
   CitationItem,
   ExecutionPlanStep,
@@ -12,12 +12,18 @@ import {
   AutonomousAnalystWorkbench,
 } from "@/components/chat/AutonomousAnalystWorkbench";
 
+export interface MessageAttachmentChip {
+  assetId?: string;
+  filename: string;
+}
+
 export interface AdaptiveMessageRendererProps {
   content: string;
   role: "USER" | "ASSISTANT" | "SYSTEM" | "TOOL";
   citations?: CitationItem[];
   planSteps?: ExecutionPlanStep[];
   structuredReport?: StructuredComplianceReport;
+  attachments?: MessageAttachmentChip[];
   onInspectEvidence?: (clauseId: string) => void;
   onApplyCompliantRewrite?: (rewrittenCopy: string) => Promise<void> | void;
   onApproveAndSealDossier?: (rewrittenCopy: string) => Promise<void> | void;
@@ -30,6 +36,7 @@ export function AdaptiveMessageRenderer({
   citations = [],
   planSteps = [],
   structuredReport,
+  attachments = [],
   onInspectEvidence,
   onApplyCompliantRewrite,
   onApproveAndSealDossier,
@@ -38,8 +45,21 @@ export function AdaptiveMessageRenderer({
   if (role === "USER") {
     return (
       <div className="max-w-3xl mx-auto flex justify-end my-4">
-        <div className="max-w-[80%] rounded-2xl bg-zinc-100 border border-zinc-200/80 px-4 py-2.5 text-[14px] text-zinc-950 leading-relaxed">
-          <p className="whitespace-pre-wrap">{content}</p>
+        <div className="max-w-[80%] rounded-2xl bg-zinc-100 border border-zinc-200/80 px-4 py-2.5 text-[14px] text-zinc-950 leading-relaxed space-y-2">
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {attachments.map((att, idx) => (
+                <span
+                  key={att.assetId || `${att.filename}-${idx}`}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[12px] font-medium text-zinc-700"
+                >
+                  <Paperclip className="h-3 w-3 text-zinc-500 shrink-0" />
+                  <span className="truncate max-w-[220px]">{att.filename}</span>
+                </span>
+              ))}
+            </div>
+          )}
+          {content && <p className="whitespace-pre-wrap">{content}</p>}
         </div>
       </div>
     );
@@ -149,22 +169,50 @@ export function AdaptiveMessageRenderer({
   );
 }
 
+interface ListEntry {
+  text: string;
+  indented: boolean;
+}
+
 /**
  * Semantic Markdown parser respecting DOC-10-ACPC typography rules.
  */
 function renderMarkdownToTypography(text: string): React.ReactNode[] {
-  const lines = text.split("\n");
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
   const nodes: React.ReactNode[] = [];
   let blockquoteBuffer: string[] = [];
-  let listBuffer: { type: "ul" | "ol"; items: string[] } | null = null;
+  let listBuffer: { type: "ul" | "ol"; items: ListEntry[] } | null = null;
   let tableBuffer: string[] = [];
+  let codeBlockBuffer: { lang: string; lines: string[] } | null = null;
+
+  const flushCodeBlock = () => {
+    if (!codeBlockBuffer) return;
+    const rawCode = codeBlockBuffer.lines.join("\n").trimEnd();
+    const lang = codeBlockBuffer.lang;
+    nodes.push(
+      <div
+        key={`code-${nodes.length}`}
+        className="my-3 rounded-lg border border-zinc-200 bg-zinc-50/90 overflow-hidden"
+      >
+        {lang && lang.toLowerCase() !== "text" && lang.toLowerCase() !== "plaintext" && (
+          <div className="px-3.5 py-1.5 border-b border-zinc-200/80 bg-zinc-100/70 text-[11px] font-mono uppercase tracking-wider text-zinc-500">
+            {lang}
+          </div>
+        )}
+        <pre className="p-3.5 overflow-x-auto text-[12.5px] font-mono text-zinc-800 leading-relaxed whitespace-pre-wrap break-words">
+          <code>{rawCode}</code>
+        </pre>
+      </div>,
+    );
+    codeBlockBuffer = null;
+  };
 
   const flushBlockquote = () => {
     if (blockquoteBuffer.length > 0) {
       nodes.push(
         <blockquote
           key={`bq-${nodes.length}`}
-          className="border-l-2 border-zinc-300 bg-zinc-50 pl-4 pr-3 py-2.5 my-2 text-[13.5px] text-zinc-700 italic rounded-r-md leading-relaxed"
+          className="border-l-2 border-zinc-300 bg-zinc-50 pl-4 pr-3 py-2.5 my-2 text-[13.5px] text-zinc-700 italic rounded-r-md leading-relaxed space-y-1"
         >
           {blockquoteBuffer.map((line, idx) => (
             <p key={idx}>{parseInlineFormatting(line)}</p>
@@ -176,53 +224,47 @@ function renderMarkdownToTypography(text: string): React.ReactNode[] {
   };
 
   const flushList = () => {
-    if (listBuffer) {
-      if (listBuffer.type === "ul") {
-        nodes.push(
-          <ul
-            key={`ul-${nodes.length}`}
-            className="my-2 list-disc list-outside ml-5 space-y-1.5 text-zinc-800"
+    if (!listBuffer) return;
+    const Tag = listBuffer.type === "ul" ? "ul" : "ol";
+    const listStyle = listBuffer.type === "ul" ? "list-disc" : "list-decimal";
+    nodes.push(
+      <Tag
+        key={`${listBuffer.type}-${nodes.length}`}
+        className={`my-2 ${listStyle} list-outside ml-5 space-y-1.5 text-zinc-800`}
+      >
+        {listBuffer.items.map((item, idx) => (
+          <li
+            key={idx}
+            className={`leading-relaxed ${item.indented ? "ml-5 list-[circle]" : ""}`}
           >
-            {listBuffer.items.map((item, idx) => (
-              <li key={idx} className="leading-relaxed">
-                {parseInlineFormatting(item)}
-              </li>
-            ))}
-          </ul>,
-        );
-      } else {
-        nodes.push(
-          <ol
-            key={`ol-${nodes.length}`}
-            className="my-2 list-decimal list-outside ml-5 space-y-1.5 text-zinc-800"
-          >
-            {listBuffer.items.map((item, idx) => (
-              <li key={idx} className="leading-relaxed">
-                {parseInlineFormatting(item)}
-              </li>
-            ))}
-          </ol>,
-        );
-      }
-      listBuffer = null;
-    }
+            {parseInlineFormatting(item.text)}
+          </li>
+        ))}
+      </Tag>,
+    );
+    listBuffer = null;
   };
 
   const flushTable = () => {
     if (tableBuffer.length >= 2) {
-      const parseRow = (row: string) =>
-        row
-          .split("|")
-          .slice(1, -1)
-          .map((cell) => cell.trim());
+      const parseRow = (row: string) => {
+        const stripped = row.trim().replace(/^\|/, "").replace(/\|$/, "");
+        return stripped.split("|").map((cell) => cell.trim());
+      };
+
+      const isSeparatorRow = (row: string) =>
+        /^\s*\|?(?:\s*:?-{2,}:?\s*\|)+\s*:?-{2,}:?\s*\|?\s*$/.test(row) ||
+        /^\s*\|(?:\s*:?-{2,}:?\s*\|)+\s*$/.test(row);
 
       const headers = parseRow(tableBuffer[0] || "");
+      const hasSeparator = isSeparatorRow(tableBuffer[1] || "");
       const bodyRows = tableBuffer
-        .slice(2)
+        .slice(hasSeparator ? 2 : 1)
+        .filter((row) => !isSeparatorRow(row))
         .map(parseRow)
-        .filter((r) => r.length > 0);
+        .filter((r) => r.some((cell) => cell.length > 0));
 
-      if (headers.length > 0) {
+      if (headers.length > 0 && bodyRows.length > 0) {
         nodes.push(
           <div
             key={`tbl-${nodes.length}`}
@@ -232,7 +274,7 @@ function renderMarkdownToTypography(text: string): React.ReactNode[] {
               <thead>
                 <tr className="bg-zinc-50 border-b border-zinc-200 text-zinc-600 font-medium">
                   {headers.map((h, i) => (
-                    <th key={i} className="px-3 py-2">
+                    <th key={i} className="px-3 py-2 align-top">
                       {parseInlineFormatting(h)}
                     </th>
                   ))}
@@ -241,9 +283,9 @@ function renderMarkdownToTypography(text: string): React.ReactNode[] {
               <tbody className="divide-y divide-zinc-200 bg-white">
                 {bodyRows.map((row, rIdx) => (
                   <tr key={rIdx}>
-                    {row.map((cell, cIdx) => (
-                      <td key={cIdx} className="px-3 py-2 text-zinc-700">
-                        {parseInlineFormatting(cell)}
+                    {headers.map((_, cIdx) => (
+                      <td key={cIdx} className="px-3 py-2 text-zinc-700 align-top">
+                        {parseInlineFormatting(row[cIdx] ?? "")}
                       </td>
                     ))}
                   </tr>
@@ -261,7 +303,38 @@ function renderMarkdownToTypography(text: string): React.ReactNode[] {
     const line = lines[i] ?? "";
     const trimmed = line.trim();
 
-    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+    // 1. Fenced code block toggle (``` or ```lang)
+    const fenceMatch = /^```([\w-]*)\s*$/.exec(trimmed);
+    if (fenceMatch) {
+      if (codeBlockBuffer) {
+        flushCodeBlock();
+      } else {
+        flushTable();
+        flushBlockquote();
+        flushList();
+        codeBlockBuffer = { lang: fenceMatch[1] || "", lines: [] };
+      }
+      continue;
+    }
+
+    if (codeBlockBuffer) {
+      codeBlockBuffer.lines.push(line);
+      continue;
+    }
+
+    // 2. Skip ASCII grid border rows (+-----+-----+) outside code blocks
+    if (/^\+[-+=]+\+\s*$/.test(trimmed)) {
+      flushBlockquote();
+      flushList();
+      continue;
+    }
+
+    // 3. Markdown tables (lines with pipes)
+    const isTableLine =
+      (trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.length > 2) ||
+      (tableBuffer.length > 0 && trimmed.startsWith("|"));
+
+    if (isTableLine) {
       flushBlockquote();
       flushList();
       tableBuffer.push(trimmed);
@@ -270,6 +343,15 @@ function renderMarkdownToTypography(text: string): React.ReactNode[] {
       flushTable();
     }
 
+    // 4. Horizontal rules / long dashed or equals dividers
+    if (/^(?:[-*_]{3,}|={4,})\s*$/.test(trimmed)) {
+      flushBlockquote();
+      flushList();
+      nodes.push(<hr key={`hr-${nodes.length}`} className="my-4 border-zinc-200" />);
+      continue;
+    }
+
+    // 5. Blockquotes
     if (trimmed.startsWith(">")) {
       flushList();
       blockquoteBuffer.push(trimmed.replace(/^>\s*/, ""));
@@ -278,46 +360,74 @@ function renderMarkdownToTypography(text: string): React.ReactNode[] {
       flushBlockquote();
     }
 
-    if (/^[-*]\s+/.test(trimmed)) {
+    // 6. Unordered lists (including indented sub-bullets)
+    const ulMatch = /^(\s*)[-*•]\s+(.+)$/.exec(line);
+    if (ulMatch) {
+      const indented = (ulMatch[1] || "").length >= 2;
       if (!listBuffer || listBuffer.type !== "ul") {
         flushList();
         listBuffer = { type: "ul", items: [] };
       }
-      listBuffer.items.push(trimmed.replace(/^[-*]\s+/, ""));
+      listBuffer.items.push({ text: ulMatch[2] || "", indented });
       continue;
     }
 
-    if (/^\d+\.\s+/.test(trimmed)) {
+    // 7. Ordered lists
+    const olMatch = /^(\s*)\d+[.)]\s+(.+)$/.exec(line);
+    if (olMatch) {
+      const indented = (olMatch[1] || "").length >= 2;
       if (!listBuffer || listBuffer.type !== "ol") {
         flushList();
         listBuffer = { type: "ol", items: [] };
       }
-      listBuffer.items.push(trimmed.replace(/^\d+\.\s+/, ""));
+      listBuffer.items.push({ text: olMatch[2] || "", indented });
       continue;
     }
 
     flushList();
 
-    if (trimmed.startsWith("### ")) {
-      nodes.push(
-        <h3
-          key={`h3-${nodes.length}`}
-          className="text-[15px] font-semibold tracking-tight text-zinc-950 mt-5 mb-1.5"
-        >
-          {trimmed.replace(/^###\s+/, "")}
-        </h3>,
-      );
-      continue;
-    }
-    if (trimmed.startsWith("## ")) {
-      nodes.push(
-        <h4
-          key={`h4-${nodes.length}`}
-          className="text-[13px] font-semibold tracking-wide uppercase text-zinc-500 mt-4 mb-1.5"
-        >
-          {trimmed.replace(/^##\s+/, "")}
-        </h4>,
-      );
+    // 8. Headings (# through ######)
+    const headingMatch = /^(#{1,6})\s+(.+)$/.exec(trimmed);
+    if (headingMatch) {
+      const level = headingMatch[1]?.length || 3;
+      const headingText = headingMatch[2] || "";
+      if (level === 1) {
+        nodes.push(
+          <h2
+            key={`h1-${nodes.length}`}
+            className="text-[18px] font-semibold tracking-tight text-zinc-950 mt-5 mb-2"
+          >
+            {parseInlineFormatting(headingText)}
+          </h2>,
+        );
+      } else if (level === 2) {
+        nodes.push(
+          <h3
+            key={`h2-${nodes.length}`}
+            className="text-[16px] font-semibold tracking-tight text-zinc-950 mt-5 mb-1.5"
+          >
+            {parseInlineFormatting(headingText)}
+          </h3>,
+        );
+      } else if (level === 3) {
+        nodes.push(
+          <h3
+            key={`h3-${nodes.length}`}
+            className="text-[15px] font-semibold tracking-tight text-zinc-950 mt-4 mb-1.5"
+          >
+            {parseInlineFormatting(headingText)}
+          </h3>,
+        );
+      } else {
+        nodes.push(
+          <h4
+            key={`h4-${nodes.length}`}
+            className="text-[13.5px] font-semibold text-zinc-900 mt-3.5 mb-1"
+          >
+            {parseInlineFormatting(headingText)}
+          </h4>,
+        );
+      }
       continue;
     }
 
@@ -332,6 +442,7 @@ function renderMarkdownToTypography(text: string): React.ReactNode[] {
     );
   }
 
+  flushCodeBlock();
   flushTable();
   flushBlockquote();
   flushList();
@@ -340,23 +451,24 @@ function renderMarkdownToTypography(text: string): React.ReactNode[] {
 }
 
 function parseInlineFormatting(text: string): React.ReactNode[] {
-  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g);
+  const tokenRegex = /(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`|\[[^\]]+\]\(https?:\/\/[^)\s]+\))/g;
+  const parts = text.split(tokenRegex);
   return parts.map((part, idx) => {
-    if (part.startsWith("**") && part.endsWith("**")) {
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
       return (
         <strong key={idx} className="font-semibold text-zinc-950">
           {part.slice(2, -2)}
         </strong>
       );
     }
-    if (part.startsWith("*") && part.endsWith("*")) {
+    if (part.startsWith("*") && part.endsWith("*") && part.length > 2) {
       return (
         <em key={idx} className="italic text-zinc-700">
           {part.slice(1, -1)}
         </em>
       );
     }
-    if (part.startsWith("`") && part.endsWith("`")) {
+    if (part.startsWith("`") && part.endsWith("`") && part.length > 2) {
       return (
         <code
           key={idx}
@@ -364,6 +476,20 @@ function parseInlineFormatting(text: string): React.ReactNode[] {
         >
           {part.slice(1, -1)}
         </code>
+      );
+    }
+    const linkMatch = /^\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)$/.exec(part);
+    if (linkMatch) {
+      return (
+        <a
+          key={idx}
+          href={linkMatch[2]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline decoration-zinc-300 underline-offset-2 text-zinc-900 hover:decoration-zinc-700 transition-colors"
+        >
+          {linkMatch[1]}
+        </a>
       );
     }
     return part;

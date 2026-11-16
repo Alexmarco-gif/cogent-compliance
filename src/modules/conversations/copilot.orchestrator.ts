@@ -96,7 +96,9 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC & DOCUMENT 13):
    - Synthesize BOTH sources in your response:
      a) Anchor core statutory obligations in the verified Statutory Vault clauses when relevant.
      b) Incorporate real-time updates, recent regulatory circulars, enforcement actions, market news, and current public information from Live Web Intelligence (explicitly noting new or real-time updates alongside what is in the Vault).
-   - Do NOT repeat 'search_regulatory_evidence' or 'search_live_web' if <dual_grounding_context> already contains evidence for the user's query — write your complete compliance analysis immediately.
+   - Do NOT repeat 'search_regulatory_evidence' if <dual_grounding_context> already contains Vault clauses for the query.
+   - If <dual_grounding_context> has empty 'live_web_intelligence.live_sources' and the query involves current events, recent regulatory circulars, enforcement actions, or live market guidance, call 'search_live_web' once with a concise topical search query (e.g. 'CBN FCCPC digital lending APR disclosure guidelines Nigeria') before writing your final response.
+   - Call other tools only when specifically required (e.g. 'fetch_live_url_content' for a user-supplied URL, 'search_institutional_knowledge' for internal playbooks, 'get_product_approved_terms' for a named product, or 'get_regulatory_provision' for full verbatim text).
    - Never invent or fabricate clause numbers, circular dates, URLs, or penalty amounts.
 2. MANDATORY ANALYST OUTPUT FORMULA (PROBLEM -> RISK -> FIX):
    Whenever analyzing a promotion, product, flyer, or landing page, structure your analysis clearly around:
@@ -105,8 +107,10 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC & DOCUMENT 13):
    - ### 3. One-Click Resolution (Compliant Rewrite & Key Facts Statement)
 3. PRESENTATION & FORMATTING (DOC-10-ACPC):
    - Never repeat the user's prompt as an '# H1' heading.
-   - When citing statutory text, format it cleanly in blockquotes with exact section reference (e.g. '> Section 115, FCCPA 2018').
-   - Format Nigerian financial amounts with exact currency symbols (e.g. '₦50,000.00').
+   - Use clean, structured Markdown: use '###' and '####' section headings for hierarchy.
+   - For Key Facts Statements (KFS), fee schedules, rate comparisons, or violation matrices, ALWAYS use standard Markdown tables ('| Column | Column |' with '| --- | --- |'). NEVER draw ASCII box tables ('+---+---+', '|===|'), decorative '====' or '----' divider lines, or wrap prose/tables inside \`\`\`text code blocks.
+   - When citing statutory text or presenting compliant rewrite copy, format it cleanly in Markdown blockquotes ('> ...', e.g. '> Section 115, FCCPA 2018').
+   - Format Nigerian financial amounts with exact currency symbols (e.g. '₦50,000,000.00').
    - Highlight critical thresholds, APR percentages, and deadlines in bold.
    - Never output decorative emojis or colorful bracketed internal tags.
 4. SECURITY & UNTRUSTED MATERIAL:
@@ -122,22 +126,83 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC & DOCUMENT 13):
     ]);
   }
 
-  private buildDualSearchQueries(
+  public buildDualSearchQueries(
     userPrompt: string,
     productName?: string | null,
     extractedText?: string | null
   ): { vaultQuery: string; webQuery: string } {
-    const cleanPrompt = userPrompt.replace(/\s+/g, " ").trim();
+    const stripAttachmentBoilerplate = (raw: string): string =>
+      raw
+        .replace(/Review the attached campaign asset \([^)]*\) against[^.]*\./gi, " ")
+        .replace(/Uploaded campaign asset\s*(?:"[^"]*"|'[^']*'|\S+)?\.?/gi, " ")
+        .replace(/["']?[\w.-]+\.(?:jpg|jpeg|png|webp|pdf|docx)["']?/gi, " ")
+        .replace(/Please review the extracted copy\.?/gi, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+
+    const cleanPrompt = stripAttachmentBoilerplate(userPrompt);
     const cleanExtracted = (extractedText || "").replace(/\s+/g, " ").trim();
     const prefix = productName ? `${productName} ` : "";
-    const combined = cleanExtracted
+
+    const combinedForVault = cleanExtracted
       ? `${prefix}${cleanExtracted.slice(0, 220)} ${cleanPrompt}`.trim()
       : `${prefix}${cleanPrompt}`.trim();
-    const vaultQuery = combined.slice(0, 320).trim();
-    const webQuery = combined.slice(0, 240).trim();
+    const vaultQuery =
+      combinedForVault.slice(0, 320).trim() ||
+      "Nigerian financial marketing compliance disclosure rules";
+
+    // Build a concise, topical Google Search query (no filenames or boilerplate, keeping key claim + Nigeria regulatory context)
+    const analysisCorpus = `${cleanPrompt} ${cleanExtracted}`.toLowerCase();
+    const topicSignals: string[] = [];
+    if (/(loan|credit|apr|lending|borrow|repay|interest|tenor|quick cash|instant cash)/.test(analysisCorpus)) {
+      topicSignals.push("digital lending APR fee disclosure regulations");
+    }
+    if (/(0%|zero fee|free|instant|guaranteed|no collateral|risk[- ]free)/.test(analysisCorpus)) {
+      topicSignals.push("misleading financial advertising rules");
+    }
+    if (/(savings|investment|yield|roi|return|wealth|mutual fund|crypto|vasp)/.test(analysisCorpus)) {
+      topicSignals.push("SEC CBN investment promotion marketing rules");
+    }
+    if (/(cbn|fccpc|arcon|ndpc|ndpa|sec|asp|vetting|influencer|kyc|data|opt[- ]out)/.test(analysisCorpus)) {
+      topicSignals.push("CBN FCCPC ARCON compliance circular");
+    }
+
+    let webQuery = "";
+    if (cleanExtracted) {
+      const sanitizedProduct = (productName || "").replace(/\btest\s*\d*\b/gi, "").trim();
+      const extractedTerms = cleanExtracted
+        .replace(/[!?"'`()[\]{}]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 70);
+      const signals =
+        topicSignals.length > 0
+          ? topicSignals[0]!
+          : "CBN FCCPC ARCON financial advertising compliance";
+      const promptHint = cleanPrompt
+        .replace(/[^\w\s₦%.-]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .slice(0, 50);
+      webQuery = `Nigeria ${signals} ${extractedTerms} ${sanitizedProduct} ${promptHint}`
+        .replace(/\s+/g, " ")
+        .trim();
+    } else {
+      const sanitizedPrompt = cleanPrompt
+        .replace(/["'`]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (sanitizedPrompt.length > 0) {
+        const hasNigeriaContext = /(nigeria|cbn|fccpc|arcon|ndpc|sec|naira|₦)/i.test(sanitizedPrompt);
+        webQuery = hasNigeriaContext
+          ? sanitizedPrompt.slice(0, 160)
+          : `${sanitizedPrompt.slice(0, 120)} Nigeria CBN FCCPC ARCON`.trim();
+      }
+    }
+
     return {
-      vaultQuery: vaultQuery || "Nigerian financial marketing compliance disclosure rules",
-      webQuery: webQuery || "Nigerian financial regulatory compliance latest updates",
+      vaultQuery,
+      webQuery: webQuery.slice(0, 180).trim() || "Nigeria CBN FCCPC ARCON financial marketing compliance updates",
     };
   }
 
@@ -672,7 +737,7 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC & DOCUMENT 13):
                 { query: webQuery, prioritize_official_regulators: true },
                 ctx
               ),
-              12000,
+              15000,
               { source_class: "LIVE_WEB_INTELLIGENCE", results: [], status: "timeout" }
             )
           : Promise.resolve(null),
@@ -1276,6 +1341,36 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC & DOCUMENT 13):
         };
       }
 
+      // Deduplicate citations cleanly across Vault clauses, Live Web URLs, and Playbook items
+      const uniqueCitations: CitationItem[] = [];
+      const seenKeys = new Set<string>();
+      for (const cit of collectedCitations) {
+        let key = "";
+        if (cit.source_class === "VERIFIED_OFFICIAL_SOURCE") {
+          const normReg = (cit.regulator || "").trim().toUpperCase();
+          const normInst = (cit.instrument_title || "").trim().toLowerCase();
+          const normClause = (cit.clause_reference || "").trim().toLowerCase();
+          key = normClause
+            ? `VAULT:${normReg}:${normInst}:${normClause}`
+            : cit.regulatory_clause_id
+              ? `VAULT_ID:${cit.regulatory_clause_id}`
+              : "";
+        } else if (cit.source_class === "LIVE_WEB_INTELLIGENCE") {
+          const normUrl = (cit.retrieved_url || "").trim().replace(/\/+$/, "").toLowerCase();
+          key = normUrl ? `WEB:${normUrl}` : cit.live_web_retrieval_id || "";
+        } else {
+          key =
+            cit.regulatory_clause_id ||
+            cit.knowledge_rule_id ||
+            `${cit.rule_title || ""}:${cit.clause_reference || ""}`;
+        }
+
+        if (key && !seenKeys.has(key)) {
+          seenKeys.add(key);
+          uniqueCitations.push(cit);
+        }
+      }
+
       // Build StructuredComplianceReport when this turn involves a promotion, rate, flyer, or URL audit
       const structuredReport = await this.buildStructuredReport({
         options,
@@ -1286,7 +1381,7 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC & DOCUMENT 13):
         appStoreAuditResult,
         licenseAuditResult,
         kfsKitResult,
-        collectedCitations,
+        collectedCitations: uniqueCitations,
       });
 
       yield {
@@ -1323,7 +1418,7 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC & DOCUMENT 13):
         content: fullResponseText,
         status: "COMPLETED",
         metadata: {
-          citations: collectedCitations,
+          citations: uniqueCitations,
           toolRounds,
           ...(structuredReport ? { structured_report: structuredReport } : {}),
         },
@@ -1353,18 +1448,6 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC & DOCUMENT 13):
               error: (titleErr as Error).message,
             });
           }
-        }
-      }
-
-      // Deduplicate citations by ID or URL
-      const uniqueCitations: CitationItem[] = [];
-      const seenKeys = new Set<string>();
-      for (const cit of collectedCitations) {
-        const key =
-          cit.regulatory_clause_id || cit.retrieved_url || cit.clause_reference || "";
-        if (key && !seenKeys.has(key)) {
-          seenKeys.add(key);
-          uniqueCitations.push(cit);
         }
       }
 

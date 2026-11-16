@@ -12,6 +12,7 @@ import {
   ClipboardCheck,
   FileText,
   Tag,
+  X,
 } from "lucide-react";
 import { extractApiError } from "@/lib/api-client";
 import {
@@ -27,12 +28,23 @@ export interface ProductOption {
   product_type: string;
 }
 
+export interface PendingAttachment {
+  assetId: string;
+  filename: string;
+  mimeType: SupportedUploadMimeType;
+  previewUrl?: string;
+  extractedText?: string;
+}
+
 const VERCEL_SERVER_PROXY_LIMIT_BYTES = 4_500_000;
 
 export interface ChatComposerProps {
   onSendMessage: (
     content: string,
-    options?: { attachmentAssetIds?: string[] },
+    options?: {
+      attachmentAssetIds?: string[];
+      attachments?: PendingAttachment[];
+    },
   ) => Promise<boolean | void>;
   onAssetUploaded?: (
     assetId: string,
@@ -99,7 +111,6 @@ const STARTER_CARDS = [
 
 export function ChatComposer({
   onSendMessage,
-  onAssetUploaded,
   conversationId,
   disabled,
   isZeroState = false,
@@ -108,10 +119,13 @@ export function ChatComposer({
   onSelectProduct,
 }: ChatComposerProps) {
   const [content, setContent] = useState("");
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingAttachmentsRef = useRef<PendingAttachment[]>([]);
+  pendingAttachmentsRef.current = pendingAttachments;
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -120,17 +134,56 @@ export function ChatComposer({
     }
   }, [content]);
 
+  useEffect(() => {
+    return () => {
+      for (const att of pendingAttachmentsRef.current) {
+        if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
+      }
+    };
+  }, []);
+
+  const canSend =
+    (content.trim().length > 0 || pendingAttachments.length > 0) &&
+    !disabled &&
+    !isUploading;
+
+  const removePendingAttachment = (assetId: string) => {
+    setPendingAttachments((prev) => {
+      const target = prev.find((a) => a.assetId === assetId);
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((a) => a.assetId !== assetId);
+    });
+  };
+
   const handleSubmit = async (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (!content.trim() || disabled) return;
+    if (!canSend) return;
 
-    const text = content.trim();
-    const sent = await onSendMessage(text);
-    if (sent !== false) {
-      setContent("");
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
-      }
+    const currentAttachments = [...pendingAttachments];
+    const attachmentAssetIds = currentAttachments.map((a) => a.assetId);
+    const attachmentNames = currentAttachments.map((a) => a.filename).join(", ");
+    const text =
+      content.trim() ||
+      `Review the attached campaign asset (${attachmentNames}) against CBN, FCCPC, and ARCON requirements.`;
+
+    // Clear composer immediately for responsive UX
+    setContent("");
+    setPendingAttachments([]);
+    for (const att of currentAttachments) {
+      if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
+    }
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+
+    const sent = await onSendMessage(text, {
+      attachmentAssetIds: attachmentAssetIds.length > 0 ? attachmentAssetIds : undefined,
+      attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
+    });
+
+    if (sent === false) {
+      // Restore draft on pre-flight failure
+      setContent(content.trim());
     }
   };
 
@@ -243,22 +296,22 @@ export function ChatComposer({
           ? completeJson.data.extraction.extractedText
           : undefined;
 
-      if (onAssetUploaded) {
-        await onAssetUploaded(asset_id, file.name, extractedText);
-      }
+      const previewUrl = mimeType.startsWith("image/")
+        ? URL.createObjectURL(file)
+        : undefined;
 
-      const userDraft = content.trim();
-      const promptText = userDraft
-        ? `${userDraft}\n\n[Attached campaign asset: "${file.name}"]`
-        : `Uploaded campaign asset "${file.name}". Please review the extracted copy against CBN, FCCPC, and ARCON requirements.`;
-      if (userDraft) {
-        setContent("");
-        if (textareaRef.current) {
-          textareaRef.current.style.height = "auto";
-        }
-      }
+      setPendingAttachments((prev) => [
+        ...prev,
+        {
+          assetId: asset_id,
+          filename: file.name,
+          mimeType,
+          previewUrl,
+          extractedText,
+        },
+      ]);
 
-      await onSendMessage(promptText, { attachmentAssetIds: [asset_id] });
+      textareaRef.current?.focus();
     } catch (err) {
       setUploadError((err as Error).message);
     } finally {
@@ -287,13 +340,61 @@ export function ChatComposer({
         onSubmit={handleSubmit}
         className="rounded-xl border border-zinc-200 bg-white shadow-xs focus-within:border-zinc-400 transition-colors p-3"
       >
+        {/* Pending Attached Files Strip */}
+        {(pendingAttachments.length > 0 || isUploading) && (
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            {pendingAttachments.map((att) => (
+              <div
+                key={att.assetId}
+                className="group relative inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 pl-1.5 pr-2 py-1 text-[12px] text-zinc-800 max-w-[260px]"
+              >
+                {att.previewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={att.previewUrl}
+                    alt={att.filename}
+                    className="h-8 w-8 rounded object-cover border border-zinc-200 shrink-0"
+                  />
+                ) : (
+                  <div className="h-8 w-8 rounded bg-zinc-200/70 flex items-center justify-center shrink-0">
+                    <FileText className="h-4 w-4 text-zinc-600" />
+                  </div>
+                )}
+                <div className="min-w-0">
+                  <p className="truncate font-medium text-zinc-900">{att.filename}</p>
+                  <p className="text-[10.5px] text-emerald-700 font-medium">Ready to send</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removePendingAttachment(att.assetId)}
+                  className="ml-1 rounded-full p-0.5 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-800 transition-colors cursor-pointer shrink-0"
+                  aria-label={`Remove ${att.filename}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+
+            {isUploading && (
+              <div className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-[12px] text-zinc-600">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-600" />
+                <span>Uploading & extracting text...</span>
+              </div>
+            )}
+          </div>
+        )}
+
         <textarea
           ref={textareaRef}
           value={content}
           onChange={(e) => setContent(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Paste ad copy, upload a flyer, or ask a CBN / FCCPC compliance question..."
-          disabled={disabled || isUploading}
+          placeholder={
+            pendingAttachments.length > 0
+              ? "Add your message or instructions for the attached file, then press Send..."
+              : "Paste ad copy, attach a flyer, or ask a CBN / FCCPC compliance question..."
+          }
+          disabled={disabled}
           rows={isZeroState ? 2 : 1}
           className="w-full resize-none bg-transparent px-1 py-1 text-[14px] text-zinc-950 placeholder:text-zinc-400 focus:outline-hidden min-h-[40px] max-h-[180px] leading-relaxed"
         />
@@ -319,7 +420,7 @@ export function ChatComposer({
               ) : (
                 <Paperclip className="h-3.5 w-3.5 text-zinc-500" />
               )}
-              <span>{isUploading ? "Uploading..." : "Attach flyer / PDF"}</span>
+              <span>{isUploading ? "Attaching..." : "Attach flyer / PDF"}</span>
             </button>
 
             <button
@@ -376,9 +477,9 @@ export function ChatComposer({
 
           <button
             type="submit"
-            disabled={!content.trim() || disabled || isUploading}
+            disabled={!canSend}
             className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors cursor-pointer ${
-              content.trim() && !disabled && !isUploading
+              canSend
                 ? "bg-zinc-900 hover:bg-zinc-800 text-white"
                 : "bg-zinc-100 text-zinc-400 cursor-not-allowed"
             }`}

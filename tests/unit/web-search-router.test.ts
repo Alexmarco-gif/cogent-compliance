@@ -149,6 +149,47 @@ describe("Two-Step Live Web Search Router (WebSearchRouter)", () => {
     expect(result.status).toBe("no_verified_live_results");
   });
 
+  it("should fall back to an alternate search-capable model when the primary model returns 404 or not supported", async () => {
+    mockGenAi.models.generateContent
+      .mockRejectedValueOnce(new Error("404 NOT_FOUND: model not found"))
+      .mockResolvedValueOnce({
+        text: "Updated CBN consumer protection circular issued.",
+        candidates: [
+          {
+            groundingMetadata: {
+              groundingChunks: [
+                {
+                  web: {
+                    uri: "https://www.cbn.gov.ng/circulars/cpf-update",
+                    title: "CBN CPF Update",
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+    const router = new WebSearchRouter({
+      customClient: mockGenAi as unknown as GoogleGenAI,
+    });
+
+    const result = await router.searchLiveWeb(
+      {
+        query: "CBN digital lending APR rules Nigeria",
+        prioritize_official_regulators: true,
+      },
+      "11111111-1111-1111-1111-111111111111"
+    );
+
+    expect(mockGenAi.models.generateContent).toHaveBeenCalledTimes(2);
+    expect(mockGenAi.models.generateContent.mock.calls[0]?.[0]?.contents).not.toContain(
+      '"CBN digital lending APR rules Nigeria"'
+    );
+    expect(result.results).toHaveLength(1);
+    expect(result.results[0]?.retrieved_url).toBe("https://www.cbn.gov.ng/circulars/cpf-update");
+  });
+
   it("should block SSRF attempts to private and loopback targets in fetchLiveUrlContent", async () => {
     const router = new WebSearchRouter();
     const maliciousUrls = [

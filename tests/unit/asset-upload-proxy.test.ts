@@ -438,7 +438,7 @@ describe("Asset Upload Proxy, MIME Normalization & Copilot Attachment Pipeline",
       const serializedContents = JSON.stringify(streamArgs.contents);
       expect(serializedContents).toContain("uploaded_asset_extracted_content");
       expect(serializedContents).toContain("100% risk-free instant loan");
-      expect(serializedContents).toContain("deterministic_lock_scan");
+      expect(serializedContents).toContain("deterministic_locks");
 
       // Both Vault and Live Web queries should incorporate the extracted flyer text
       expect(mockSearchVault.mock.calls[0]?.[0]?.query).toContain("guaranteed returns");

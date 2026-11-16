@@ -129,4 +129,72 @@ describe("CopilotOrchestrator Dual Grounding & Live Token Streaming", () => {
     expect(sourceClasses).toContain("VERIFIED_OFFICIAL_SOURCE");
     expect(sourceClasses).toContain("LIVE_WEB_INTELLIGENCE");
   });
+
+  it("strips attachment filenames/boilerplate from webQuery and deduplicates repeated Vault clauses", async () => {
+    mockSearchVault.mockResolvedValueOnce({
+      success: true,
+      count: 3,
+      results: [
+        {
+          regulatory_clause_id: "vault_dup_1",
+          clause_reference: "35.35",
+          instrument_title: "FCCPC Digital Lending Guidelines",
+          regulator: "FCCPC",
+          verbatim_excerpt: "Clause chunk A",
+        },
+        {
+          regulatory_clause_id: "vault_dup_2",
+          clause_reference: "35.35",
+          instrument_title: "FCCPC Digital Lending Guidelines",
+          regulator: "FCCPC",
+          verbatim_excerpt: "Clause chunk B",
+        },
+        {
+          regulatory_clause_id: "vault_unique_3",
+          clause_reference: "Section 4.2",
+          instrument_title: "CBN CPF",
+          regulator: "CBN",
+          verbatim_excerpt: "Clause chunk C",
+        },
+      ],
+    });
+
+    const generateContentStream = vi.fn().mockImplementation(async function* () {
+      yield {
+        candidates: [{ content: { parts: [{ text: "### Compliance Review\n\nComplete." }] } }],
+      };
+    });
+
+    const orchestrator = new CopilotOrchestrator({
+      models: { generateContentStream, generateContent: vi.fn() },
+    } as unknown as GoogleGenAI);
+
+    const { webQuery } = orchestrator.buildDualSearchQueries(
+      "Review the attached campaign asset (1794800274760.jpg) against CBN, FCCPC, and ARCON requirements.",
+      "Quick Cash Loan Test 1",
+      "0% INTEREST! INSTANT CASH IN 5 MINUTES! NO COLLATERAL!"
+    );
+    expect(webQuery).not.toContain("1794800274760.jpg");
+    expect(webQuery).not.toContain("Review the attached campaign asset");
+    expect(webQuery.toLowerCase()).toContain("nigeria");
+    expect(webQuery.toLowerCase()).toContain("digital lending");
+
+    const events = [];
+    for await (const event of orchestrator.streamChat({
+      tenantId: "00000000-0000-0000-0000-000000000001",
+      userId: "user_1",
+      conversationId: "conv_dual_dedup",
+      userPrompt: "Check 1794800274760.jpg for APR compliance",
+    })) {
+      events.push(event);
+    }
+
+    const completed = events.find((e) => e.type === "message.completed") as {
+      data: { citations: Array<{ source_class: string; clause_reference?: string }> };
+    };
+    const vaultCitations = completed.data.citations.filter(
+      (c) => c.source_class === "VERIFIED_OFFICIAL_SOURCE"
+    );
+    expect(vaultCitations).toHaveLength(2);
+  });
 });

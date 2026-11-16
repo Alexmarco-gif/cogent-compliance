@@ -47,6 +47,18 @@ export class WebSearchRouter {
     this.searchModel = AI_MODELS.FLASH;
   }
 
+  private isModelFallbackEligibleError(err: unknown): boolean {
+    const msg = ((err as Error)?.message || String(err || "")).toLowerCase();
+    return (
+      msg.includes("404") ||
+      msg.includes("not_found") ||
+      msg.includes("not found") ||
+      msg.includes("not supported") ||
+      msg.includes("unsupported") ||
+      msg.includes("invalid model")
+    );
+  }
+
   /**
    * Executes the isolated secondary Google Search grounding call.
    * NEVER injects synthetic fallback citations. If 0 results or an error occurs,
@@ -61,8 +73,8 @@ export class WebSearchRouter {
     const todayIso = new Date().toISOString().split("T")[0];
 
     const prompt = prioritize_official_regulators
-      ? `Today's date is ${todayIso}. Run an open, real-time live web search across the internet for the latest information, news, official regulatory circulars, market updates, and current developments regarding: "${query}". Include any recent Nigerian regulatory announcements (CBN, FCCPC, ARCON, NDPC, SEC) as well as authoritative financial news, legal advisories, and live public web sources. Be concise, factual, and up to date.`
-      : `Today's date is ${todayIso}. Run an open, real-time live web search across the internet for the latest factual information, news, updates, and authoritative sources regarding: "${query}". Be concise, factual, and up to date.`;
+      ? `Today's date is ${todayIso}. Use Google Search to find current live web information, official Nigerian regulatory circulars (CBN, FCCPC, ARCON, NDPC, SEC), enforcement updates, financial news, and authoritative public sources on: ${query}. Return a concise, factual, grounded summary.`
+      : `Today's date is ${todayIso}. Use Google Search to find current live web information, news, updates, and authoritative sources on: ${query}. Return a concise, factual, grounded summary.`;
 
     logger.info("Executing Dynamic Live Web Search Router", {
       query,
@@ -73,21 +85,50 @@ export class WebSearchRouter {
     const retrievedResults: LiveWebSearchResult[] = [];
     const supabase = createAdminSupabaseClient();
 
-    try {
-      const searchPromise = this.client.models.generateContent({
-        model: this.searchModel,
-        contents: prompt,
-        config: {
-          tools: [{ googleSearch: {} }],
-        },
-      });
+    const candidateModels = Array.from(
+      new Set([this.searchModel, AI_MODELS.PRO, "gemini-2.5-flash", "gemini-2.0-flash"])
+    );
 
-      const response = await Promise.race([
-        searchPromise,
-        new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error("Live web search timed out after 12000ms")), 12000);
-        }),
-      ]);
+    try {
+      let response: Awaited<ReturnType<typeof this.client.models.generateContent>> | null = null;
+      let lastModelError: unknown = null;
+
+      for (let idx = 0; idx < candidateModels.length; idx++) {
+        const model = candidateModels[idx]!;
+        try {
+          const searchPromise = this.client.models.generateContent({
+            model,
+            contents: prompt,
+            config: {
+              tools: [{ googleSearch: {} }],
+            },
+          });
+
+          response = await Promise.race([
+            searchPromise,
+            new Promise<never>((_, reject) => {
+              setTimeout(() => reject(new Error("Live web search timed out after 12000ms")), 12000);
+            }),
+          ]);
+          break;
+        } catch (modelErr) {
+          lastModelError = modelErr;
+          const hasNextModel = idx < candidateModels.length - 1;
+          if (hasNextModel && this.isModelFallbackEligibleError(modelErr)) {
+            logger.warn("Live web search model unavailable; falling back to next candidate model", {
+              failedModel: model,
+              nextModel: candidateModels[idx + 1],
+              error: (modelErr as Error).message,
+            });
+            continue;
+          }
+          throw modelErr;
+        }
+      }
+
+      if (!response) {
+        throw lastModelError || new Error("Live web search produced no response");
+      }
 
       const candidate = response.candidates?.[0];
       const groundingMetadata = candidate?.groundingMetadata as
@@ -121,8 +162,17 @@ export class WebSearchRouter {
 
       if (uniqueChunks.length > 0) {
         const snippetPreview = summaryText.slice(0, 800) || `Live web search result for: ${query}`;
-        const persisted = await Promise.all(
-          uniqueChunks.map(async (chunk) => {
+        const fallbackResults: LiveWebSearchResult[] = uniqueChunks.map((chunk) => ({
+          live_web_retrieval_id: crypto.randomUUID(),
+          page_title: chunk.title,
+          retrieved_url: chunk.uri,
+          snippet_content: snippetPreview,
+          retrieved_at: new Date().toISOString(),
+          source_class: "LIVE_WEB_INTELLIGENCE" as const,
+        }));
+
+        const persistPromise = Promise.all(
+          uniqueChunks.map(async (chunk, i) => {
             const isOfficialRegulator = NIGERIAN_REGULATORY_DOMAINS.some((domain) =>
               chunk.uri.toLowerCase().includes(domain.toLowerCase())
             );
@@ -163,16 +213,16 @@ export class WebSearchRouter {
               });
             }
 
-            return {
-              live_web_retrieval_id: crypto.randomUUID(),
-              page_title: chunk.title,
-              retrieved_url: chunk.uri,
-              snippet_content: snippetPreview,
-              retrieved_at: new Date().toISOString(),
-              source_class: "LIVE_WEB_INTELLIGENCE" as const,
-            };
+            return fallbackResults[i]!;
           })
         );
+
+        const persisted = await Promise.race([
+          persistPromise,
+          new Promise<LiveWebSearchResult[]>((resolve) => {
+            setTimeout(() => resolve(fallbackResults), 2500);
+          }),
+        ]);
 
         retrievedResults.push(...persisted);
       }
