@@ -422,7 +422,7 @@ export class DriftService {
     let incidentConversationId: string | null = monitor.incident_conversation_id || null;
     if (isDriftDetected && !incidentConversationId) {
       try {
-        const convQuery = supabase.from("conversations");
+        const convQuery = supabase.from("marketing_conversations");
         if (convQuery && typeof convQuery.insert === "function") {
           const { data: incidentConv } = await convQuery
             .insert({
@@ -438,7 +438,7 @@ export class DriftService {
 
           if (incidentConv?.id) {
             incidentConversationId = incidentConv.id;
-            const msgQuery = supabase.from("messages");
+            const msgQuery = supabase.from("marketing_messages");
             if (msgQuery && typeof msgQuery.insert === "function") {
               const driftMarkdown = [
                 `### Zero-Prompt URL Drift Sentinel Alert`,
@@ -456,6 +456,9 @@ export class DriftService {
                 tenant_id: tenantId,
                 role: "ASSISTANT",
                 content: driftMarkdown,
+                content_type: "TEXT",
+                status: "COMPLETED",
+                sequence_number: 1,
                 metadata: {
                   zero_prompt_source: "DRIFT_SENTINEL",
                   monitor_id: monitor.id,

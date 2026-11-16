@@ -123,12 +123,12 @@ export class RegulatoryRippleService {
       try {
         const threadTitle = `[Regulatory Ripple Alert] ${regulator}: ${product.product_name}`;
         const { data: conv } = await supabase
-          .from("conversations")
+          .from("marketing_conversations")
           .insert({
             tenant_id: tenantId,
             created_by: "system_ripple_sentinel",
             title: threadTitle,
-            context_type: "REGULATORY_QUERY",
+            context_type: "REGULATORY",
             active_campaign_id: linkedCampaign?.id || null,
             status: "ACTIVE",
           })
@@ -168,11 +168,14 @@ export class RegulatoryRippleService {
             .filter(Boolean)
             .join("\n");
 
-          await supabase.from("messages").insert({
+          await supabase.from("marketing_messages").insert({
             conversation_id: conv.id,
             tenant_id: tenantId,
             role: "ASSISTANT",
             content: markdownReport,
+            content_type: "TEXT",
+            status: "COMPLETED",
+            sequence_number: 1,
             metadata: {
               zero_prompt_source: "REGULATORY_RIPPLE_SENTINEL",
               regulator,

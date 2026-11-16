@@ -6,7 +6,7 @@
 -- 1. Extend campaign_drift_monitors with target type and Zero-Prompt incident thread link
 ALTER TABLE public.campaign_drift_monitors
     ADD COLUMN IF NOT EXISTS monitor_target_type VARCHAR(64) NOT NULL DEFAULT 'WEB_LANDING_PAGE',
-    ADD COLUMN IF NOT EXISTS incident_conversation_id UUID REFERENCES public.conversations(id) ON DELETE SET NULL;
+    ADD COLUMN IF NOT EXISTS incident_conversation_id UUID REFERENCES public.marketing_conversations(id) ON DELETE SET NULL;
 
 -- 2. Regulatory Ripple Alerts Table (Zero-Prompt Circular Impact Sentinel)
 CREATE TABLE IF NOT EXISTS public.regulatory_ripple_alerts (
@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS public.regulatory_ripple_alerts (
     impacted_product_name TEXT,
     impacted_campaign_id UUID REFERENCES public.marketing_campaigns(id) ON DELETE SET NULL,
     impacted_campaign_name TEXT,
-    incident_conversation_id UUID REFERENCES public.conversations(id) ON DELETE SET NULL,
+    incident_conversation_id UUID REFERENCES public.marketing_conversations(id) ON DELETE SET NULL,
     blind_spot_summary TEXT NOT NULL,
     consequence_summary TEXT NOT NULL,
     recommended_fix TEXT NOT NULL,

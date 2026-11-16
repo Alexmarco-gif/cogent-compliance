@@ -141,7 +141,7 @@ vi.mock("@/lib/supabase", () => {
       return Promise.resolve({ data: null, error: null });
     });
     chain.single = vi.fn(() => {
-      if (table === "conversations") {
+      if (table === "marketing_conversations" || table === "conversations") {
         return Promise.resolve({
           data: { id: "conv_incident_spawned_001" },
           error: null,
