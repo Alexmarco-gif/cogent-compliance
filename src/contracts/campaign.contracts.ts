@@ -78,6 +78,7 @@ export const createCampaignSchema = z.object({
   campaign_type: z.string().default("PROMOTIONAL"),
   channel: z.enum(CAMPAIGN_CHANNELS).default("SOCIAL_MEDIA"),
   product_id: z.string().uuid().optional(),
+  asset_ids: z.array(z.string().uuid()).optional(),
   initial_content_text: z.string().max(50000).optional(),
   metadata: z.record(z.unknown()).optional(),
 });

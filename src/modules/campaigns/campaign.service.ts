@@ -94,6 +94,18 @@ export class CampaignService {
       });
     }
 
+    // Link pre-uploaded assets if provided
+    if (input.asset_ids && input.asset_ids.length > 0) {
+      await supabase
+        .from("campaign_assets")
+        .update({
+          campaign_id: campaign.id,
+          ...(input.conversation_id ? { conversation_id: input.conversation_id } : {}),
+        })
+        .eq("tenant_id", tenantId)
+        .in("id", input.asset_ids);
+    }
+
     // Audit Event
     await auditService.appendEvent({
       tenantId,

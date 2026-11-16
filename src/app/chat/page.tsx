@@ -389,7 +389,11 @@ function ChatWorkspaceContent() {
     }
   };
 
-  const handleAssetUploaded = async (_assetId: string, filename: string) => {
+  const handleAssetUploaded = async (
+    assetId: string,
+    filename: string,
+    extractedText?: string,
+  ) => {
     let currentConvId = activeConvId ?? activeConvIdRef.current;
     const selectedProduct = products.find((p) => p.id === selectedProductId);
     const baseTitle = filename.replace(/\.[^/.]+$/, "").trim();
@@ -428,7 +432,10 @@ function ChatWorkspaceContent() {
           campaign_name: campaignName,
           channel: "SOCIAL_MEDIA",
           product_id: selectedProductId || undefined,
-          initial_content_text: `Campaign asset ${filename} uploaded for compliance review.`,
+          asset_ids: [assetId],
+          initial_content_text:
+            extractedText?.trim() ||
+            `Campaign asset ${filename} uploaded for compliance review.`,
         }),
       });
 
@@ -445,7 +452,10 @@ function ChatWorkspaceContent() {
     }
   };
 
-  const handleSendMessage = async (text: string): Promise<boolean> => {
+  const handleSendMessage = async (
+    text: string,
+    msgOptions?: { attachmentAssetIds?: string[] },
+  ): Promise<boolean> => {
     setChatError(null);
     let currentConvId = activeConvId ?? activeConvIdRef.current;
     const selectedProduct = products.find((p) => p.id === selectedProductId);
@@ -517,6 +527,9 @@ function ChatWorkspaceContent() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             content: text,
+            attachment_asset_ids: msgOptions?.attachmentAssetIds?.length
+              ? msgOptions.attachmentAssetIds
+              : undefined,
             referenced_product_id: selectedProductId || undefined,
           }),
         },
