@@ -293,7 +293,7 @@ const CORE_WAVE_1_DOCS: CoreDocSpec[] = [
 
 function getAllPdfFiles(dir: string): string[] {
   const files: string[] = [];
-  const entries = readdirSync(dir);
+  const entries = readdirSync(dir).sort();
   for (const entry of entries) {
     const full = path.join(dir, entry);
     const stat = statSync(full);
