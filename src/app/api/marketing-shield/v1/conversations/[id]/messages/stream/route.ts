@@ -10,6 +10,7 @@ import { requirePermission } from "@/modules/auth-tenancy/rbac.guard";
 import { AuthTenancyError } from "@/modules/auth-tenancy/types";
 import { sendMessageStreamSchema } from "@/contracts/conversation.contracts";
 import { copilotOrchestrator } from "@/modules/conversations/copilot.orchestrator";
+import { entitlementsService } from "@/modules/billing/entitlements.service";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
@@ -27,6 +28,19 @@ export async function POST(
     // 1. Resolve and verify tenant context & RBAC
     const tenant = await resolveTenantContext(req);
     requirePermission(tenant, "conversation.create");
+
+    // 1b. Enforce 7-day evaluation trial expiration
+    const subInfo = await entitlementsService.getTenantSubscriptionInfo(tenant.tenantId);
+    if (subInfo.isTrial && subInfo.isTrialExpired) {
+      return NextResponse.json(
+        {
+          error:
+            "Your 7-day Evaluation Pilot has expired. Upgrade to Growth or Scale in Settings -> Billing to continue.",
+          code: "TRIAL_EXPIRED",
+        },
+        { status: 402 },
+      );
+    }
 
     // 2. Parse request body
     const rawBody = await req.json();

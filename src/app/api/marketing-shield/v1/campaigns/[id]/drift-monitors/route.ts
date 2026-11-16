@@ -6,8 +6,9 @@
  */
 
 import { z } from "zod";
-import { createApiHandler } from "@/lib/api-handler";
+import { AppApiError, createApiHandler } from "@/lib/api-handler";
 import { driftService } from "@/modules/drift-monitor/drift.service";
+import { entitlementsService } from "@/modules/billing/entitlements.service";
 
 const createCampaignDriftMonitorSchema = z.object({
   approved_revision_id: z.string().uuid().optional(),
@@ -43,6 +44,15 @@ export const POST = createApiHandler(
     bodySchema: createCampaignDriftMonitorSchema,
   },
   async (_req, { tenant, params, body }) => {
+    const subInfo = await entitlementsService.getTenantSubscriptionInfo(tenant.tenantId);
+    if (subInfo.isTrial && subInfo.isTrialExpired) {
+      throw new AppApiError(
+        "FORBIDDEN",
+        "Your 7-day Evaluation Pilot has expired. Upgrade to Growth or Scale to continue.",
+        402,
+      );
+    }
+
     const campaignId = params.id as string;
     return driftService.createDriftMonitor(tenant.tenantId, tenant.userId, {
       campaign_id: campaignId,

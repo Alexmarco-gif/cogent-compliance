@@ -196,6 +196,10 @@ export class PaystackBillingService {
       billingInterval === "annual" ? plan.price_usd_annual_cents : plan.price_usd_cents;
 
     const amountKobo = this.calculateKoboAmount(priceUsdCents, fxRate);
+    if (amountKobo <= 0) {
+      throw new Error("The Evaluation Pilot plan is free ($0) and does not require Paystack checkout.");
+    }
+
     const reference = `COG_${tenantId.slice(0, 8)}_${Date.now()}`;
     const paystackSecret = process.env.PAYSTACK_SECRET_KEY || "";
     const isMock =
@@ -203,7 +207,11 @@ export class PaystackBillingService {
       paystackSecret.startsWith("sk_test_mock") ||
       process.env.NODE_ENV === "test";
 
-    // If live Paystack secret is available, call the actual Paystack API
+    const resolvedCallbackUrl =
+      callbackUrl ||
+      `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/settings?tab=billing&checkout=success`;
+
+    // If live or Paystack test key is available, call the actual Paystack API
     if (!isMock) {
       const response = await fetch("https://api.paystack.co/transaction/initialize", {
         method: "POST",
@@ -216,9 +224,7 @@ export class PaystackBillingService {
           amount: amountKobo,
           currency: "NGN",
           reference,
-          callback_url:
-            callbackUrl ||
-            `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/settings/billing?checkout=success&ref=${reference}`,
+          callback_url: resolvedCallbackUrl,
           metadata: {
             tenant_id: tenantId,
             plan_id: plan.id,
@@ -258,10 +264,7 @@ export class PaystackBillingService {
 
     // Deterministic sandbox checkout session strictly for NODE_ENV=test or dev mock keys
     const accessCode = `acc_${crypto.randomBytes(8).toString("hex")}`;
-    const defaultCallback =
-      callbackUrl ||
-      `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/settings/billing?checkout=success&ref=${reference}`;
-    const authorizationUrl = `https://checkout.paystack.com/${accessCode}?reference=${reference}&callback=${encodeURIComponent(defaultCallback)}`;
+    const authorizationUrl = `https://checkout.paystack.com/${accessCode}?reference=${reference}&callback=${encodeURIComponent(resolvedCallbackUrl)}`;
 
     return {
       authorization_url: authorizationUrl,
@@ -271,6 +274,121 @@ export class PaystackBillingService {
       amount_usd_cents: priceUsdCents,
       fx_rate: fxRate,
       currency: "NGN",
+    };
+  }
+
+  /**
+   * Verifies a Paystack transaction by reference on checkout return
+   * and idempotently activates the tenant's paid subscription.
+   */
+  public async verifyTransaction(
+    reference: string,
+    expectedTenantId: string,
+  ): Promise<{
+    verified: boolean;
+    status: string;
+    reference: string;
+    planSlug?: PlanSlug;
+    message?: string;
+  }> {
+    if (!reference || reference.trim().length === 0) {
+      throw new Error("Transaction reference is required for verification");
+    }
+
+    const cleanRef = reference.trim();
+    const paystackSecret = process.env.PAYSTACK_SECRET_KEY || "";
+    const isMock =
+      !paystackSecret ||
+      paystackSecret.startsWith("sk_test_mock") ||
+      process.env.NODE_ENV === "test";
+
+    if (isMock) {
+      if (process.env.NODE_ENV === "production") {
+        throw new Error("PAYSTACK_SECRET_KEY is not configured for production verification");
+      }
+      return {
+        verified: false,
+        status: "mock_mode",
+        reference: cleanRef,
+        message: "Mock Paystack mode active; real transaction verification skipped.",
+      };
+    }
+
+    const response = await fetch(
+      `https://api.paystack.co/transaction/verify/${encodeURIComponent(cleanRef)}`,
+      {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${paystackSecret}`,
+        },
+        cache: "no-store",
+      },
+    );
+
+    const paystackData = await response.json();
+    if (!response.ok || !paystackData.status || !paystackData.data) {
+      logger.warn("Paystack verify API returned non-success", {
+        reference: cleanRef,
+        status: response.status,
+        paystackData,
+      });
+      return {
+        verified: false,
+        status: "error",
+        reference: cleanRef,
+        message: paystackData.message || "Unable to verify Paystack transaction.",
+      };
+    }
+
+    const txData = paystackData.data;
+    const txStatus = String(txData.status || "unknown");
+    const txTenantId = txData.metadata?.tenant_id as string | undefined;
+
+    if (txTenantId && txTenantId !== expectedTenantId) {
+      logger.warn("Cross-tenant Paystack verification attempt blocked", {
+        reference: cleanRef,
+        expectedTenantId,
+        txTenantId,
+      });
+      throw new Error("Transaction reference does not belong to the active workspace.");
+    }
+
+    if (txStatus !== "success") {
+      return {
+        verified: false,
+        status: txStatus,
+        reference: cleanRef,
+        message: txData.gateway_response || `Transaction status is '${txStatus}'.`,
+      };
+    }
+
+    await this.processChargeSuccess({
+      event: "charge.success",
+      data: {
+        id: txData.id,
+        domain: txData.domain,
+        status: "success",
+        reference: txData.reference || cleanRef,
+        amount: Number(txData.amount),
+        currency: txData.currency || "NGN",
+        channel: txData.channel,
+        paid_at: txData.paid_at,
+        customer: txData.customer,
+        subscription_code: txData.plan_object?.plan_code || null,
+        metadata: txData.metadata?.tenant_id
+          ? txData.metadata
+          : {
+              ...(txData.metadata || {}),
+              tenant_id: expectedTenantId,
+            },
+      },
+    });
+
+    return {
+      verified: true,
+      status: "success",
+      reference: cleanRef,
+      planSlug: (txData.metadata?.plan_slug as PlanSlug) || "scale",
     };
   }
 

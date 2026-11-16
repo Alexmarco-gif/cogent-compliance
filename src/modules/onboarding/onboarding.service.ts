@@ -300,16 +300,21 @@ export class OnboardingService {
 
     const { data: tenant } = await supabase
       .from("tenants")
-      .select("settings")
+      .select("created_at, settings")
       .eq("id", tenantId)
       .single();
 
     const existingSettings = (tenant?.settings || {}) as Record<string, unknown>;
+    const trialStartedAt =
+      typeof existingSettings.trial_started_at === "string"
+        ? existingSettings.trial_started_at
+        : tenant?.created_at || completedAt;
     const { error: completeError } = await supabase
       .from("tenants")
       .update({
         settings: {
           ...existingSettings,
+          trial_started_at: trialStartedAt,
           onboarding_step: 3,
           onboarding_completed_at: completedAt,
         },

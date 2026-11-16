@@ -5,9 +5,10 @@
  * Document Reference: Document 04 (Section 5.4), Document 07 (Section 5.2), Document 08 (Phase 9)
  */
 
-import { createApiHandler } from "@/lib/api-handler";
+import { AppApiError, createApiHandler } from "@/lib/api-handler";
 import { campaignApprovalDecisionSchema } from "@/contracts/approval-dossier.contracts";
 import { approvalService } from "@/modules/campaigns/approval.service";
+import { entitlementsService } from "@/modules/billing/entitlements.service";
 
 /**
  * GET /api/marketing-shield/v1/campaigns/{id}/approvals
@@ -34,6 +35,15 @@ export const POST = createApiHandler(
     bodySchema: campaignApprovalDecisionSchema,
   },
   async (_req, { tenant, params, body }) => {
+    const subInfo = await entitlementsService.getTenantSubscriptionInfo(tenant.tenantId);
+    if (subInfo.isTrial && subInfo.isTrialExpired) {
+      throw new AppApiError(
+        "FORBIDDEN",
+        "Your 7-day Evaluation Pilot has expired. Upgrade to Growth or Scale to continue.",
+        402,
+      );
+    }
+
     const campaignId = params.id as string;
     return approvalService.recordApprovalDecision(
       tenant.tenantId,

@@ -109,5 +109,50 @@ describe("PaystackBillingService & Dual-Currency Engine", () => {
       expect(result.processed).toBe(false);
       expect(result.reason).toContain("Missing tenant_id");
     });
+
+    it("rejects Paystack checkout initialization for free $0 evaluation plan", async () => {
+      await expect(
+        paystackBillingService.initializeCheckout({
+          tenantId: "11111111-1111-1111-1111-111111111111",
+          planSlug: "evaluation",
+          billingInterval: "monthly",
+          userEmail: "cmo@fintech.ng",
+        }),
+      ).rejects.toThrow(/free \(\$0\)/i);
+    });
+
+    it("blocks cross-tenant Paystack transaction verification attempts", async () => {
+      vi.stubEnv("NODE_ENV", "development");
+      vi.stubEnv("PAYSTACK_SECRET_KEY", "sk_test_live_simulated_key");
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          status: true,
+          data: {
+            status: "success",
+            reference: "COG_OTHER_123",
+            amount: 69595000,
+            currency: "NGN",
+            metadata: {
+              tenant_id: "22222222-2222-2222-2222-222222222222",
+              plan_slug: "scale",
+            },
+          },
+        }),
+      } as any);
+
+      try {
+        await expect(
+          paystackBillingService.verifyTransaction(
+            "COG_OTHER_123",
+            "11111111-1111-1111-1111-111111111111",
+          ),
+        ).rejects.toThrow(/does not belong to the active workspace/i);
+      } finally {
+        fetchSpy.mockRestore();
+        vi.unstubAllEnvs();
+      }
+    });
   });
 });

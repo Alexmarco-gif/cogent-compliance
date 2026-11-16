@@ -23,8 +23,15 @@ export interface TenantSubscriptionInfo {
   status: SubscriptionStatus;
   currentPeriodEnd: Date;
   isTrial: boolean;
+  isTrialExpired: boolean;
+  trialStartedAt: Date;
+  trialEndsAt: Date;
   trialDaysRemaining: number;
+  trialHoursRemaining: number;
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const HOUR_MS = 60 * 60 * 1000;
 
 export class EntitlementsService {
   /**
@@ -71,33 +78,97 @@ export class EntitlementsService {
     const supabase = createAdminSupabaseClient();
     const evaluationPlan = DEFAULT_PLANS.evaluation;
 
-    // 1. Fetch tenant creation date & settings
+    // 1. Fetch tenant creation date, Clerk org ID & settings
     let tenantCreatedAt = new Date();
     let tenantSettings: Record<string, unknown> = {};
+    let clerkOrgId: string | null = null;
+    let hasTenantRow = false;
 
     try {
       const { data: tenant } = await supabase
         .from("tenants")
-        .select("created_at, settings")
+        .select("created_at, clerk_org_id, settings")
         .eq("id", tenantId)
         .maybeSingle();
 
-      if (tenant?.created_at) {
-        tenantCreatedAt = new Date(tenant.created_at);
-      }
-      if (tenant?.settings && typeof tenant.settings === "object") {
-        tenantSettings = tenant.settings as Record<string, unknown>;
+      if (tenant) {
+        hasTenantRow = true;
+        if (tenant.created_at) {
+          const parsedCreated = new Date(tenant.created_at);
+          if (!Number.isNaN(parsedCreated.getTime())) {
+            tenantCreatedAt = parsedCreated;
+          }
+        }
+        if (typeof tenant.clerk_org_id === "string") {
+          clerkOrgId = tenant.clerk_org_id;
+        }
+        if (tenant.settings && typeof tenant.settings === "object") {
+          tenantSettings = tenant.settings as Record<string, unknown>;
+        }
       }
     } catch (err) {
       logger.warn("Could not fetch tenant metadata for subscription resolution", { tenantId, err });
     }
 
-    const trialEnd = new Date(tenantCreatedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+    // Anchor trial start to explicit settings.trial_started_at, or earliest of tenant.created_at & Clerk org.createdAt
+    let trialStart = tenantCreatedAt;
+    const rawTrialStart = tenantSettings.trial_started_at;
+    let shouldPersistTrialStart = false;
+
+    if (typeof rawTrialStart === "string") {
+      const parsedTrialStart = new Date(rawTrialStart);
+      if (!Number.isNaN(parsedTrialStart.getTime())) {
+        trialStart = parsedTrialStart;
+      } else {
+        shouldPersistTrialStart = hasTenantRow;
+      }
+    } else if (hasTenantRow) {
+      shouldPersistTrialStart = true;
+      if (
+        clerkOrgId &&
+        clerkOrgId !== "org_demo_1111" &&
+        process.env.NODE_ENV !== "test"
+      ) {
+        try {
+          const { clerkClient } = await import("@clerk/nextjs/server");
+          const client = await clerkClient();
+          const org = await client.organizations.getOrganization({
+            organizationId: clerkOrgId,
+          });
+          if (org?.createdAt) {
+            const clerkCreated = new Date(org.createdAt);
+            if (!Number.isNaN(clerkCreated.getTime()) && clerkCreated < trialStart) {
+              trialStart = clerkCreated;
+            }
+          }
+        } catch {
+          // Non-blocking fallback to tenant.created_at
+        }
+      }
+    }
+
+    if (shouldPersistTrialStart && process.env.NODE_ENV !== "test") {
+      try {
+        await supabase
+          .from("tenants")
+          .update({
+            settings: {
+              ...tenantSettings,
+              trial_started_at: trialStart.toISOString(),
+            },
+          })
+          .eq("id", tenantId);
+      } catch {
+        // Non-blocking persistence of trial anchor
+      }
+    }
+
+    const trialEnd = new Date(trialStart.getTime() + 7 * DAY_MS);
     const now = new Date();
-    const trialDaysRemaining = Math.max(
-      0,
-      Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
-    );
+    const remainingMs = Math.max(0, trialEnd.getTime() - now.getTime());
+    const isTrialExpiredByClock = remainingMs <= 0;
+    const trialHoursRemaining = Math.floor(remainingMs / HOUR_MS);
+    const trialDaysRemaining = isTrialExpiredByClock ? 0 : Math.ceil(remainingMs / DAY_MS);
 
     // 2. Try querying tenant_subscriptions table
     try {
@@ -109,8 +180,12 @@ export class EntitlementsService {
 
       if (!error && sub) {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const planData = sub.subscription_plans as any;
-        const planSlug = (planData?.slug || "evaluation") as PlanSlug;
+        const rawPlanJoin = sub.subscription_plans as any;
+        const planData = Array.isArray(rawPlanJoin) ? rawPlanJoin[0] : rawPlanJoin;
+        const settingsFallbackSlug = (
+          tenantSettings.subscription as { plan_slug?: PlanSlug } | undefined
+        )?.plan_slug;
+        const planSlug = (planData?.slug || settingsFallbackSlug || "evaluation") as PlanSlug;
         const plan = await paystackBillingService.getPlan(planSlug);
         const currentPeriodEnd = new Date(sub.current_period_end || trialEnd);
         const isActive = sub.status === "active" && currentPeriodEnd > now;
@@ -120,7 +195,11 @@ export class EntitlementsService {
           status: isActive ? "active" : (sub.status as SubscriptionStatus),
           currentPeriodEnd,
           isTrial: false,
+          isTrialExpired: false,
+          trialStartedAt: trialStart,
+          trialEndsAt: trialEnd,
           trialDaysRemaining,
+          trialHoursRemaining,
         };
       }
     } catch {
@@ -148,19 +227,27 @@ export class EntitlementsService {
           status: "active",
           currentPeriodEnd: periodEnd,
           isTrial: false,
+          isTrialExpired: false,
+          trialStartedAt: trialStart,
+          trialEndsAt: trialEnd,
           trialDaysRemaining,
+          trialHoursRemaining,
         };
       }
     }
 
     // 4. Default: Evaluation Pilot (7-day trial)
-    const isTrialExpired = now > trialEnd;
+    const isTrialExpired = isTrialExpiredByClock;
     return {
       plan: evaluationPlan,
       status: isTrialExpired ? "past_due" : "trialing",
       currentPeriodEnd: trialEnd,
       isTrial: true,
+      isTrialExpired,
+      trialStartedAt: trialStart,
+      trialEndsAt: trialEnd,
       trialDaysRemaining,
+      trialHoursRemaining,
     };
   }
 

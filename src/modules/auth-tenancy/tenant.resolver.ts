@@ -110,12 +110,14 @@ export async function resolveTenantContext(
     try {
       let resolvedOrgName = orgSlug || `Organization ${orgId.slice(-6)}`;
       let resolvedOrgSlug = orgSlug || null;
+      let resolvedOrgCreatedAt: number | undefined;
 
       try {
         const client = await clerkClient();
         const org = await client.organizations.getOrganization({ organizationId: orgId });
         if (org?.name) resolvedOrgName = org.name;
         if (org?.slug) resolvedOrgSlug = org.slug;
+        if (org?.createdAt) resolvedOrgCreatedAt = org.createdAt;
       } catch (clerkErr) {
         logger.warn("Unable to fetch org metadata from Clerk during lazy tenant provisioning", {
           clerkOrgId: orgId,
@@ -127,6 +129,7 @@ export async function resolveTenantContext(
         id: orgId,
         name: resolvedOrgName,
         slug: resolvedOrgSlug,
+        created_at: resolvedOrgCreatedAt,
       });
 
       const { data: reloadedTenant, error: reloadErr } = await supabase

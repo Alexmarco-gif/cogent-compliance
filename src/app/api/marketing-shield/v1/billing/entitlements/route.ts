@@ -5,6 +5,8 @@ import { entitlementsService } from "@/modules/billing/entitlements.service";
 import { FEATURE_GATE_TYPES, FeatureGateType } from "@/contracts/billing.contracts";
 import { logger } from "@/lib/logger";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(req: NextRequest) {
   try {
     const tenantContext = await resolveTenantContext(req);
@@ -16,7 +18,10 @@ export async function GET(req: NextRequest) {
         tenantContext.tenantId,
         featureParam,
       );
-      return NextResponse.json(result, { status: 200 });
+      return NextResponse.json(result, {
+        status: 200,
+        headers: { "Cache-Control": "no-store, max-age=0" },
+      });
     }
 
     // Full snapshot of tenant entitlements
@@ -35,11 +40,18 @@ export async function GET(req: NextRequest) {
           status: subInfo.status,
           currentPeriodEnd: subInfo.currentPeriodEnd.toISOString(),
           isTrial: subInfo.isTrial,
+          isTrialExpired: subInfo.isTrialExpired,
+          trialStartedAt: subInfo.trialStartedAt.toISOString(),
+          trialEndsAt: subInfo.trialEndsAt.toISOString(),
           trialDaysRemaining: subInfo.trialDaysRemaining,
+          trialHoursRemaining: subInfo.trialHoursRemaining,
         },
         entitlements: checks,
       },
-      { status: 200 },
+      {
+        status: 200,
+        headers: { "Cache-Control": "no-store, max-age=0" },
+      },
     );
   } catch (err: unknown) {
     if (err instanceof AuthTenancyError) {

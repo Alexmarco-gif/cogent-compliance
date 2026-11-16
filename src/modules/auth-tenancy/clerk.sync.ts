@@ -12,6 +12,7 @@ export interface ClerkOrgEventData {
   id: string; // e.g. org_xxx
   name: string;
   slug?: string | null;
+  created_at?: number | string | null;
 }
 
 export interface ClerkMembershipEventData {
@@ -83,6 +84,14 @@ export async function syncClerkOrganizationCreated(data: ClerkOrgEventData): Pro
     ]),
   );
 
+  let initialTrialStart = new Date().toISOString();
+  if (data.created_at) {
+    const parsed = new Date(data.created_at);
+    if (!Number.isNaN(parsed.getTime())) {
+      initialTrialStart = parsed.toISOString();
+    }
+  }
+
   let lastErrorMessage = "Unknown database error";
 
   for (const candidateSlug of candidateSlugs) {
@@ -93,7 +102,7 @@ export async function syncClerkOrganizationCreated(data: ClerkOrgEventData): Pro
         name: data.name || `Organization ${data.id.slice(-6)}`,
         slug: candidateSlug,
         status: "ACTIVE",
-        settings: {},
+        settings: { trial_started_at: initialTrialStart },
         updated_at: new Date().toISOString(),
       })
       .select("id")

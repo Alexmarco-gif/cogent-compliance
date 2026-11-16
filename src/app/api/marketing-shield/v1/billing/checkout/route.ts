@@ -27,6 +27,10 @@ async function resolveBillingEmail(
     if (typeof settings.billing_email === "string" && settings.billing_email.includes("@")) {
       return settings.billing_email;
     }
+    const orgProfile = settings.organization_profile as Record<string, unknown> | undefined;
+    if (typeof orgProfile?.email === "string" && orgProfile.email.includes("@")) {
+      return orgProfile.email;
+    }
   } catch (err) {
     logger.warn("Unable to read billing_email from tenant settings", { tenantId, err });
   }
@@ -44,6 +48,20 @@ async function resolveBillingEmail(
   }
 
   return process.env.NODE_ENV === "production" ? null : "billing@institution.com";
+}
+
+function resolveRequestOrigin(req: NextRequest): string {
+  const forwardedProto = req.headers.get("x-forwarded-proto");
+  const forwardedHost = req.headers.get("x-forwarded-host") || req.headers.get("host");
+  if (forwardedHost) {
+    const proto = forwardedProto || (forwardedHost.includes("localhost") ? "http" : "https");
+    return `${proto}://${forwardedHost}`;
+  }
+  const nextOrigin = req.nextUrl?.origin;
+  if (nextOrigin && nextOrigin !== "null") {
+    return nextOrigin;
+  }
+  return process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 }
 
 export async function POST(req: NextRequest) {
@@ -69,11 +87,15 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const appOrigin = resolveRequestOrigin(req);
+    const callbackUrl = `${appOrigin}/settings?tab=billing&checkout=success`;
+
     const checkout = await paystackBillingService.initializeCheckout({
       tenantId: tenantContext.tenantId,
       planSlug,
       billingInterval,
       userEmail,
+      callbackUrl,
     });
 
     return NextResponse.json(checkout, { status: 200 });
