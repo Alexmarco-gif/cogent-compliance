@@ -24,9 +24,10 @@ export interface AdaptiveMessageRendererProps {
   planSteps?: ExecutionPlanStep[];
   structuredReport?: StructuredComplianceReport;
   attachments?: MessageAttachmentChip[];
+  wideRail?: boolean;
   onInspectEvidence?: (clauseId: string) => void;
-  onApplyCompliantRewrite?: (rewrittenCopy: string) => Promise<void> | void;
-  onApproveAndSealDossier?: (rewrittenCopy: string) => Promise<void> | void;
+  onApplyCompliantRewrite?: (rewrittenCopy: string) => Promise<boolean | void> | boolean | void;
+  onApproveAndSealDossier?: (rewrittenCopy: string) => Promise<boolean | void> | boolean | void;
   isStreaming?: boolean;
 }
 
@@ -37,6 +38,7 @@ export function AdaptiveMessageRenderer({
   planSteps = [],
   structuredReport,
   attachments = [],
+  wideRail = false,
   onInspectEvidence,
   onApplyCompliantRewrite,
   onApproveAndSealDossier,
@@ -47,10 +49,12 @@ export function AdaptiveMessageRenderer({
     [citations]
   );
 
+  const railWidthClass = wideRail || structuredReport ? "max-w-5xl w-full" : "max-w-3xl w-full";
+
   if (role === "USER") {
     return (
-      <div className="max-w-3xl mx-auto flex justify-end my-4">
-        <div className="max-w-[80%] rounded-2xl bg-zinc-100 border border-zinc-200/80 px-4 py-2.5 text-[14px] text-zinc-950 leading-relaxed space-y-2">
+      <div className={`${railWidthClass} mx-auto flex justify-end my-4`}>
+        <div className="max-w-[85%] sm:max-w-[78%] rounded-2xl bg-zinc-100 border border-zinc-200/80 px-4 py-2.5 text-[14px] text-zinc-950 leading-relaxed space-y-2 break-words">
           {attachments.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
               {attachments.map((att, idx) => (
@@ -75,13 +79,7 @@ export function AdaptiveMessageRenderer({
     : null;
 
   return (
-    <div
-      className={
-        structuredReport
-          ? "max-w-6xl mx-auto my-5 space-y-3"
-          : "max-w-3xl mx-auto my-5 space-y-4"
-      }
-    >
+    <div className={`${railWidthClass} mx-auto my-5 space-y-3 min-w-0`}>
       {/* Autonomous Multi-Step Execution Plan (Collapsed Thought Pill when completed) */}
       {planSteps.length > 0 && (
         <AgentExecutionPlanCard
@@ -92,7 +90,7 @@ export function AdaptiveMessageRenderer({
 
       {/* Unboxed Editorial Prose on White Canvas (Only rendered when no Split-Pane Workbench is active) */}
       {!structuredReport && (
-        <div className="space-y-3 text-[14.5px] text-zinc-800 leading-relaxed font-sans">
+        <div className="space-y-3 text-[14.5px] text-zinc-800 leading-relaxed font-sans break-words">
           {renderedContent}
           {isStreaming && (
             <span className="inline-block h-3.5 w-1.5 animate-pulse bg-zinc-900 ml-1 align-middle" />
@@ -133,14 +131,14 @@ export function AdaptiveMessageRenderer({
                       citation.regulatory_clause_id &&
                       onInspectEvidence?.(citation.regulatory_clause_id)
                     }
-                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 hover:border-zinc-300 px-2.5 py-1 text-[11.5px] text-zinc-800 transition-colors cursor-pointer shadow-2xs"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 hover:border-zinc-300 px-2.5 py-1 text-[11.5px] text-zinc-800 transition-colors cursor-pointer shadow-sm"
                     title={`${citation.regulator || "STATUTE"} — ${citation.instrument_title || ""} (${citation.clause_reference || "Click to inspect statutory provision"})`}
                   >
                     <FileText className="h-3 w-3 text-zinc-500 shrink-0" />
                     <span className="font-mono text-[10.5px] font-semibold text-zinc-900">
                       {citation.regulator || "STATUTE"}
                     </span>
-                    <span className="truncate max-w-[240px] text-zinc-600">
+                    <span className="truncate max-w-[220px] text-zinc-600">
                       {citation.clause_reference || citation.instrument_title}
                     </span>
                   </button>
@@ -157,7 +155,7 @@ export function AdaptiveMessageRenderer({
                     <span className="font-mono text-[10.5px] font-semibold text-zinc-900">
                       PLAYBOOK
                     </span>
-                    <span className="truncate max-w-[240px] text-zinc-600">
+                    <span className="truncate max-w-[220px] text-zinc-600">
                       {citation.rule_title ||
                         citation.instrument_title ||
                         "Approved Schedule"}
@@ -173,14 +171,14 @@ export function AdaptiveMessageRenderer({
                     href={citation.retrieved_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 px-2.5 py-1 text-[11.5px] text-zinc-700 transition-colors shadow-2xs"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 px-2.5 py-1 text-[11.5px] text-zinc-700 transition-colors shadow-sm"
                     title="Open live web source"
                   >
                     <Globe className="h-3 w-3 text-zinc-500 shrink-0" />
                     <span className="font-mono text-[10.5px] font-semibold text-zinc-900">
                       LIVE WEB
                     </span>
-                    <span className="truncate max-w-[240px] text-zinc-700">
+                    <span className="truncate max-w-[220px] text-zinc-700">
                       {citation.page_title || citation.retrieved_url}
                     </span>
                     <ExternalLink className="h-3 w-3 text-zinc-400 shrink-0" />

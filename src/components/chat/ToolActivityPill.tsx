@@ -8,6 +8,7 @@ export interface ToolActivityProps {
   displayLabel: string;
   status: "RUNNING" | "COMPLETED" | "FAILED";
   summary?: string;
+  wideRail?: boolean;
 }
 
 function humanizeToolName(toolName: string): string {
@@ -31,12 +32,14 @@ export function ToolActivityPill({
   displayLabel,
   status,
   summary,
+  wideRail = false,
 }: ToolActivityProps) {
   const [expanded, setExpanded] = useState(false);
+  const railWidth = wideRail ? "max-w-5xl w-full mx-auto" : "max-w-3xl w-full mx-auto";
 
   if (status === "RUNNING") {
     return (
-      <div className="max-w-3xl mx-auto">
+      <div className={railWidth}>
         <div className="inline-flex items-center gap-2 text-[12px] text-zinc-500 py-1">
           <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-500" />
           <span>{displayLabel || humanizeToolName(toolName)}...</span>
@@ -46,7 +49,7 @@ export function ToolActivityPill({
   }
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className={railWidth}>
       <button
         type="button"
         onClick={() => setExpanded((prev) => !prev)}

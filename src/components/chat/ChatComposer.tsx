@@ -57,6 +57,7 @@ export interface ChatComposerProps {
   products?: ProductOption[];
   selectedProductId?: string | null;
   onSelectProduct?: (productId: string | null) => void;
+  wideRail?: boolean;
 }
 
 const STARTER_CARDS = [
@@ -117,6 +118,7 @@ export function ChatComposer({
   products = [],
   selectedProductId = null,
   onSelectProduct,
+  wideRail = false,
 }: ChatComposerProps) {
   const [content, setContent] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
@@ -321,7 +323,15 @@ export function ChatComposer({
   };
 
   return (
-    <div className={isZeroState ? "w-full max-w-2xl mx-auto" : "w-full max-w-3xl mx-auto"}>
+    <div
+      className={
+        isZeroState
+          ? "w-full max-w-2xl mx-auto"
+          : wideRail
+            ? "w-full max-w-5xl mx-auto"
+            : "w-full max-w-3xl mx-auto"
+      }
+    >
       {uploadError && (
         <div className="mb-3 px-3.5 py-2.5 rounded-lg bg-rose-50/70 border border-rose-200 text-rose-700 text-[12.5px] flex items-center justify-between gap-3">
           <span>{uploadError}</span>

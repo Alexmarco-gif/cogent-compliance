@@ -69,7 +69,7 @@ export const ContextualCampaignInspector: React.FC<InspectorProps> = ({
   if (!isOpen || !campaign) return null;
 
   return (
-    <aside className="w-full lg:w-[55%] xl:w-[56%] max-w-[780px] shrink-0 border-l border-zinc-200 bg-zinc-50 flex flex-col h-full z-20 overflow-hidden">
+    <aside className="fixed inset-0 lg:static w-full lg:w-[46%] xl:w-[48%] max-w-[700px] shrink-0 border-l border-zinc-200 bg-zinc-50 flex flex-col h-full z-30 lg:z-20 overflow-hidden">
       {/* Top Header */}
       <div className="flex items-center justify-between border-b border-zinc-200 bg-white px-6 py-3.5 shrink-0">
         <div className="min-w-0">

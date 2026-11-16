@@ -465,19 +465,21 @@ function ChatWorkspaceContent() {
     };
   };
 
-  const handleApplyCompliantRewrite = async (rewrittenCopy: string) => {
+  const handleApplyCompliantRewrite = async (rewrittenCopy: string): Promise<boolean> => {
     try {
-      await ensureActiveCampaignWithCopy(rewrittenCopy);
+      const target = await ensureActiveCampaignWithCopy(rewrittenCopy);
+      return Boolean(target);
     } catch (err) {
       console.error("Failed to apply compliant rewrite", err);
       setChatError("Network error while applying compliant rewrite.");
+      return false;
     }
   };
 
-  const handleApproveAndSealDossier = async (rewrittenCopy: string) => {
+  const handleApproveAndSealDossier = async (rewrittenCopy: string): Promise<boolean> => {
     try {
       const target = await ensureActiveCampaignWithCopy(rewrittenCopy);
-      if (!target) return;
+      if (!target) return false;
 
       const appRes = await fetch(
         `/api/marketing-shield/v1/campaigns/${target.campaignId}/approvals`,
@@ -495,7 +497,7 @@ function ChatWorkspaceContent() {
       const appJson = await appRes.json().catch(() => ({}));
       if (!appRes.ok || !appJson.success) {
         applyApiFailure(appRes.status, appJson, "Failed to record CCO campaign approval.");
-        return;
+        return false;
       }
 
       const dosRes = await fetch(
@@ -514,9 +516,11 @@ function ChatWorkspaceContent() {
       }
 
       await loadCampaignData(target.campaignId);
+      return true;
     } catch (err) {
       console.error("Failed to approve and seal dossier", err);
       setChatError("Network error while sealing 2-year FCCPC audit dossier.");
+      return false;
     }
   };
 
@@ -819,6 +823,7 @@ function ChatWorkspaceContent() {
 
   const activeConversation = conversations.find((c) => c.id === activeConvId);
   const isZeroState = !loadingMessages && messages.length === 0;
+  const hasWorkbenchReport = messages.some((m) => Boolean(m.structuredReport));
 
   if (!clerkLoaded || !isSignedIn || !orgId || !onboardingReady) {
     return (
@@ -868,7 +873,7 @@ function ChatWorkspaceContent() {
                   <PanelRight className="h-3.5 w-3.5" />
                   <span>Studio</span>
                   {campaignFindings.length > 0 && (
-                    <span className="ml-0.5 rounded-full bg-rose-100 text-rose-700 px-1.5 py-0.2 font-mono text-[10.5px] font-semibold">
+                    <span className="ml-0.5 rounded-full bg-rose-100 text-rose-700 px-1.5 py-0.5 font-mono text-[10.5px] font-semibold">
                       {campaignFindings.length}
                     </span>
                   )}
@@ -975,6 +980,7 @@ function ChatWorkspaceContent() {
                   planSteps={msg.planSteps}
                   structuredReport={msg.structuredReport}
                   attachments={msg.attachments}
+                  wideRail={hasWorkbenchReport}
                   isStreaming={msg.isStreaming}
                   onInspectEvidence={(clauseId) => setInspectClauseId(clauseId)}
                   onApplyCompliantRewrite={handleApplyCompliantRewrite}
@@ -989,6 +995,7 @@ function ChatWorkspaceContent() {
                     displayLabel={activeTool.displayLabel}
                     status={activeTool.status}
                     summary={activeTool.summary}
+                    wideRail={hasWorkbenchReport}
                   />
                 </div>
               )}
@@ -1005,6 +1012,7 @@ function ChatWorkspaceContent() {
                 products={products}
                 selectedProductId={selectedProductId}
                 onSelectProduct={setSelectedProductId}
+                wideRail={hasWorkbenchReport}
               />
             </footer>
           </>
