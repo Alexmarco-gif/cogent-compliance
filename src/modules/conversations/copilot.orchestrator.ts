@@ -100,11 +100,10 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC & DOCUMENT 13):
    - If <dual_grounding_context> has empty 'live_web_intelligence.live_sources' and the query involves current events, recent regulatory circulars, enforcement actions, or live market guidance, call 'search_live_web' once with a concise topical search query (e.g. 'CBN FCCPC digital lending APR disclosure guidelines Nigeria') before writing your final response.
    - Call other tools only when specifically required (e.g. 'fetch_live_url_content' for a user-supplied URL, 'search_institutional_knowledge' for internal playbooks, 'get_product_approved_terms' for a named product, or 'get_regulatory_provision' for full verbatim text).
    - Never invent or fabricate clause numbers, circular dates, URLs, or penalty amounts.
-2. MANDATORY ANALYST OUTPUT FORMULA (PROBLEM -> RISK -> FIX):
-   Whenever analyzing a promotion, product, flyer, or landing page, structure your analysis clearly around:
-   - ### 1. What You Missed (Silent Blind Spots & Statutory Breaches)
-   - ### 2. What It Costs You (Nigerian Regulatory & Commercial Consequences)
-   - ### 3. One-Click Resolution (Compliant Rewrite & Key Facts Statement)
+2. MANDATORY ANALYST OUTPUT FORMULA (CONCISE EXECUTIVE SUMMARY):
+   - When analyzing a promotion, product, flyer, or landing page, the platform's Split-Pane Workbench automatically renders the interactive Pre-Flight Gate, Silent Blind-Spot Cards, CBN KFS Table, ARCON ASP Memo, and Compliant Rewrite.
+   - Keep your narrative response concise (at most 2 to 3 short paragraphs or a brief bulleted executive summary highlighting the primary statutory risk and core remediation).
+   - NEVER output ASCII box tables ('+---+---+' or '====='), raw markdown code fences, or bracketed internal tags ('[AUTOMATED AUDIT SCAN SUMMARY]').
 3. PRESENTATION & FORMATTING (DOC-10-ACPC):
    - Never repeat the user's prompt as an '# H1' heading.
    - Use clean, structured Markdown: use '###' and '####' section headings for hierarchy.
@@ -204,6 +203,81 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC & DOCUMENT 13):
       vaultQuery,
       webQuery: webQuery.slice(0, 180).trim() || "Nigeria CBN FCCPC ARCON financial marketing compliance updates",
     };
+  }
+
+  /**
+   * Cleans raw OCR stutter/glitches from statutory chunk titles and deduplicates citations
+   * by semantic identity (regulator + instrument + normalized section/clause).
+   */
+  private sanitizeAndDeduplicateCitations(rawCitations: CitationItem[]): CitationItem[] {
+    const cleanSectionRef = (raw?: string): string | undefined => {
+      if (!raw) return undefined;
+      let s = raw.replace(/\s+/g, " ").trim();
+      // Remove bracketed page markers like "[P..." or "[Page 12]"
+      s = s.replace(/\[P(?:age)?[^\]]*\]?/gi, "").replace(/\[[^\]]*$/g, "").trim();
+      // Collapse OCR stutter like "35.35.AnAn advertiser,advertiser, pr..." -> "Section 35"
+      const stutterMatch = s.match(/^(\d+(?:\.\d+)*)\.\1\.?\s+/);
+      if (stutterMatch?.[1]) {
+        return `Section ${stutterMatch[1]}`;
+      }
+      // Collapse repeated words like "AnAn" or "advertiser,advertiser"
+      s = s
+        .replace(/\b([A-Za-z]{2,})\1\b/g, "$1")
+        .replace(/\b([A-Za-z]{2,})\s*,\s*\1\b/gi, "$1");
+      // If it's a long OCR sentence starting with a number, extract the section number
+      const leadingNumMatch = s.match(/^(\d+(?:\.\d+)*)\.?\s+[A-Za-z]/);
+      if (leadingNumMatch?.[1] && s.length > 42) {
+        return `Section ${leadingNumMatch[1]}`;
+      }
+      // Clean ALL-CAPS PART headers e.g. "PART II—REGISTRATION AND APPROVAL..."
+      const partMatch = s.match(/^(PART\s+[IVXLC0-9]+)\s*[—–-]\s*(.+)$/i);
+      if (partMatch?.[1] && partMatch[2]) {
+        const partLabel = partMatch[1].toUpperCase();
+        const partTitle = partMatch[2]
+          .toLowerCase()
+          .replace(/\b\w/g, (c) => c.toUpperCase())
+          .slice(0, 44)
+          .trim();
+        return `${partLabel} — ${partTitle}`;
+      }
+      return s.length > 56 ? `${s.slice(0, 53).trim()}...` : s;
+    };
+
+    const unique: CitationItem[] = [];
+    const seenSemanticKeys = new Set<string>();
+    const seenIds = new Set<string>();
+
+    for (const cit of rawCitations) {
+      const cleanedClause = cleanSectionRef(cit.clause_reference);
+      const cleanedTitle = cleanSectionRef(cit.instrument_title) || cit.instrument_title;
+      const cleanedRule = cleanSectionRef(cit.rule_title) || cit.rule_title;
+
+      const idKey = cit.regulatory_clause_id || cit.retrieved_url || "";
+      const hasSemanticLabel = Boolean(cleanedTitle || cleanedRule || cit.page_title || cleanedClause);
+      const semanticKey = hasSemanticLabel
+        ? [
+            cit.source_class,
+            (cit.regulator || "").toUpperCase(),
+            (cleanedTitle || cleanedRule || cit.page_title || "").toLowerCase(),
+            (cleanedClause || "").toLowerCase(),
+          ].join("::")
+        : `${cit.source_class}::${idKey}`;
+
+      if ((idKey && seenIds.has(idKey)) || seenSemanticKeys.has(semanticKey)) {
+        continue;
+      }
+      if (idKey) seenIds.add(idKey);
+      seenSemanticKeys.add(semanticKey);
+
+      unique.push({
+        ...cit,
+        ...(cleanedClause ? { clause_reference: cleanedClause } : {}),
+        ...(cleanedTitle ? { instrument_title: cleanedTitle } : {}),
+        ...(cleanedRule ? { rule_title: cleanedRule } : {}),
+      });
+    }
+
+    return unique;
   }
 
   /**
@@ -633,6 +707,7 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC & DOCUMENT 13):
                 product_id: resolvedProduct?.id || null,
                 product_name: resolvedProduct?.product_name || null,
                 approved_terms: resolvedProduct?.approved_terms || null,
+                deterministic_lock_scan: lockResult,
                 deterministic_locks: lockResult,
                 apr_and_drip_pricing_audit: aprAuditResult,
                 visual_forensics_audit: visualAuditResult,
@@ -1341,35 +1416,8 @@ CRITICAL OPERATIONAL RULES (DOC-10-ACPC & DOCUMENT 13):
         };
       }
 
-      // Deduplicate citations cleanly across Vault clauses, Live Web URLs, and Playbook items
-      const uniqueCitations: CitationItem[] = [];
-      const seenKeys = new Set<string>();
-      for (const cit of collectedCitations) {
-        let key = "";
-        if (cit.source_class === "VERIFIED_OFFICIAL_SOURCE") {
-          const normReg = (cit.regulator || "").trim().toUpperCase();
-          const normInst = (cit.instrument_title || "").trim().toLowerCase();
-          const normClause = (cit.clause_reference || "").trim().toLowerCase();
-          key = normClause
-            ? `VAULT:${normReg}:${normInst}:${normClause}`
-            : cit.regulatory_clause_id
-              ? `VAULT_ID:${cit.regulatory_clause_id}`
-              : "";
-        } else if (cit.source_class === "LIVE_WEB_INTELLIGENCE") {
-          const normUrl = (cit.retrieved_url || "").trim().replace(/\/+$/, "").toLowerCase();
-          key = normUrl ? `WEB:${normUrl}` : cit.live_web_retrieval_id || "";
-        } else {
-          key =
-            cit.regulatory_clause_id ||
-            cit.knowledge_rule_id ||
-            `${cit.rule_title || ""}:${cit.clause_reference || ""}`;
-        }
-
-        if (key && !seenKeys.has(key)) {
-          seenKeys.add(key);
-          uniqueCitations.push(cit);
-        }
-      }
+      // Clean OCR glitches & deduplicate citations across Vault clauses, Live Web URLs, and Playbook items
+      const uniqueCitations = this.sanitizeAndDeduplicateCitations(collectedCitations);
 
       // Build StructuredComplianceReport when this turn involves a promotion, rate, flyer, or URL audit
       const structuredReport = await this.buildStructuredReport({

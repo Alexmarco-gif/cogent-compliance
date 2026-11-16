@@ -42,6 +42,11 @@ export function AdaptiveMessageRenderer({
   onApproveAndSealDossier,
   isStreaming,
 }: AdaptiveMessageRendererProps) {
+  const dedupedCitations = React.useMemo(
+    () => cleanAndDeduplicateCitations(citations),
+    [citations]
+  );
+
   if (role === "USER") {
     return (
       <div className="max-w-3xl mx-auto flex justify-end my-4">
@@ -65,22 +70,37 @@ export function AdaptiveMessageRenderer({
     );
   }
 
-  const renderedContent = renderMarkdownToTypography(content);
+  const renderedContent = !structuredReport
+    ? renderMarkdownToTypography(content)
+    : null;
 
   return (
-    <div className="max-w-3xl mx-auto my-5 space-y-4">
-      {/* Autonomous Multi-Step Execution Plan */}
-      {planSteps.length > 0 && <AgentExecutionPlanCard steps={planSteps} />}
+    <div
+      className={
+        structuredReport
+          ? "max-w-6xl mx-auto my-5 space-y-3"
+          : "max-w-3xl mx-auto my-5 space-y-4"
+      }
+    >
+      {/* Autonomous Multi-Step Execution Plan (Collapsed Thought Pill when completed) */}
+      {planSteps.length > 0 && (
+        <AgentExecutionPlanCard
+          steps={planSteps}
+          citationCount={dedupedCitations.length}
+        />
+      )}
 
-      {/* Unboxed Editorial Prose on White Canvas */}
-      <div className="space-y-3 text-[14.5px] text-zinc-800 leading-relaxed font-sans">
-        {renderedContent}
-        {isStreaming && (
-          <span className="inline-block h-3.5 w-1.5 animate-pulse bg-zinc-900 ml-1 align-middle" />
-        )}
-      </div>
+      {/* Unboxed Editorial Prose on White Canvas (Only rendered when no Split-Pane Workbench is active) */}
+      {!structuredReport && (
+        <div className="space-y-3 text-[14.5px] text-zinc-800 leading-relaxed font-sans">
+          {renderedContent}
+          {isStreaming && (
+            <span className="inline-block h-3.5 w-1.5 animate-pulse bg-zinc-900 ml-1 align-middle" />
+          )}
+        </div>
+      )}
 
-      {/* Autonomous Analyst Workbench (Problem -> Risk -> Fix + KFS + 1-Click HITL) */}
+      {/* Silicon Valley Split-Pane Workbench (Zone A Verdict + Zone B Issue Queue + Zone C Deliverables Studio) */}
       {structuredReport && (
         <AutonomousAnalystWorkbench
           report={structuredReport}
@@ -90,16 +110,20 @@ export function AdaptiveMessageRenderer({
         />
       )}
 
-      {/* Monochrome Citation Footnote Chips */}
-      {citations.length > 0 && (
-        <div className="pt-3 border-t border-zinc-100 space-y-2">
-          <div className="flex items-center justify-between text-[11.5px] text-zinc-400">
-            <span className="font-medium text-zinc-500">Sources</span>
-            <span className="font-mono">{citations.length}</span>
+      {/* Clean, Deduplicated Statutory & Institutional Source Chips */}
+      {dedupedCitations.length > 0 && (
+        <div className="pt-3 border-t border-zinc-200/80 space-y-2">
+          <div className="flex items-center justify-between text-[11px] text-zinc-400">
+            <span className="font-semibold uppercase tracking-wider text-zinc-500">
+              Verified Sources & Statutory Grounding
+            </span>
+            <span className="font-mono text-zinc-500">
+              {dedupedCitations.length}
+            </span>
           </div>
 
           <div className="flex flex-wrap gap-1.5">
-            {citations.map((citation, index) => {
+            {dedupedCitations.map((citation, index) => {
               if (citation.source_class === "VERIFIED_OFFICIAL_SOURCE") {
                 return (
                   <button
@@ -109,14 +133,14 @@ export function AdaptiveMessageRenderer({
                       citation.regulatory_clause_id &&
                       onInspectEvidence?.(citation.regulatory_clause_id)
                     }
-                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 px-2.5 py-1 text-[12px] text-zinc-800 transition-colors cursor-pointer"
-                    title="View full statutory provision"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 hover:border-zinc-300 px-2.5 py-1 text-[11.5px] text-zinc-800 transition-colors cursor-pointer shadow-2xs"
+                    title={`${citation.regulator || "STATUTE"} — ${citation.instrument_title || ""} (${citation.clause_reference || "Click to inspect statutory provision"})`}
                   >
                     <FileText className="h-3 w-3 text-zinc-500 shrink-0" />
-                    <span className="font-mono text-[11px] font-medium text-zinc-900">
+                    <span className="font-mono text-[10.5px] font-semibold text-zinc-900">
                       {citation.regulator || "STATUTE"}
                     </span>
-                    <span className="truncate max-w-[220px] text-zinc-600">
+                    <span className="truncate max-w-[240px] text-zinc-600">
                       {citation.clause_reference || citation.instrument_title}
                     </span>
                   </button>
@@ -127,12 +151,16 @@ export function AdaptiveMessageRenderer({
                 return (
                   <span
                     key={index}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[12px] text-zinc-700"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50/80 px-2.5 py-1 text-[11.5px] text-zinc-700"
                   >
                     <BookOpen className="h-3 w-3 text-zinc-500 shrink-0" />
-                    <span className="font-medium text-zinc-900">Playbook</span>
-                    <span className="truncate max-w-[220px] text-zinc-600">
-                      {citation.rule_title || citation.instrument_title || "Approved Schedule"}
+                    <span className="font-mono text-[10.5px] font-semibold text-zinc-900">
+                      PLAYBOOK
+                    </span>
+                    <span className="truncate max-w-[240px] text-zinc-600">
+                      {citation.rule_title ||
+                        citation.instrument_title ||
+                        "Approved Schedule"}
                     </span>
                   </span>
                 );
@@ -145,14 +173,14 @@ export function AdaptiveMessageRenderer({
                     href={citation.retrieved_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 px-2.5 py-1 text-[12px] text-zinc-700 transition-colors"
+                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 px-2.5 py-1 text-[11.5px] text-zinc-700 transition-colors shadow-2xs"
                     title="Open live web source"
                   >
                     <Globe className="h-3 w-3 text-zinc-500 shrink-0" />
-                    <span className="font-mono text-[11px] font-medium text-zinc-900">
-                      Live Web
+                    <span className="font-mono text-[10.5px] font-semibold text-zinc-900">
+                      LIVE WEB
                     </span>
-                    <span className="truncate max-w-[220px] text-zinc-700">
+                    <span className="truncate max-w-[240px] text-zinc-700">
                       {citation.page_title || citation.retrieved_url}
                     </span>
                     <ExternalLink className="h-3 w-3 text-zinc-400 shrink-0" />
@@ -175,7 +203,84 @@ interface ListEntry {
 }
 
 /**
+ * Client-side sanitizer & semantic deduplicator for source chips.
+ * Strips OCR double-word stutter (e.g. "35.35.AnAn advertiser,advertiser, pr..." -> "Section 35")
+ * and collapses duplicate chunks from the same statutory provision.
+ */
+function cleanAndDeduplicateCitations(rawCitations: CitationItem[]): CitationItem[] {
+  const cleanLabel = (raw?: string): string | undefined => {
+    if (!raw) return undefined;
+    let s = raw.replace(/\s+/g, " ").trim();
+    // Remove bracketed page markers like "[P..." or "[Page 14]"
+    s = s.replace(/\[P(?:age)?[^\]]*\]?/gi, "").replace(/\[[^\]]*$/g, "").trim();
+    // Collapse OCR stutter like "35.35.AnAn advertiser,advertiser, pr..." -> "Section 35"
+    const stutterMatch = s.match(/^(\d+(?:\.\d+)*)\.\1\.?\s+/);
+    if (stutterMatch?.[1]) {
+      return `Section ${stutterMatch[1]}`;
+    }
+    // Collapse repeated words like "AnAn" or "advertiser,advertiser"
+    s = s
+      .replace(/\b([A-Za-z]{2,})\1\b/g, "$1")
+      .replace(/\b([A-Za-z]{2,})\s*,\s*\1\b/gi, "$1");
+    // If it's a long OCR sentence starting with a section number, extract the section number cleanly
+    const leadingNumMatch = s.match(/^(\d+(?:\.\d+)*)\.?\s+[A-Za-z]/);
+    if (leadingNumMatch?.[1] && s.length > 42) {
+      return `Section ${leadingNumMatch[1]}`;
+    }
+    // Clean ALL-CAPS PART headers e.g. "PART II—REGISTRATION AND APPROVAL..."
+    const partMatch = s.match(/^(PART\s+[IVXLC0-9]+)\s*[—–-]\s*(.+)$/i);
+    if (partMatch?.[1] && partMatch[2]) {
+      const partLabel = partMatch[1].toUpperCase();
+      const partTitle = partMatch[2]
+        .toLowerCase()
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+        .slice(0, 44)
+        .trim();
+      return `${partLabel} — ${partTitle}`;
+    }
+    return s.length > 56 ? `${s.slice(0, 53).trim()}...` : s;
+  };
+
+  const unique: CitationItem[] = [];
+  const seenKeys = new Set<string>();
+
+  for (const cit of rawCitations) {
+    const cleanedClause = cleanLabel(cit.clause_reference);
+    const cleanedTitle = cleanLabel(cit.instrument_title) || cit.instrument_title;
+    const cleanedRule = cleanLabel(cit.rule_title) || cit.rule_title;
+
+    const idKey = cit.regulatory_clause_id || cit.retrieved_url || "";
+    const hasSemanticLabel = Boolean(
+      cleanedTitle || cleanedRule || cit.page_title || cleanedClause
+    );
+    const semanticKey = hasSemanticLabel
+      ? [
+          cit.source_class,
+          (cit.regulator || "").toUpperCase(),
+          (cleanedTitle || cleanedRule || cit.page_title || "").toLowerCase(),
+          (cleanedClause || "").toLowerCase(),
+        ].join("::")
+      : `${cit.source_class}::${idKey}`;
+
+    if (seenKeys.has(semanticKey)) {
+      continue;
+    }
+    seenKeys.add(semanticKey);
+
+    unique.push({
+      ...cit,
+      ...(cleanedClause ? { clause_reference: cleanedClause } : {}),
+      ...(cleanedTitle ? { instrument_title: cleanedTitle } : {}),
+      ...(cleanedRule ? { rule_title: cleanedRule } : {}),
+    });
+  }
+
+  return unique;
+}
+
+/**
  * Semantic Markdown parser respecting DOC-10-ACPC typography rules.
+ * Strips raw code fence markers (` ``` `) and ASCII box-drawing tables (`+---+---+`, `=====`).
  */
 function renderMarkdownToTypography(text: string): React.ReactNode[] {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
@@ -262,7 +367,7 @@ function renderMarkdownToTypography(text: string): React.ReactNode[] {
         .slice(hasSeparator ? 2 : 1)
         .filter((row) => !isSeparatorRow(row))
         .map(parseRow)
-        .filter((r) => r.some((cell) => cell.length > 0));
+        .filter((r) => r.some((cell) => cell.length > 0) && !r.every((c) => /^[-:]+$/.test(c)));
 
       if (headers.length > 0 && bodyRows.length > 0) {
         nodes.push(
@@ -322,8 +427,8 @@ function renderMarkdownToTypography(text: string): React.ReactNode[] {
       continue;
     }
 
-    // 2. Skip ASCII grid border rows (+-----+-----+) outside code blocks
-    if (/^\+[-+=]+\+\s*$/.test(trimmed)) {
+    // 2. Skip ASCII grid border rows (+-----+-----+) or stray single backtick lines outside code blocks
+    if (/^\+[-+=]+\+\s*$/.test(trimmed) || trimmed === "`") {
       flushBlockquote();
       flushList();
       continue;

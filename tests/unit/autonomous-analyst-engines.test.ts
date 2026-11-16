@@ -312,5 +312,71 @@ describe("Phase A: Autonomous Compliance Analyst Deterministic & Forensic Engine
       expect(impact!.recommendedFix).toContain("Key Facts Statement (KFS)");
     });
   });
+
+  describe("8. Single Source of Truth for Math (Pre-Flight Gate <-> KFS <-> Rewrite <-> ARCON Memo)", () => {
+    it("locks 66.92% Effective APR identically across Pre-Flight Gate, KFS Table, Rewrite, and ARCON Memo without double-counting fees or leaking raw markdown", async () => {
+      const { aprCalculatorService } = await import(
+        "@/modules/compliance-assessment/apr-calculator.service"
+      );
+      const { kfsGeneratorService } = await import(
+        "@/modules/compliance-assessment/kfs-generator.service"
+      );
+
+      const quickCash500kProduct: CampaignProduct = {
+        ...SAMPLE_QUICKCASH_PRODUCT,
+        product_name: "QuickCash 30-Day Salary Advance",
+        approved_terms: {
+          ...SAMPLE_QUICKCASH_PRODUCT.approved_terms,
+          interest_rate_max: 4,
+          interest_rate_type: "MONTHLY",
+          processing_fee_percent: 1.5,
+          tenor_min_days: 30,
+          tenor_max_days: 30,
+          custom_terms: {},
+        },
+      };
+
+      const preflightApr = aprCalculatorService.calculateEffectiveApr({
+        principalNgn: 500_000,
+        advertisedRatePercent: 4,
+        advertisedRatePeriod: "MONTHLY",
+        tenorDays: 30,
+        processingFeePercent: 1.5,
+      });
+
+      expect(preflightApr.effectiveNominalAprPercent).toBe(66.92);
+      expect(preflightApr.upfrontFeesNgn).toBe(7500);
+      expect(preflightApr.netDisbursedNgn).toBe(492500);
+
+      const kfsKit = kfsGeneratorService.generateKfsAndChannelKit({
+        product: quickCash500kProduct,
+        principalNgn: 500_000,
+        interestRatePercent: 4,
+        tenorDays: 30,
+        processingFeeFlatNgn: preflightApr.upfrontFeesNgn,
+        lockedAprAudit: preflightApr,
+      });
+
+      // 1. KFS APR summary matches Pre-Flight Gate (66.92%, not 85.17%)
+      expect(kfsKit.aprSummary.effectiveNominalAprPercent).toBe(66.92);
+      expect(kfsKit.aprSummary.upfrontFeesNgn).toBe(7500);
+      expect(kfsKit.aprSummary.tenorDays).toBe(30);
+
+      // 2. KFS table row matches 66.92%
+      const aprRow = kfsKit.kfsRows.find((r) =>
+        r.field.includes("Effective Annual Percentage Rate")
+      );
+      expect(aprRow?.value).toContain("66.92%");
+
+      // 3. Channel rewrites & ARCON memo all state 66.92% and have zero raw markdown markers
+      expect(kfsKit.channelKit.webLandingDisclosureHtml).toContain("66.92%");
+      expect(kfsKit.channelKit.socialCaptionAndFlyer).toContain("66.92%");
+      expect(kfsKit.channelKit.arconAspSubstantiationMemo).toContain("66.92%");
+      expect(kfsKit.channelKit.arconAspSubstantiationMemo).not.toContain("85.17%");
+      expect(kfsKit.channelKit.arconAspSubstantiationMemo).not.toContain("###");
+      expect(kfsKit.channelKit.arconAspSubstantiationMemo).not.toContain("**");
+    });
+  });
 });
+
 
