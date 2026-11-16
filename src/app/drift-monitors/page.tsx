@@ -15,11 +15,14 @@ import {
 import { WorkspaceShell } from "@/components/shell/WorkspaceShell";
 import { DriftMonitorCard } from "@/components/drift-monitor/DriftMonitorCard";
 import { DriftDiffViewer } from "@/components/drift-monitor/DriftDiffViewer";
-import { CreateMonitorModal } from "@/components/drift-monitor/CreateMonitorModal";
+import {
+  CreateMonitorModal,
+  CreateMonitorSubmission,
+  ProductOption,
+} from "@/components/drift-monitor/CreateMonitorModal";
 import { extractApiError, unwrapApiList } from "@/lib/api-client";
 import {
   CampaignDriftMonitor,
-  CreateDriftMonitorInput,
   DriftMonitorStatus,
 } from "@/contracts/drift.contracts";
 
@@ -50,6 +53,7 @@ export default function DriftMonitorsPage() {
   const [monitors, setMonitors] = useState<CampaignDriftMonitor[]>([]);
   const [rippleAlerts, setRippleAlerts] = useState<RippleAlertItem[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignItem[]>([]);
+  const [products, setProducts] = useState<ProductOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
@@ -90,9 +94,11 @@ export default function DriftMonitorsPage() {
   const loadCampaigns = useCallback(async () => {
     if (!isSignedIn || !orgId) return;
     try {
-      const res = await fetch("/api/marketing-shield/v1/campaigns");
+      const res = await fetch("/api/marketing-shield/v1/campaigns?limit=50");
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.success === false) {
+        const parsed = extractApiError(res.status, json, "Unable to load campaigns list");
+        setLoadError((prev) => prev || parsed.message);
         return;
       }
       const rawCampaigns = unwrapApiList<Record<string, unknown>>(json, "campaigns");
@@ -105,7 +111,27 @@ export default function DriftMonitorsPage() {
         }))
       );
     } catch {
-      // Secondary dropdown list failure handled cleanly in modal
+      setLoadError((prev) => prev || "Unable to reach campaigns endpoint.");
+    }
+  }, [isSignedIn, orgId]);
+
+  const loadProducts = useCallback(async () => {
+    if (!isSignedIn || !orgId) return;
+    try {
+      const res = await fetch("/api/marketing-shield/v1/products?status=ACTIVE");
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.success) {
+        const list = unwrapApiList<Record<string, unknown>>(json);
+        setProducts(
+          list.map((p) => ({
+            id: String(p.id),
+            product_name: String(p.product_name || "Product"),
+            product_type: String(p.product_type || "PRODUCT"),
+          }))
+        );
+      }
+    } catch {
+      // Non-blocking
     }
   }, [isSignedIn, orgId]);
 
@@ -126,8 +152,9 @@ export default function DriftMonitorsPage() {
     if (!clerkLoaded) return;
     loadMonitors();
     loadCampaigns();
+    loadProducts();
     loadRippleAlerts();
-  }, [clerkLoaded, isSignedIn, orgId, loadMonitors, loadCampaigns, loadRippleAlerts]);
+  }, [clerkLoaded, isSignedIn, orgId, loadMonitors, loadCampaigns, loadProducts, loadRippleAlerts]);
 
   const handleCheckNow = async (monitorId: string) => {
     try {
@@ -141,6 +168,7 @@ export default function DriftMonitorsPage() {
         setLoadError(parsed.message);
         return;
       }
+      setLoadError(null);
       setMonitors((prev) =>
         prev.map((m) => (m.id === monitorId ? json.data?.monitor || m : m))
       );
@@ -154,13 +182,42 @@ export default function DriftMonitorsPage() {
     }
   };
 
-  const handleCreateMonitor = async (input: CreateDriftMonitorInput) => {
+  const handleCreateMonitor = async (submission: CreateMonitorSubmission) => {
+    let targetCampaignId = submission.mode === "existing" ? submission.campaign_id : "";
+
+    if (submission.mode === "new") {
+      const campRes = await fetch("/api/marketing-shield/v1/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaign_name: submission.campaign_name,
+          channel: "WEB_LANDING",
+          campaign_type: "PROMOTIONAL",
+          ...(submission.product_id ? { product_id: submission.product_id } : {}),
+          ...(submission.baseline_copy ? { initial_content_text: submission.baseline_copy } : {}),
+        }),
+      });
+      const campJson = await campRes.json().catch(() => ({}));
+      if (!campRes.ok || campJson.success === false || !campJson.data?.id) {
+        const parsed = extractApiError(
+          campRes.status,
+          campJson,
+          "Failed to create URL baseline campaign"
+        );
+        throw new Error(parsed.message);
+      }
+      targetCampaignId = String(campJson.data.id);
+      void loadCampaigns();
+    }
+
     const res = await fetch(
-      `/api/marketing-shield/v1/campaigns/${input.campaign_id}/drift-monitors`,
+      `/api/marketing-shield/v1/campaigns/${targetCampaignId}/drift-monitors`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
+        body: JSON.stringify({
+          published_url: submission.published_url,
+        }),
       }
     );
 
@@ -170,7 +227,35 @@ export default function DriftMonitorsPage() {
       throw new Error(parsed.message);
     }
 
-    setMonitors((prev) => [json.data, ...prev]);
+    const createdMonitor = json.data as CampaignDriftMonitor;
+    setMonitors((prev) => [createdMonitor, ...prev]);
+
+    // Trigger immediate initial inspection so the user sees live scan results right away
+    try {
+      setCheckingMonitorId(createdMonitor.id);
+      const checkRes = await fetch(
+        `/api/marketing-shield/v1/drift-monitors/${createdMonitor.id}/check`,
+        { method: "POST" }
+      );
+      const checkJson = await checkRes.json().catch(() => ({}));
+      if (checkRes.ok && checkJson.success && checkJson.data?.monitor) {
+        setLoadError(null);
+        setMonitors((prev) =>
+          prev.map((m) => (m.id === createdMonitor.id ? checkJson.data.monitor : m))
+        );
+      } else {
+        const parsed = extractApiError(
+          checkRes.status,
+          checkJson,
+          "Monitor created, but initial live URL check could not complete"
+        );
+        setLoadError(parsed.message);
+      }
+    } catch {
+      setLoadError("Monitor created, but initial live URL check timed out or failed.");
+    } finally {
+      setCheckingMonitorId(null);
+    }
   };
 
   const handleDeleteMonitor = async (monitorId: string) => {
@@ -507,6 +592,7 @@ export default function DriftMonitorsPage() {
       {isModalOpen && (
         <CreateMonitorModal
           campaigns={campaigns}
+          products={products}
           onClose={() => setIsModalOpen(false)}
           onSubmit={handleCreateMonitor}
         />

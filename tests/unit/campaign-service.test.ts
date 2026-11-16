@@ -144,6 +144,55 @@ describe("CampaignService (Phase 7)", () => {
     });
   });
 
+  describe("listCampaigns", () => {
+    it("should list campaigns without nonexistent FK join hints and batch-load current revisions", async () => {
+      const mockRows = [
+        {
+          id: "camp_1",
+          tenant_id: tenantId,
+          campaign_name: "Quick Cash Loan Test 1",
+          status: "DRAFT",
+          current_revision_id: "rev_1",
+        },
+      ];
+      const mockRevs = [
+        {
+          id: "rev_1",
+          revision_number: 1,
+          content_text: "Approved promo copy",
+        },
+      ];
+      const selectCampaigns = vi.fn().mockReturnValue({
+        eq: vi.fn().mockReturnValue({
+          order: vi.fn().mockReturnValue({
+            range: vi.fn().mockResolvedValue({ data: mockRows, error: null, count: 1 }),
+          }),
+        }),
+      });
+
+      mockFrom.mockImplementation((table: string) => {
+        if (table === "marketing_campaigns") {
+          return { select: selectCampaigns };
+        }
+        if (table === "campaign_revisions") {
+          return {
+            select: vi.fn().mockReturnValue({
+              in: vi.fn().mockResolvedValue({ data: mockRevs, error: null }),
+            }),
+          };
+        }
+        return {};
+      });
+
+      const res = await service.listCampaigns(tenantId, { limit: 20, offset: 0 });
+
+      expect(selectCampaigns).toHaveBeenCalledWith("*", { count: "exact" });
+      expect(res.totalCount).toBe(1);
+      expect(res.campaigns).toHaveLength(1);
+      expect(res.campaigns[0].campaign_revisions).toEqual(mockRevs[0]);
+    });
+  });
+
   describe("createAssetUploadSession", () => {
     it("should generate presigned R2 upload URL and insert pending campaign_asset record", async () => {
       vi.mocked(r2StorageService.generatePresignedUploadUrl).mockResolvedValueOnce({

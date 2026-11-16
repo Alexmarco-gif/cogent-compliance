@@ -290,28 +290,40 @@ export class WebSearchRouter {
       campaignId: validated.campaign_id,
     });
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+    const fetchWithTimeout = async (userAgent: string): Promise<Response> => {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000); // 10s timeout
+      try {
+        return await fetch(validated.url, {
+          signal: controller.signal,
+          headers: {
+            "User-Agent": userAgent,
+            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5",
+            "Accept-Language": "en-US,en;q=0.9",
+          },
+          redirect: "follow",
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+    };
 
     let res: Response;
     try {
-      res = await fetch(validated.url, {
-        signal: controller.signal,
-        headers: {
-          "User-Agent": "Cogent-Compliance-Shield/2.0 (+https://stem-cogent.com/compliance)",
-          Accept: "text/html,application/xhtml+xml,text/plain;q=0.9",
-        },
-        redirect: "follow",
-      });
+      res = await fetchWithTimeout(
+        "Cogent-Compliance-Shield/2.0 (+https://stem-cogent.com/compliance)"
+      );
+      if (res.status === 403 || res.status === 406) {
+        res = await fetchWithTimeout(
+          "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        );
+      }
     } catch (err) {
-      clearTimeout(timeout);
       logger.warn("Live URL fetch failed or timed out", {
         url: validated.url,
         error: (err as Error).message,
       });
       throw new Error(`URL_FETCH_BLOCKED: ${(err as Error).message}`);
-    } finally {
-      clearTimeout(timeout);
     }
 
     if (!res.ok) {

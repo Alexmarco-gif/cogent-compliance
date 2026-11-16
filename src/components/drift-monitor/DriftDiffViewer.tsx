@@ -146,19 +146,21 @@ export const DriftDiffViewer: React.FC<DriftDiffViewerProps> = ({
             <div className="border border-zinc-200 rounded-lg p-4 bg-zinc-50/40 space-y-2">
               <div className="flex items-center justify-between border-b border-zinc-200 pb-2">
                 <span className="text-xs font-semibold text-zinc-800 uppercase tracking-wider">
-                  Approved Baseline
+                  {details?.baseline_type === "ACTIVE_REVISION" ? "Active Baseline" : "Approved Baseline"}
                 </span>
                 <span className="text-[10px] font-mono bg-zinc-200 text-zinc-700 px-1.5 py-0.5 rounded">
                   Revision #{monitor.revision_number || 1}
                 </span>
               </div>
               <p className="text-[11px] text-zinc-500 font-mono">
-                SHA-256: {details?.approved_sha256_hash?.slice(0, 16) || "N/A"}...
+                SHA-256: {details?.approved_sha256_hash?.slice(0, 16) || "N/A"}... ({details?.approved_text_length || 0} chars)
               </p>
               <div className="p-3 bg-white border border-zinc-200 rounded text-xs text-zinc-700 font-mono whitespace-pre-wrap max-h-56 overflow-y-auto leading-relaxed">
-                {details?.approved_text_length
+                {details?.approved_text_preview
+                  ? details.approved_text_preview
+                  : details?.approved_text_length
                   ? `Approved snapshot recorded (${details.approved_text_length} chars)`
-                  : "Approved baseline content active."}
+                  : "No static baseline copy provided — live page is audited directly against Product Truth & Nigerian statutory locks."}
               </div>
             </div>
 
@@ -178,13 +180,16 @@ export const DriftDiffViewer: React.FC<DriftDiffViewerProps> = ({
                   Divergence: {((details?.divergence_score || 0) * 100).toFixed(0)}%
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-500 font-mono">
-                SHA-256: {details?.live_sha256_hash?.slice(0, 16) || "N/A"}...
+              <p className="text-[11px] text-zinc-500 font-mono truncate">
+                {details?.live_page_title ? `${details.live_page_title} • ` : ""}
+                SHA-256: {details?.live_sha256_hash?.slice(0, 16) || "N/A"}... ({details?.live_text_length || 0} chars)
               </p>
               <div className="p-3 bg-white border border-zinc-200 rounded text-xs text-zinc-700 font-mono whitespace-pre-wrap max-h-56 overflow-y-auto leading-relaxed">
-                {details?.live_text_length
+                {details?.live_text_preview
+                  ? details.live_text_preview
+                  : details?.live_text_length
                   ? `Live text extracted (${details.live_text_length} chars • ${details.live_sha256_hash?.slice(0, 12)}...)`
-                  : "Live snapshot recorded."}
+                  : "Live snapshot pending first check."}
               </div>
             </div>
           </div>

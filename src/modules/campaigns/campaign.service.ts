@@ -90,7 +90,7 @@ export class CampaignService {
         tenant_id: tenantId,
         conversation_id: input.conversation_id,
         campaign_id: campaign.id,
-        link_type: "CREATED_FROM_CONVERSATION",
+        relationship_type: "ORIGINATING",
       });
     }
 
@@ -138,7 +138,7 @@ export class CampaignService {
     const limit = query.limit ?? 20;
     let q = supabase
       .from("marketing_campaigns")
-      .select("*, campaign_revisions!current_revision_id(id, revision_number, content_text)")
+      .select("*", { count: "exact" })
       .eq("tenant_id", tenantId)
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
@@ -158,7 +158,39 @@ export class CampaignService {
       throw new Error(`Failed to list campaigns: ${error.message}`);
     }
 
-    return { campaigns: data || [], totalCount: count ?? (data?.length || 0) };
+    const rows = data || [];
+    const revisionIds = Array.from(
+      new Set(
+        rows
+          .map((c) => c.current_revision_id as string | null | undefined)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+
+    const revisionMap = new Map<
+      string,
+      { id: string; revision_number: number; content_text: string }
+    >();
+
+    if (revisionIds.length > 0) {
+      const { data: revisions } = await supabase
+        .from("campaign_revisions")
+        .select("id, revision_number, content_text")
+        .in("id", revisionIds);
+
+      for (const rev of revisions || []) {
+        revisionMap.set(rev.id, rev);
+      }
+    }
+
+    const campaigns = rows.map((c) => ({
+      ...c,
+      campaign_revisions: c.current_revision_id
+        ? revisionMap.get(c.current_revision_id) ?? null
+        : null,
+    }));
+
+    return { campaigns, totalCount: count ?? campaigns.length };
   }
 
   /**

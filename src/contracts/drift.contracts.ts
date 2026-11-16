@@ -71,6 +71,10 @@ export interface DriftDetails {
   approved_sha256_hash: string;
   summary: string;
   incident_conversation_id?: string | null;
+  approved_text_preview?: string;
+  live_text_preview?: string;
+  live_page_title?: string;
+  baseline_type?: "APPROVED_REVISION" | "ACTIVE_REVISION";
 }
 
 export interface CampaignDriftMonitor {
@@ -90,5 +94,6 @@ export interface CampaignDriftMonitor {
   // Joined fields
   campaign_title?: string;
   campaign_status?: string;
+  product_id?: string | null;
   revision_number?: number;
 }

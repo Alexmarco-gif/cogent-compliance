@@ -41,7 +41,7 @@ export class DriftService {
     // 1. Verify campaign exists and belongs to tenant
     const { data: campaign, error: campErr } = await supabase
       .from("marketing_campaigns")
-      .select("id, campaign_name, status, approved_revision_id, product_id")
+      .select("id, campaign_name, status, approved_revision_id, current_revision_id, product_id")
       .eq("id", input.campaign_id)
       .eq("tenant_id", tenantId)
       .single();
@@ -50,11 +50,13 @@ export class DriftService {
       throw new Error(`Campaign ${input.campaign_id} not found in active institution`);
     }
 
-    // 2. Resolve approved revision ID
-    const revisionId = input.approved_revision_id || campaign.approved_revision_id;
+    // 2. Resolve baseline revision ID (prefer explicit/approved revision, fall back to active current revision)
+    const isFormalApproved = Boolean(input.approved_revision_id || campaign.approved_revision_id);
+    const revisionId =
+      input.approved_revision_id || campaign.approved_revision_id || campaign.current_revision_id;
     if (!revisionId) {
       throw new Error(
-        `Campaign "${campaign.campaign_name}" has no approved revision. Drift monitoring requires an approved baseline revision.`
+        `Campaign "${campaign.campaign_name}" has no revision available for drift monitoring.`
       );
     }
 
@@ -67,8 +69,10 @@ export class DriftService {
       .single();
 
     if (revErr || !rev) {
-      throw new Error(`Approved revision ${revisionId} does not belong to this campaign`);
+      throw new Error(`Baseline revision ${revisionId} does not belong to this campaign`);
     }
+
+    const baselineType = isFormalApproved ? "APPROVED_REVISION" : "ACTIVE_REVISION";
 
     // 3. Create the monitor
     const { data: monitor, error: insertErr } = await supabase
@@ -82,7 +86,9 @@ export class DriftService {
         drift_details: {
           status: "PENDING_FIRST_CHECK",
           created_at: new Date().toISOString(),
+          baseline_type: baselineType,
           approved_text_length: rev.content_text?.length || 0,
+          approved_text_preview: (rev.content_text || "").slice(0, 2500),
           approved_sha256_hash: crypto
             .createHash("sha256")
             .update(rev.content_text || "")
@@ -127,6 +133,7 @@ export class DriftService {
       ...monitor,
       campaign_title: campaign.campaign_name,
       campaign_status: campaign.status,
+      product_id: campaign.product_id ?? null,
       revision_number: rev.revision_number,
     };
   }
@@ -146,7 +153,8 @@ export class DriftService {
         *,
         marketing_campaigns (
           campaign_name,
-          status
+          status,
+          product_id
         )
       `)
       .eq("id", monitorId)
@@ -167,7 +175,12 @@ export class DriftService {
       if (rev) revisionNumber = rev.revision_number;
     }
 
-    const campaign = monitor.marketing_campaigns as { campaign_name?: string; status?: string } | null;
+    const campaign = monitor.marketing_campaigns as {
+      campaign_name?: string;
+      status?: string;
+      product_id?: string | null;
+    } | null;
+    const rawDetails = monitor.drift_details as DriftDetails | null | undefined;
 
     return {
       id: monitor.id,
@@ -181,8 +194,10 @@ export class DriftService {
       drift_details: monitor.drift_details,
       created_at: monitor.created_at,
       updated_at: monitor.updated_at,
+      incident_conversation_id: rawDetails?.incident_conversation_id ?? null,
       campaign_title: campaign?.campaign_name || "Untitled Campaign",
       campaign_status: campaign?.status,
+      product_id: campaign?.product_id ?? null,
       revision_number: revisionNumber,
     };
   }
@@ -202,7 +217,8 @@ export class DriftService {
         *,
         marketing_campaigns (
           campaign_name,
-          status
+          status,
+          product_id
         )
       `)
       .eq("tenant_id", tenantId)
@@ -226,7 +242,12 @@ export class DriftService {
     }
 
     return (rows || []).map((m) => {
-      const camp = m.marketing_campaigns as { campaign_name?: string; status?: string } | null;
+      const camp = m.marketing_campaigns as {
+        campaign_name?: string;
+        status?: string;
+        product_id?: string | null;
+      } | null;
+      const rawDetails = m.drift_details as DriftDetails | null | undefined;
       return {
         id: m.id,
         tenant_id: m.tenant_id,
@@ -239,8 +260,10 @@ export class DriftService {
         drift_details: m.drift_details,
         created_at: m.created_at,
         updated_at: m.updated_at,
+        incident_conversation_id: rawDetails?.incident_conversation_id ?? null,
         campaign_title: camp?.campaign_name || "Untitled Campaign",
         campaign_status: camp?.status,
+        product_id: camp?.product_id ?? null,
       };
     });
   }
@@ -291,6 +314,7 @@ export class DriftService {
 
     // 3. Resolve Product Truth for Lock 2 matching
     const productTruth = await productService.getProductTruth(tenantId, {
+      ...(monitor.product_id ? { productId: monitor.product_id } : {}),
       productName: monitor.campaign_title,
     });
 
@@ -477,6 +501,8 @@ export class DriftService {
       }
     }
 
+    const existingDetails = monitor.drift_details as DriftDetails | undefined;
+
     const details: DriftDetails = {
       status: isDriftDetected ? "DRIFT_DETECTED" : "COMPLIANT",
       checked_at: nowIso,
@@ -488,6 +514,10 @@ export class DriftService {
       approved_sha256_hash: approvedHash,
       summary,
       incident_conversation_id: incidentConversationId,
+      approved_text_preview: approvedText.slice(0, 2500),
+      live_text_preview: liveText.slice(0, 2500),
+      live_page_title: liveContent.page_title,
+      ...(existingDetails?.baseline_type ? { baseline_type: existingDetails.baseline_type } : {}),
     };
 
     // 5. Update database monitor record

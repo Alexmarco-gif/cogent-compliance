@@ -278,4 +278,87 @@ describe("Post-Publication Drift Watcher (DRIFT-001 to 004)", () => {
     expect(result.details.discrepancies).toHaveLength(0);
     expect(notificationService.sendDriftAlert).not.toHaveBeenCalled();
   });
+
+  it("DRIFT-004: creates a drift monitor using current_revision_id when approved_revision_id is null", async () => {
+    const mockSupabase = createAdminSupabaseClient();
+    const insertMonitorMock = vi.fn().mockReturnValue({
+      select: vi.fn().mockReturnValue({
+        single: vi.fn().mockResolvedValue({
+          data: {
+            id: monitorId,
+            tenant_id: tenantId,
+            campaign_id: campaignId,
+            approved_revision_id: revisionId,
+            published_url: "https://thestemgrid.com/",
+            status: "ACTIVE",
+            last_checked_at: null,
+            last_drift_detected_at: null,
+            drift_details: { baseline_type: "ACTIVE_REVISION" },
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          error: null,
+        }),
+      }),
+    });
+
+    vi.mocked(mockSupabase.from).mockImplementation((table: string) => {
+      if (table === "marketing_campaigns") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({
+            data: {
+              id: campaignId,
+              campaign_name: "StemGrid Promo",
+              status: "DRAFT",
+              approved_revision_id: null,
+              current_revision_id: revisionId,
+              product_id: null,
+            },
+            error: null,
+          }),
+        } as unknown as ReturnType<typeof mockSupabase.from>;
+      }
+      if (table === "campaign_revisions") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({
+            data: {
+              id: revisionId,
+              revision_number: 1,
+              content_text: mockApprovedBaselineText,
+            },
+            error: null,
+          }),
+        } as unknown as ReturnType<typeof mockSupabase.from>;
+      }
+      if (table === "campaign_drift_monitors") {
+        return {
+          insert: insertMonitorMock,
+        } as unknown as ReturnType<typeof mockSupabase.from>;
+      }
+      return { select: vi.fn().mockReturnThis() } as unknown as ReturnType<typeof mockSupabase.from>;
+    });
+
+    const created = await driftService.createDriftMonitor(tenantId, userId, {
+      campaign_id: campaignId,
+      published_url: "https://thestemgrid.com/",
+    });
+
+    expect(created.id).toBe(monitorId);
+    expect(created.approved_revision_id).toBe(revisionId);
+    expect(insertMonitorMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        campaign_id: campaignId,
+        approved_revision_id: revisionId,
+        published_url: "https://thestemgrid.com/",
+        drift_details: expect.objectContaining({
+          baseline_type: "ACTIVE_REVISION",
+          approved_text_preview: mockApprovedBaselineText,
+        }),
+      })
+    );
+  });
 });
