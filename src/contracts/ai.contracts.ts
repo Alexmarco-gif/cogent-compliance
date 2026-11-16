@@ -64,6 +64,7 @@ export type LiveWebSearchResult = z.infer<typeof liveWebSearchResultSchema>;
 export const liveWebSearchResponseSchema = z.object({
   source_class: z.literal("LIVE_WEB_INTELLIGENCE"),
   results: z.array(liveWebSearchResultSchema),
+  web_summary: z.string().optional(),
   status: z.string().optional(),
 });
 

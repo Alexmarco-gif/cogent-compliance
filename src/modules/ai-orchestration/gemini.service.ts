@@ -40,6 +40,8 @@ export interface GenerateTextResult {
 
 export interface EmbeddingOptions {
   model?: string;
+  fastInteractive?: boolean;
+  timeoutMs?: number;
   context?: {
     tenantId?: string;
     taskType?: AiTaskType;
@@ -277,19 +279,33 @@ export class GeminiService {
     const taskType = options?.context?.taskType || "EMBEDDING_GENERATION";
     const startTime = Date.now();
     let attempts = 0;
-    const maxAttempts = 5;
+    const maxAttempts = options?.fastInteractive ? 1 : 5;
+    const timeoutMs = options?.timeoutMs ?? (options?.fastInteractive ? 3500 : 0);
     let lastError: Error | null = null;
 
     while (attempts < maxAttempts) {
       attempts++;
       try {
-        const response = await this.client.models.embedContent({
+        const embedPromise = this.client.models.embedContent({
           model,
           contents: text.slice(0, 1000),
           config: {
             outputDimensionality: 768,
           },
         });
+
+        const response =
+          timeoutMs > 0
+            ? await Promise.race([
+                embedPromise,
+                new Promise<never>((_, reject) => {
+                  setTimeout(
+                    () => reject(new Error(`Embedding request timed out after ${timeoutMs}ms`)),
+                    timeoutMs
+                  );
+                }),
+              ])
+            : await embedPromise;
 
         const latencyMs = Date.now() - startTime;
         const embeddingValues = response.embeddings?.[0]?.values;
@@ -329,6 +345,10 @@ export class GeminiService {
         // Immediately throw dimensionality validation errors without retrying
         if (errMsg.includes("Invalid embedding dimensionality")) {
           throw lastError;
+        }
+
+        if (options?.fastInteractive) {
+          break;
         }
 
         let sleepMs = 3000;

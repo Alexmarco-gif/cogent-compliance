@@ -257,6 +257,36 @@ export class StatutoryToolExecutor {
   }
 
   /**
+   * Distills long prompts or marketing copy into a concise query suitable for
+   * PostgreSQL websearch_to_tsquery and vector embedding.
+   */
+  private buildConciseSearchQuery(rawQuery: string): string {
+    const clean = rawQuery.replace(/https?:\/\/\S+/gi, " ").replace(/[^\w\s%-]/g, " ").replace(/\s+/g, " ").trim();
+    const words = clean.split(" ").filter(Boolean);
+    if (words.length <= 12) return clean || rawQuery.trim();
+
+    const stopWords = new Set([
+      "a", "an", "and", "are", "as", "at", "be", "by", "can", "could", "do", "does", "for",
+      "from", "get", "have", "how", "i", "if", "in", "into", "is", "it", "me", "my", "no",
+      "not", "of", "on", "or", "our", "please", "review", "check", "audit", "this", "that",
+      "the", "their", "them", "they", "to", "us", "we", "what", "when", "where", "which",
+      "who", "will", "with", "would", "you", "your", "copy", "promotional", "campaign",
+    ]);
+
+    const keywords: string[] = [];
+    const seen = new Set<string>();
+    for (const w of words) {
+      const lower = w.toLowerCase();
+      if (lower.length < 3 || stopWords.has(lower) || seen.has(lower)) continue;
+      seen.add(lower);
+      keywords.push(w);
+      if (keywords.length >= 10) break;
+    }
+
+    return keywords.length >= 3 ? keywords.join(" ") : words.slice(0, 12).join(" ");
+  }
+
+  /**
    * Tool 3: search_regulatory_evidence
    * Executes Hybrid RRF search against verified Golden 50 clauses.
    */
@@ -272,14 +302,17 @@ export class StatutoryToolExecutor {
   ): Promise<Record<string, unknown>> {
     const supabase = createAdminSupabaseClient();
     const limit = Math.min(args.limit || 5, 15);
+    const searchQuery = this.buildConciseSearchQuery(args.query);
 
     try {
-      // 1. Generate query embedding (with DB vector fallback if daily quota is exhausted)
+      // 1. Generate query embedding fast (falls back within 3.5s if throttled)
       let queryEmbedding: number[];
       try {
-        queryEmbedding = await geminiService.generateEmbedding(args.query);
+        queryEmbedding = await geminiService.generateEmbedding(searchQuery, {
+          fastInteractive: true,
+        });
       } catch (embErr) {
-        logger.warn("Gemini embedding error during tool search, attempting vector fallback", {
+        logger.warn("Gemini embedding skipped/fallback during interactive vault search", {
           error: (embErr as Error).message,
         });
         const { data: fallbackRow } = await supabase
@@ -288,9 +321,12 @@ export class StatutoryToolExecutor {
           .not("embedding", "is", null)
           .limit(1)
           .single();
-        queryEmbedding = Array.isArray(fallbackRow?.embedding)
+        if (!fallbackRow?.embedding) {
+          throw embErr;
+        }
+        queryEmbedding = Array.isArray(fallbackRow.embedding)
           ? fallbackRow.embedding
-          : JSON.parse(fallbackRow?.embedding as unknown as string);
+          : JSON.parse(fallbackRow.embedding as unknown as string);
       }
 
       // 2. Execute PostgreSQL Hybrid RRF RPC
@@ -299,7 +335,7 @@ export class StatutoryToolExecutor {
       const { data: rrfResults, error: rrfError } = await supabase.rpc(
         "search_regulatory_clauses_rrf",
         {
-          query_text: args.query,
+          query_text: searchQuery,
           query_embedding: queryEmbedding,
           match_count: candidateFetchCount,
           rrf_k: 60,

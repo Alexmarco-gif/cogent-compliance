@@ -83,7 +83,7 @@ export function AdaptiveMessageRenderer({
                     <BookOpen className="h-3 w-3 text-zinc-500 shrink-0" />
                     <span className="font-medium text-zinc-900">Playbook</span>
                     <span className="truncate max-w-[220px] text-zinc-600">
-                      {citation.rule_title}
+                      {citation.rule_title || citation.instrument_title || "Approved Schedule"}
                     </span>
                   </span>
                 );
@@ -97,10 +97,14 @@ export function AdaptiveMessageRenderer({
                     target="_blank"
                     rel="noopener noreferrer"
                     className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 hover:bg-zinc-100 px-2.5 py-1 text-[12px] text-zinc-700 transition-colors"
+                    title="Open live web source"
                   >
                     <Globe className="h-3 w-3 text-zinc-500 shrink-0" />
-                    <span className="truncate max-w-[220px] text-zinc-800">
-                      {citation.page_title}
+                    <span className="font-mono text-[11px] font-medium text-zinc-900">
+                      Live Web
+                    </span>
+                    <span className="truncate max-w-[220px] text-zinc-700">
+                      {citation.page_title || citation.retrieved_url}
                     </span>
                     <ExternalLink className="h-3 w-3 text-zinc-400 shrink-0" />
                   </a>
