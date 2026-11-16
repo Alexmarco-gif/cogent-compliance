@@ -350,6 +350,7 @@ Return a clean JSON object with this exact schema:
 }
 Return pure JSON only without markdown formatting.`;
 
+    let rawResponseText = "";
     try {
       const response = await geminiService.generateText({
         prompt,
@@ -363,7 +364,19 @@ Return pure JSON only without markdown formatting.`;
         },
       });
 
-      const parsed = JSON.parse(response.text || "{}");
+      rawResponseText = (response.text || "").trim();
+      const unfenced = rawResponseText
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/```\s*$/i, "")
+        .trim();
+      const firstBrace = unfenced.indexOf("{");
+      const lastBrace = unfenced.lastIndexOf("}");
+      const jsonCandidate =
+        firstBrace !== -1 && lastBrace > firstBrace
+          ? unfenced.slice(firstBrace, lastBrace + 1)
+          : unfenced || "{}";
+
+      const parsed = JSON.parse(jsonCandidate);
       const segments: ExtractedSegment[] = (parsed.segments || []).map((s: Record<string, unknown>, idx: number) => {
         let box: BoundingBox | undefined = undefined;
         if (Array.isArray(s.box_2d) && s.box_2d.length === 4) {
@@ -401,9 +414,29 @@ Return pure JSON only without markdown formatting.`;
         ],
       };
     } catch (err) {
-      logger.warn("Multimodal OCR API call failed or in mock environment, fallback applied", {
+      logger.warn("Multimodal OCR API call failed or returned non-JSON", {
         error: (err as Error).message,
       });
+
+      if (rawResponseText.length > 0) {
+        return {
+          text: rawResponseText,
+          confidence: 0.85,
+          segments: [
+            {
+              segmentIndex: 0,
+              textContent: rawResponseText,
+              pageNumber: 1,
+              sourceType: "OCR",
+              confidence: 0.85,
+            },
+          ],
+        };
+      }
+
+      if (process.env.NODE_ENV !== "test" && process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.includes("mock")) {
+        throw new Error(`Image OCR extraction failed: ${(err as Error).message}`);
+      }
 
       return {
         text: "QuickCredit 24-Hour Approval Promo: Get loans up to ₦1,000,000. Interest rates from 22% APR. Licensed by CBN. Terms apply.",

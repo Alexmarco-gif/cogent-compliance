@@ -14,6 +14,12 @@ import {
   Tag,
 } from "lucide-react";
 import { extractApiError } from "@/lib/api-client";
+import {
+  resolveUploadMimeType,
+  type SupportedUploadMimeType,
+} from "@/lib/upload-mime";
+
+export { resolveUploadMimeType, type SupportedUploadMimeType };
 
 export interface ProductOption {
   id: string;
@@ -21,9 +27,18 @@ export interface ProductOption {
   product_type: string;
 }
 
+const VERCEL_SERVER_PROXY_LIMIT_BYTES = 4_500_000;
+
 export interface ChatComposerProps {
-  onSendMessage: (content: string) => Promise<boolean | void>;
-  onAssetUploaded?: (assetId: string, filename: string) => Promise<void>;
+  onSendMessage: (
+    content: string,
+    options?: { attachmentAssetIds?: string[] },
+  ) => Promise<boolean | void>;
+  onAssetUploaded?: (
+    assetId: string,
+    filename: string,
+    extractedText?: string,
+  ) => Promise<void>;
   conversationId?: string;
   disabled?: boolean;
   isZeroState?: boolean;
@@ -134,6 +149,7 @@ export function ChatComposer({
     setUploadError(null);
 
     try {
+      const mimeType = resolveUploadMimeType(file);
       const arrayBuffer = await file.arrayBuffer();
       const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
@@ -145,7 +161,7 @@ export function ChatComposer({
         body: JSON.stringify({
           conversation_id: conversationId,
           original_filename: file.name,
-          mime_type: file.type || "application/pdf",
+          mime_type: mimeType,
           file_size_bytes: file.size,
           sha256_hash,
         }),
@@ -164,13 +180,45 @@ export function ChatComposer({
       const { asset_id, presigned_upload_url } = sessionJson.data;
 
       if (!presigned_upload_url.includes("mock")) {
-        const putRes = await fetch(presigned_upload_url, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": file.type },
-        });
-        if (!putRes.ok) {
-          throw new Error(`Upload failed (HTTP ${putRes.status})`);
+        let directUploadOk = false;
+        let directUploadErrMsg: string | null = null;
+        try {
+          const putRes = await fetch(presigned_upload_url, {
+            method: "PUT",
+            body: file,
+            headers: { "Content-Type": mimeType },
+          });
+          if (putRes.ok) {
+            directUploadOk = true;
+          } else {
+            directUploadErrMsg = `Direct storage upload failed (HTTP ${putRes.status})`;
+          }
+        } catch (directErr) {
+          directUploadErrMsg =
+            directErr instanceof Error ? directErr.message : "Direct storage upload failed";
+        }
+
+        if (!directUploadOk) {
+          if (file.size > VERCEL_SERVER_PROXY_LIMIT_BYTES) {
+            throw new Error(
+              `${directUploadErrMsg || "Direct storage upload was blocked"} and the file exceeds the 4.5 MB server upload proxy limit. Please upload a file <= 4.5 MB or configure CORS on the R2 bucket.`,
+            );
+          }
+
+          const proxyRes = await fetch(`/api/marketing-shield/v1/assets/${asset_id}/upload`, {
+            method: "PUT",
+            body: file,
+            headers: { "Content-Type": mimeType },
+          });
+          const proxyJson = await proxyRes.json().catch(() => ({}));
+          if (!proxyRes.ok || !proxyJson.success) {
+            const parsed = extractApiError(
+              proxyRes.status,
+              proxyJson,
+              directUploadErrMsg || `Upload failed (HTTP ${proxyRes.status})`,
+            );
+            throw new Error(parsed.message);
+          }
         }
       }
 
@@ -190,13 +238,27 @@ export function ChatComposer({
         throw new Error(parsed.message);
       }
 
+      const extractedText =
+        typeof completeJson.data?.extraction?.extractedText === "string"
+          ? completeJson.data.extraction.extractedText
+          : undefined;
+
       if (onAssetUploaded) {
-        await onAssetUploaded(asset_id, file.name);
+        await onAssetUploaded(asset_id, file.name, extractedText);
       }
 
-      await onSendMessage(
-        `Uploaded campaign asset "${file.name}". Please review the extracted copy against CBN, FCCPC, and ARCON requirements.`,
-      );
+      const userDraft = content.trim();
+      const promptText = userDraft
+        ? `${userDraft}\n\n[Attached campaign asset: "${file.name}"]`
+        : `Uploaded campaign asset "${file.name}". Please review the extracted copy against CBN, FCCPC, and ARCON requirements.`;
+      if (userDraft) {
+        setContent("");
+        if (textareaRef.current) {
+          textareaRef.current.style.height = "auto";
+        }
+      }
+
+      await onSendMessage(promptText, { attachmentAssetIds: [asset_id] });
     } catch (err) {
       setUploadError((err as Error).message);
     } finally {
@@ -240,7 +302,7 @@ export function ChatComposer({
           type="file"
           ref={fileInputRef}
           onChange={handleFileChange}
-          accept="image/png,image/jpeg,image/webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,image/png,image/jpeg,image/webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           className="hidden"
         />
 
