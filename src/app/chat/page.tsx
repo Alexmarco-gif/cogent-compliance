@@ -17,6 +17,7 @@ import {
 } from "@/components/chat/ChatComposer";
 import { ToolActivityPill, type ToolActivityProps } from "@/components/chat/ToolActivityPill";
 import { EvidenceDrawer } from "@/components/chat/EvidenceDrawer";
+import { ArtifactCanvasDrawer } from "@/components/chat/ArtifactCanvasDrawer";
 import { ContextualCampaignInspector } from "@/components/campaign/ContextualCampaignInspector";
 import type { Finding } from "@/components/campaign/FindingCard";
 import type { LockResult } from "@/components/campaign/Tab1LocksOverview";
@@ -25,12 +26,13 @@ import type { ConversationRecord, MessageRecord } from "@/modules/conversations/
 import { deriveConversationTopicTitle } from "@/modules/conversations/topic-title";
 import type {
   CitationItem,
+  ComplianceArtifactType,
   ExecutionPlanStep,
   SSEEvent,
   StructuredComplianceReport,
 } from "@/contracts/conversation.contracts";
 import { extractApiError, extractSseDataFromBlock, unwrapApiList } from "@/lib/api-client";
-import { PanelRight, AlertTriangle, LogIn, X, Plus } from "lucide-react";
+import { PanelRight, AlertTriangle, LogIn, X, Plus, Sparkles } from "lucide-react";
 
 interface DisplayMessage {
   id: string;
@@ -105,6 +107,12 @@ function ChatWorkspaceContent() {
   const [campaignAsset, setCampaignAsset] = useState<ActiveAssetState | null>(null);
   const [assetExtraction, setAssetExtraction] = useState<ExtractionData | null>(null);
   const [showInspector, setShowInspector] = useState(false);
+
+  // External Slide-Over Artifact Canvas Drawer State
+  const [canvasReport, setCanvasReport] = useState<StructuredComplianceReport | null>(null);
+  const [canvasActiveTab, setCanvasActiveTab] =
+    useState<ComplianceArtifactType>("compliant_ad_rewrite");
+  const [showArtifactCanvas, setShowArtifactCanvas] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeConvIdRef = useRef<string | null>(null);
@@ -316,6 +324,10 @@ function ChatWorkspaceContent() {
             isStreaming: false,
           }));
           setMessages(loaded);
+          const lastWithReport = [...loaded]
+            .reverse()
+            .find((m) => Boolean(m.structuredReport))?.structuredReport;
+          setCanvasReport(lastWithReport || null);
         }
       })
       .catch((err) => console.error("Failed to load messages", err))
@@ -339,6 +351,7 @@ function ChatWorkspaceContent() {
   const handleSelectConversation = (id: string) => {
     explicitNewRef.current = false;
     setActiveConvId(id);
+    setShowArtifactCanvas(false);
     setChatError(null);
     router.replace(`/chat?conversationId=${id}`, { scroll: false });
   };
@@ -354,6 +367,8 @@ function ChatWorkspaceContent() {
     setCampaignAsset(null);
     setAssetExtraction(null);
     setShowInspector(false);
+    setCanvasReport(null);
+    setShowArtifactCanvas(false);
     setChatError(null);
     setAuthIssue(null);
     router.replace("/chat?new=1", { scroll: false });
@@ -727,6 +742,7 @@ function ChatWorkspaceContent() {
           } else if (event.type === "campaign.created") {
             loadCampaignData(event.data.campaign_id);
           } else if (event.type === "assessment.completed") {
+            setCanvasReport(event.data.structured_report);
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === tempAssistantMsgId
@@ -735,6 +751,9 @@ function ChatWorkspaceContent() {
               ),
             );
           } else if (event.type === "message.completed") {
+            if (event.data.structured_report) {
+              setCanvasReport(event.data.structured_report);
+            }
             setMessages((prev) =>
               prev.map((m) =>
                 m.id === tempAssistantMsgId
@@ -823,7 +842,20 @@ function ChatWorkspaceContent() {
 
   const activeConversation = conversations.find((c) => c.id === activeConvId);
   const isZeroState = !loadingMessages && messages.length === 0;
-  const hasWorkbenchReport = messages.some((m) => Boolean(m.structuredReport));
+  const latestReportInThread =
+    canvasReport ||
+    [...messages].reverse().find((m) => Boolean(m.structuredReport))?.structuredReport ||
+    null;
+
+  const handleOpenArtifactCanvas = (
+    artifactType: ComplianceArtifactType,
+    report: StructuredComplianceReport
+  ) => {
+    setCanvasReport(report);
+    setCanvasActiveTab(artifactType);
+    setShowArtifactCanvas(true);
+    setShowInspector(false);
+  };
 
   if (!clerkLoaded || !isSignedIn || !orgId || !onboardingReady) {
     return (
@@ -850,7 +882,7 @@ function ChatWorkspaceContent() {
         onCloseMobile={() => setMobileSidebarOpen(false)}
       />
 
-      {/* 2. Main Conversational Canvas */}
+      {/* 2. Main Single-Column Editorial Conversational Canvas */}
       <div className="flex-1 flex flex-col h-screen overflow-hidden min-w-0 bg-white">
         <WorkspaceHeader
           section="Marketing Shield"
@@ -860,10 +892,37 @@ function ChatWorkspaceContent() {
           onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
           rightActions={
             <>
+              {latestReportInThread && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!showArtifactCanvas && latestReportInThread) {
+                      setCanvasReport(latestReportInThread);
+                      setShowArtifactCanvas(true);
+                      setShowInspector(false);
+                    } else {
+                      setShowArtifactCanvas(false);
+                    }
+                  }}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12.5px] font-medium border transition-colors cursor-pointer ${
+                    showArtifactCanvas
+                      ? "bg-zinc-900 text-white border-zinc-900"
+                      : "bg-white text-zinc-800 border-zinc-200 hover:bg-zinc-50"
+                  }`}
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  <span>Artifact Canvas</span>
+                </button>
+              )}
+
               {activeCampaign && (
                 <button
                   type="button"
-                  onClick={() => setShowInspector(!showInspector)}
+                  onClick={() => {
+                    const next = !showInspector;
+                    setShowInspector(next);
+                    if (next) setShowArtifactCanvas(false);
+                  }}
                   className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12.5px] font-medium border transition-colors cursor-pointer ${
                     showInspector
                       ? "bg-zinc-100 text-zinc-950 border-zinc-300"
@@ -943,7 +1002,7 @@ function ChatWorkspaceContent() {
           </div>
         )}
 
-        {/* Zero-State Centered Canvas OR Active Scrollable Stream */}
+        {/* Zero-State Centered Canvas OR Active Single-Column Scrollable Stream */}
         {isZeroState ? (
           <div className="flex-1 overflow-y-auto px-4 sm:px-6 flex flex-col items-center justify-center py-12">
             <div className="w-full max-w-2xl">
@@ -980,9 +1039,9 @@ function ChatWorkspaceContent() {
                   planSteps={msg.planSteps}
                   structuredReport={msg.structuredReport}
                   attachments={msg.attachments}
-                  wideRail={hasWorkbenchReport}
                   isStreaming={msg.isStreaming}
                   onInspectEvidence={(clauseId) => setInspectClauseId(clauseId)}
+                  onOpenArtifactCanvas={handleOpenArtifactCanvas}
                   onApplyCompliantRewrite={handleApplyCompliantRewrite}
                   onApproveAndSealDossier={handleApproveAndSealDossier}
                 />
@@ -995,7 +1054,7 @@ function ChatWorkspaceContent() {
                     displayLabel={activeTool.displayLabel}
                     status={activeTool.status}
                     summary={activeTool.summary}
-                    wideRail={hasWorkbenchReport}
+                    wideRail={false}
                   />
                 </div>
               )}
@@ -1012,14 +1071,26 @@ function ChatWorkspaceContent() {
                 products={products}
                 selectedProductId={selectedProductId}
                 onSelectProduct={setSelectedProductId}
-                wideRail={hasWorkbenchReport}
+                wideRail={false}
               />
             </footer>
           </>
         )}
       </div>
 
-      {/* 3. Split-Screen Compliance Studio */}
+      {/* 3. External Slide-Over Right-Hand Artifact Canvas Drawer (Claude / ChatGPT Canvas Architecture) */}
+      <ArtifactCanvasDrawer
+        isOpen={showArtifactCanvas && Boolean(latestReportInThread)}
+        activeTab={canvasActiveTab}
+        onSelectTab={setCanvasActiveTab}
+        onClose={() => setShowArtifactCanvas(false)}
+        report={latestReportInThread}
+        onInspectEvidence={(clauseId) => setInspectClauseId(clauseId)}
+        onApplyCompliantRewrite={handleApplyCompliantRewrite}
+        onApproveAndSealDossier={handleApproveAndSealDossier}
+      />
+
+      {/* 4. Split-Screen Campaign Studio */}
       {showInspector && activeCampaign && (
         <ContextualCampaignInspector
           campaign={activeCampaign}
@@ -1034,7 +1105,7 @@ function ChatWorkspaceContent() {
         />
       )}
 
-      {/* 4. Slide-Over Statutory Source Drawer */}
+      {/* 5. Slide-Over Statutory Source Drawer */}
       <EvidenceDrawer
         clauseId={inspectClauseId}
         isOpen={Boolean(inspectClauseId)}

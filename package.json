@@ -32,6 +32,8 @@
     "pdf-lib": "^1.17.1",
     "react": "19.0.0",
     "react-dom": "19.0.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "resend": "^6.38.0",
     "svix": "^2.10.0",
     "tailwind-merge": "^3.0.1",

@@ -247,12 +247,12 @@ describe("Phase A: Autonomous Compliance Analyst Deterministic & Forensic Engine
     });
   });
 
-  describe("6. Phase B: 23-Tool Autonomous Function Calling Registry", () => {
-    it("exposes all 23 statutory, campaign, and deterministic forensic tools", async () => {
+  describe("6. Phase B: 28-Tool Autonomous Function Calling & Copilot Registry", () => {
+    it("exposes all 28 statutory, campaign, deterministic forensic, and autonomous copilot tools", async () => {
       const { STATUTORY_TOOL_DECLARATIONS } = await import(
         "@/modules/ai-orchestration/tools/statutory-tools"
       );
-      expect(STATUTORY_TOOL_DECLARATIONS).toHaveLength(23);
+      expect(STATUTORY_TOOL_DECLARATIONS).toHaveLength(28);
       const toolNames = STATUTORY_TOOL_DECLARATIONS.map((t) => t.name);
       expect(toolNames).toContain("calculate_effective_apr_and_drip_fees");
       expect(toolNames).toContain("audit_flyer_visual_forensics");
@@ -262,6 +262,12 @@ describe("Phase A: Autonomous Compliance Analyst Deterministic & Forensic Engine
       expect(toolNames).toContain("recall_institutional_precedents");
       expect(toolNames).toContain("get_campaign_context");
       expect(toolNames).toContain("assess_campaign_compliance");
+      // 5 Dynamic Autonomous Copilot Tools
+      expect(toolNames).toContain("match_product_rate_card");
+      expect(toolNames).toContain("calculate_cbn_apr_and_drip_pricing");
+      expect(toolNames).toContain("search_nigerian_regulations");
+      expect(toolNames).toContain("scan_live_url_or_creative");
+      expect(toolNames).toContain("create_compliance_artifact");
     });
   });
 
@@ -313,8 +319,8 @@ describe("Phase A: Autonomous Compliance Analyst Deterministic & Forensic Engine
     });
   });
 
-  describe("8. Single Source of Truth for Math (Pre-Flight Gate <-> KFS <-> Rewrite <-> ARCON Memo)", () => {
-    it("locks 66.92% Effective APR identically across Pre-Flight Gate, KFS Table, Rewrite, and ARCON Memo without double-counting fees or leaking raw markdown", async () => {
+  describe("8. Single Source of Truth for Math (computedFinancials <-> KFS <-> Rewrite <-> ARCON Memo)", () => {
+    it("locks 66.92% Effective APR identically across computedFinancials, Pre-Flight Gate, KFS Table, Rewrite, and ARCON Memo without double-counting fees or leaking raw markdown", async () => {
       const { aprCalculatorService } = await import(
         "@/modules/compliance-assessment/apr-calculator.service"
       );
@@ -348,6 +354,19 @@ describe("Phase A: Autonomous Compliance Analyst Deterministic & Forensic Engine
       expect(preflightApr.upfrontFeesNgn).toBe(7500);
       expect(preflightApr.netDisbursedNgn).toBe(492500);
 
+      // Verify canonical computedFinancials structure
+      expect(preflightApr.computedFinancials).toBeDefined();
+      expect(preflightApr.computedFinancials.principal_ngn).toBe(500_000);
+      expect(preflightApr.computedFinancials.total_upfront_fees_ngn).toBe(7500);
+      expect(preflightApr.computedFinancials.net_disbursed_cash_ngn).toBe(492_500);
+      expect(preflightApr.computedFinancials.nominal_interest_ngn).toBe(20_000);
+      expect(preflightApr.computedFinancials.total_cost_of_credit_ngn).toBe(27_500);
+      expect(preflightApr.computedFinancials.total_repayable_ngn).toBe(520_000);
+      expect(preflightApr.computedFinancials.effective_apr_percent).toBe(66.92);
+      expect(preflightApr.computedFinancials.tenor_days).toBe(30);
+      expect(preflightApr.computedFinancials.itemized_upfront_fees).toHaveLength(1);
+      expect(preflightApr.computedFinancials.itemized_upfront_fees[0]?.amount_ngn).toBe(7500);
+
       const kfsKit = kfsGeneratorService.generateKfsAndChannelKit({
         product: quickCash500kProduct,
         principalNgn: 500_000,
@@ -377,6 +396,55 @@ describe("Phase A: Autonomous Compliance Analyst Deterministic & Forensic Engine
       expect(kfsKit.channelKit.arconAspSubstantiationMemo).not.toContain("**");
     });
   });
+
+  describe("9. Editorial Markdown Sanitization & Citation OCR Deduplication", () => {
+    it("strips ```text wrappers and ASCII box borders while preserving GFM tables and headings", async () => {
+      const { sanitizeEditorialMarkdown, cleanAndDeduplicateCitations } = await import(
+        "@/components/chat/AdaptiveMessageRenderer"
+      );
+
+      const dirtyMarkdown = [
+        "### Executive Compliance Summary",
+        "+-------------------+-------------------+",
+        "```text",
+        "| Metric | Value |",
+        "| :--- | :--- |",
+        "| Effective APR | 66.92% p.a. |",
+        "```",
+        "==================",
+      ].join("\n");
+
+      const cleaned = sanitizeEditorialMarkdown(dirtyMarkdown);
+      expect(cleaned).not.toContain("```text");
+      expect(cleaned).not.toContain("+-------------------+");
+      expect(cleaned).not.toContain("==================");
+      expect(cleaned).toContain("| Metric | Value |");
+      expect(cleaned).toContain("| Effective APR | 66.92% p.a. |");
+
+      const deduped = cleanAndDeduplicateCitations([
+        {
+          source_class: "VERIFIED_OFFICIAL_SOURCE",
+          badge_label: "Verified Statutory Vault",
+          regulator: "FCCPC",
+          instrument_title: "FCCPA 2018",
+          clause_reference: "35.35.AnAn advertiser,advertiser, promoter shall not...",
+          regulatory_clause_id: "id_1",
+        },
+        {
+          source_class: "VERIFIED_OFFICIAL_SOURCE",
+          badge_label: "Verified Statutory Vault",
+          regulator: "FCCPC",
+          instrument_title: "FCCPA 2018",
+          clause_reference: "35.35.AnAn advertiser,advertiser, promoter shall not...",
+          regulatory_clause_id: "id_2",
+        },
+      ]);
+
+      expect(deduped).toHaveLength(1);
+      expect(deduped[0]?.clause_reference).toBe("Section 35");
+    });
+  });
 });
+
 
 

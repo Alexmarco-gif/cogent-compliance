@@ -514,10 +514,166 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ["topic_query"],
     },
   },
+  // 24. match_product_rate_card
+  {
+    name: "match_product_rate_card",
+    description:
+      "Autonomously queries internal workspace Product Rate Cards when a product, loan, fee, or campaign is mentioned or uploaded, returning approved interest rates, processing fees, tenors, and mandatory disclosures.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        product_id: {
+          type: Type.STRING,
+          description: "Optional UUID of the product rate card.",
+        },
+        query_or_copy: {
+          type: Type.STRING,
+          description: "Product name, campaign copy, or prompt text to match against active rate cards.",
+        },
+      },
+    },
+  },
+  // 25. calculate_cbn_apr_and_drip_pricing
+  {
+    name: "calculate_cbn_apr_and_drip_pricing",
+    description:
+      "Deterministic math engine computing canonical computedFinancials (principal, itemizedUpfrontFees, totalUpfrontFees, netDisbursedCash, nominalInterest, totalCostOfCredit, totalRepayable, effectiveApr, tenorDays) per CBN Consumer Protection Framework & FCCPC DEON rules.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        principal_ngn: {
+          type: Type.NUMBER,
+          description: "Loan principal in NGN (defaults to 50000).",
+        },
+        advertised_rate_percent: {
+          type: Type.NUMBER,
+          description: "Headline interest rate percentage advertised in the ad or rate card.",
+        },
+        advertised_rate_period: {
+          type: Type.STRING,
+          description: "DAILY, MONTHLY, ANNUAL, or FLAT_PER_TENOR.",
+        },
+        tenor_days: {
+          type: Type.INTEGER,
+          description: "Loan repayment tenor in calendar days (e.g. 15, 30, 61, 90).",
+        },
+        processing_fee_percent: {
+          type: Type.NUMBER,
+          description: "Upfront processing fee percentage.",
+        },
+        processing_fee_flat_ngn: {
+          type: Type.NUMBER,
+          description: "Flat processing/admin fee in Naira.",
+        },
+        management_fee_percent: {
+          type: Type.NUMBER,
+          description: "Management or insurance fee percentage.",
+        },
+        product_id: {
+          type: Type.STRING,
+          description: "Optional product_id to cross-reference hidden fees/tenors from campaign_products.",
+        },
+      },
+      required: ["advertised_rate_percent", "tenor_days"],
+    },
+  },
+  // 26. search_nigerian_regulations
+  {
+    name: "search_nigerian_regulations",
+    description:
+      "Retrieves exact statutory provisions from CBN, FCCPC (FCCPA 2018 / DEON), ARCON (ARCON Act / ASP Code), NDPC (NDPA 2023 / GAID), SEC, and internal institutional playbooks.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        query: {
+          type: Type.STRING,
+          description: "Search query for Nigerian statutory rules and institutional playbooks.",
+        },
+        regulators: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Optional regulator filter: CBN, FCCPC, ARCON, NDPC, SEC.",
+        },
+        limit: {
+          type: Type.INTEGER,
+          description: "Max statutory provisions to return (default 5).",
+        },
+      },
+      required: ["query"],
+    },
+  },
+  // 27. scan_live_url_or_creative
+  {
+    name: "scan_live_url_or_creative",
+    description:
+      "Extracts claims, fine print, disclosures, and visual/OCR elements from a live URL, Google Play/App Store listing, or uploaded flyer asset.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        url: {
+          type: Type.STRING,
+          description: "Optional live HTTPS URL to fetch and scan.",
+        },
+        asset_id: {
+          type: Type.STRING,
+          description: "Optional uploaded flyer/PDF/DOCX asset UUID to inspect.",
+        },
+        creative_text: {
+          type: Type.STRING,
+          description: "Optional ad copy or app store listing text to scan directly.",
+        },
+        product_id: {
+          type: Type.STRING,
+          description: "Optional product UUID to cross-reference rates and tenors.",
+        },
+      },
+    },
+  },
+  // 28. create_compliance_artifact
+  {
+    name: "create_compliance_artifact",
+    description:
+      "Emits a structured interactive compliance deliverable (cbn_kfs_statement, compliant_ad_rewrite, arcon_vetting_memo, or audit_dossier_summary) into the external right-hand Artifact Canvas Drawer.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        artifact_type: {
+          type: Type.STRING,
+          description:
+            "One of: cbn_kfs_statement, compliant_ad_rewrite, arcon_vetting_memo, audit_dossier_summary.",
+        },
+        product_id: {
+          type: Type.STRING,
+          description: "Optional product UUID for locking financial schedule truth.",
+        },
+        product_name: {
+          type: Type.STRING,
+          description: "Optional product name.",
+        },
+        principal_ngn: {
+          type: Type.NUMBER,
+          description: "Optional principal in NGN.",
+        },
+        interest_rate_percent: {
+          type: Type.NUMBER,
+          description: "Optional nominal interest rate percentage.",
+        },
+        tenor_days: {
+          type: Type.INTEGER,
+          description: "Optional repayment tenor in days.",
+        },
+        processing_fee_flat_ngn: {
+          type: Type.NUMBER,
+          description: "Optional flat upfront processing fee in NGN.",
+        },
+      },
+      required: ["artifact_type"],
+    },
+  },
 ];
 
 /**
- * Concrete Executors for all 23 Statutory & Autonomous Analyst Tools.
+ * Concrete Executors for all Statutory & Autonomous Analyst Tools.
  */
 export class StatutoryToolExecutor {
   /**
@@ -1403,6 +1559,153 @@ export class StatutoryToolExecutor {
         auto_matched_product: memory.autoMatchedProduct,
         precedents: memory.precedents,
       },
+    };
+  }
+
+  /**
+   * Tool 24: match_product_rate_card
+   */
+  public async matchProductRateCard(
+    args: { product_id?: string; query_or_copy?: string },
+    ctx: ToolExecutionContext
+  ): Promise<Record<string, unknown>> {
+    const memory = await precedentMemoryService.loadInstitutionalMemory({
+      tenantId: ctx.tenantId,
+      userPrompt: args.query_or_copy || "",
+      explicitProductId: args.product_id || null,
+    });
+
+    const product =
+      args.product_id
+        ? await productService.getProductTruth(ctx.tenantId, { productId: args.product_id })
+        : memory.autoMatchedProduct;
+
+    return {
+      success: true,
+      institution_name: memory.institutionName,
+      license_tier: memory.licenseTier,
+      matched_product: product
+        ? {
+            product_id: product.id,
+            product_name: product.product_name,
+            product_type: product.product_type,
+            approved_terms: product.approved_terms,
+          }
+        : null,
+    };
+  }
+
+  /**
+   * Tool 25: calculate_cbn_apr_and_drip_pricing
+   */
+  public async calculateCbnAprAndDripPricing(
+    args: {
+      principal_ngn?: number;
+      advertised_rate_percent: number;
+      advertised_rate_period?: string;
+      tenor_days: number;
+      processing_fee_percent?: number;
+      processing_fee_flat_ngn?: number;
+      management_fee_percent?: number;
+      product_id?: string;
+    },
+    ctx: ToolExecutionContext
+  ): Promise<Record<string, unknown>> {
+    const res = await this.calculateEffectiveAprAndDripFees(args, ctx);
+    const aprAudit = res.apr_audit as ReturnType<typeof aprCalculatorService.calculateEffectiveApr> | undefined;
+    return {
+      ...res,
+      computed_financials: aprAudit?.computedFinancials || null,
+    };
+  }
+
+  /**
+   * Tool 26: search_nigerian_regulations
+   */
+  public async searchNigerianRegulations(
+    args: { query: string; regulators?: string[]; limit?: number },
+    ctx: ToolExecutionContext
+  ): Promise<Record<string, unknown>> {
+    const [vaultRes, playbookRes] = await Promise.all([
+      this.searchRegulatoryEvidence(
+        {
+          query: args.query,
+          regulators: args.regulators,
+          limit: args.limit || 5,
+        },
+        ctx
+      ),
+      this.searchInstitutionalKnowledge(
+        {
+          query: args.query,
+          limit: 3,
+        },
+        ctx
+      ).catch(() => ({ chunks: [], rules: [] })),
+    ]);
+
+    return {
+      success: true,
+      statutory_provisions: vaultRes.results || [],
+      playbook_chunks: playbookRes.chunks || [],
+      playbook_rules: playbookRes.rules || [],
+    };
+  }
+
+  /**
+   * Tool 27: scan_live_url_or_creative
+   */
+  public async scanLiveUrlOrCreative(
+    args: {
+      url?: string;
+      asset_id?: string;
+      creative_text?: string;
+      product_id?: string;
+    },
+    ctx: ToolExecutionContext
+  ): Promise<Record<string, unknown>> {
+    if (args.url) {
+      return this.fetchLiveUrlContent({ url: args.url }, ctx);
+    }
+    if (args.asset_id) {
+      return this.getCampaignAssetContent({ asset_id: args.asset_id }, ctx);
+    }
+    const text = args.creative_text || "";
+    const [visualRes, storeRes] = await Promise.all([
+      this.auditFlyerVisualForensics({ flyer_text: text }, ctx),
+      this.auditAppStoreListing({ listing_text: text, product_id: args.product_id }, ctx),
+    ]);
+    return {
+      success: true,
+      visual_forensics: visualRes.visual_forensics,
+      app_store_audit: storeRes.app_store_audit,
+    };
+  }
+
+  /**
+   * Tool 28: create_compliance_artifact
+   */
+  public async createComplianceArtifact(
+    args: {
+      artifact_type: string;
+      product_id?: string;
+      product_name?: string;
+      principal_ngn?: number;
+      interest_rate_percent?: number;
+      tenor_days?: number;
+      processing_fee_flat_ngn?: number;
+    },
+    ctx: ToolExecutionContext
+  ): Promise<Record<string, unknown>> {
+    const kitRes = await this.generateKfsAndChannelKit(args, ctx);
+    const kit = kitRes.kfs_and_channel_kit as ReturnType<
+      typeof kfsGeneratorService.generateKfsAndChannelKit
+    >;
+    return {
+      success: true,
+      artifact_type: args.artifact_type,
+      kfs_and_channel_kit: kit,
+      computed_financials: kit?.aprSummary?.computedFinancials || null,
     };
   }
 }

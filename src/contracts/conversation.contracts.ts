@@ -110,6 +110,43 @@ export interface BlindSpotFindingItem {
   regulatory_clause_id?: string;
 }
 
+export interface ComputedFinancials {
+  product_name: string;
+  principal_ngn: number;
+  itemized_upfront_fees: Array<{
+    label: string;
+    amount_ngn: number;
+    basis: string;
+  }>;
+  total_upfront_fees_ngn: number;
+  net_disbursed_cash_ngn: number;
+  nominal_interest_ngn: number;
+  advertised_rate_percent: number;
+  advertised_rate_period: string;
+  advertised_implied_apr_percent: number;
+  total_cost_of_credit_ngn: number;
+  total_repayable_ngn: number;
+  effective_apr_percent: number;
+  effective_net_disbursed_apr_percent: number;
+  tenor_days: number;
+  drip_pricing_detected: boolean;
+  short_tenor_violation: boolean;
+}
+
+export type ComplianceArtifactType =
+  | "compliant_ad_rewrite"
+  | "cbn_kfs_statement"
+  | "arcon_vetting_memo"
+  | "audit_dossier_summary";
+
+export interface ComplianceArtifactItem {
+  id: string;
+  type: ComplianceArtifactType;
+  title: string;
+  subtitle: string;
+  badge_label: string;
+}
+
 export interface StructuredComplianceReport {
   pre_flight_gate: {
     verdict: "PASS" | "CONDITIONAL" | "BLOCK";
@@ -134,12 +171,15 @@ export interface StructuredComplianceReport {
       short_tenor_violation: boolean;
     } | null;
   };
+  computed_financials?: ComputedFinancials | null;
   blind_spot_findings: BlindSpotFindingItem[];
+  compliance_artifacts?: ComplianceArtifactItem[];
   artifacts: {
     compliant_rewrite?: {
       channel: string;
       rewritten_copy: string;
       sms_160_char?: string;
+      web_landing_html?: string;
       verified_by_locks: boolean;
     };
     kfs_table?: {
@@ -246,3 +286,4 @@ export type SSEEvent =
         message: string;
       };
     };
+

@@ -7,6 +7,7 @@
  */
 
 import { ApprovedTerms, CampaignProduct } from "@/contracts/knowledge-product.contracts";
+import type { ComputedFinancials } from "@/contracts/conversation.contracts";
 
 export type RatePeriodType = "DAILY" | "MONTHLY" | "ANNUAL" | "FLAT_PER_TENOR";
 
@@ -58,6 +59,8 @@ export interface AprCalculationResult {
   shortTenorPlayStoreViolation: boolean;
   excessivePenaltyViolation: boolean;
   blindSpots: BlindSpotAlert[];
+  /** Canonical single-source-of-truth financial schedule shared across LLM context and all artifacts */
+  computedFinancials: ComputedFinancials;
 }
 
 export class AprCalculatorService {
@@ -102,10 +105,46 @@ export class AprCalculatorService {
     }
 
     // 3. Compute mandatory upfront/ancillary fees (processing, management, insurance, flat fee)
-    const processingFeePctNgn = principalNgn * ((input.processingFeePercent || 0) / 100);
-    const processingFeeFlatNgn = input.processingFeeFlatNgn || 0;
-    const managementFeeNgn = principalNgn * ((input.managementFeePercent || 0) / 100);
-    const insuranceFeeNgn = principalNgn * ((input.insuranceFeePercent || 0) / 100);
+    const processingFeePctNgn = Number(
+      (principalNgn * ((input.processingFeePercent || 0) / 100)).toFixed(2)
+    );
+    const processingFeeFlatNgn = Number((input.processingFeeFlatNgn || 0).toFixed(2));
+    const managementFeeNgn = Number(
+      (principalNgn * ((input.managementFeePercent || 0) / 100)).toFixed(2)
+    );
+    const insuranceFeeNgn = Number(
+      (principalNgn * ((input.insuranceFeePercent || 0) / 100)).toFixed(2)
+    );
+
+    const itemizedUpfrontFees: ComputedFinancials["itemized_upfront_fees"] = [];
+    if (processingFeePctNgn > 0) {
+      itemizedUpfrontFees.push({
+        label: "Processing Fee (%)",
+        amount_ngn: processingFeePctNgn,
+        basis: `${input.processingFeePercent}% of principal`,
+      });
+    }
+    if (processingFeeFlatNgn > 0) {
+      itemizedUpfrontFees.push({
+        label: "Flat Processing / Admin Fee",
+        amount_ngn: processingFeeFlatNgn,
+        basis: "Fixed upfront deduction",
+      });
+    }
+    if (managementFeeNgn > 0) {
+      itemizedUpfrontFees.push({
+        label: "Management Fee",
+        amount_ngn: managementFeeNgn,
+        basis: `${input.managementFeePercent}% of principal`,
+      });
+    }
+    if (insuranceFeeNgn > 0) {
+      itemizedUpfrontFees.push({
+        label: "Credit Life / Insurance Fee",
+        amount_ngn: insuranceFeeNgn,
+        basis: `${input.insuranceFeePercent}% of principal`,
+      });
+    }
 
     const upfrontFeesNgn = Number(
       (
@@ -123,7 +162,8 @@ export class AprCalculatorService {
       ).toFixed(2)
     );
 
-    const totalCostOfCreditNgn = Number((interestAmountNgn + upfrontFeesNgn).toFixed(2));
+    const roundedInterestNgn = Number(interestAmountNgn.toFixed(2));
+    const totalCostOfCreditNgn = Number((roundedInterestNgn + upfrontFeesNgn).toFixed(2));
     const totalRepaymentNgn = Number((netDisbursedNgn + totalCostOfCreditNgn).toFixed(2));
 
     // 4. Compute Effective APR (Nominal Principal basis vs. Net Disbursed Cash basis) & Compound IRR
@@ -195,6 +235,25 @@ export class AprCalculatorService {
       });
     }
 
+    const computedFinancials: ComputedFinancials = {
+      product_name: productName,
+      principal_ngn: principalNgn,
+      itemized_upfront_fees: itemizedUpfrontFees,
+      total_upfront_fees_ngn: upfrontFeesNgn,
+      net_disbursed_cash_ngn: netDisbursedNgn,
+      nominal_interest_ngn: roundedInterestNgn,
+      advertised_rate_percent: advertisedRatePercent,
+      advertised_rate_period: advertisedRatePeriod,
+      advertised_implied_apr_percent: advertisedImpliedAprPercent,
+      total_cost_of_credit_ngn: totalCostOfCreditNgn,
+      total_repayable_ngn: totalRepaymentNgn,
+      effective_apr_percent: effectiveNominalAprPercent,
+      effective_net_disbursed_apr_percent: effectiveNetDisbursedAprPercent,
+      tenor_days: tenorDays,
+      drip_pricing_detected: dripPricingDetected,
+      short_tenor_violation: shortTenorPlayStoreViolation,
+    };
+
     return {
       productName,
       principalNgn,
@@ -204,7 +263,7 @@ export class AprCalculatorService {
       advertisedImpliedAprPercent,
       upfrontFeesNgn,
       netDisbursedNgn,
-      interestAmountNgn: Number(interestAmountNgn.toFixed(2)),
+      interestAmountNgn: roundedInterestNgn,
       totalCostOfCreditNgn,
       totalRepaymentNgn,
       effectiveNominalAprPercent,
@@ -215,6 +274,7 @@ export class AprCalculatorService {
       shortTenorPlayStoreViolation,
       excessivePenaltyViolation,
       blindSpots,
+      computedFinancials,
     };
   }
 

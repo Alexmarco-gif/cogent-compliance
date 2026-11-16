@@ -288,6 +288,58 @@ describe("End-to-End Autonomous Compliance Analyst Scenarios & Routes", () => {
       expect(
         report.artifacts.compliant_rewrite?.sms_160_char?.length,
       ).toBeLessThanOrEqual(160);
+
+      // Pillar 4 & Canvas Deliverables: Single Source of Truth computed_financials & compliance_artifacts
+      expect(report.computed_financials).toBeDefined();
+      expect(report.computed_financials?.principal_ngn).toBe(50000);
+      expect(report.computed_financials?.total_upfront_fees_ngn).toBe(2500);
+      expect(report.computed_financials?.net_disbursed_cash_ngn).toBe(47500);
+      expect(report.computed_financials?.total_cost_of_credit_ngn).toBe(3750);
+      expect(report.computed_financials?.effective_apr_percent).toBeCloseTo(182.5, 1);
+      expect(report.computed_financials?.tenor_days).toBe(15);
+
+      expect(report.compliance_artifacts).toBeDefined();
+      const artifactTypes = report.compliance_artifacts?.map((a) => a.type) ?? [];
+      expect(artifactTypes).toContain("compliant_ad_rewrite");
+      expect(artifactTypes).toContain("cbn_kfs_statement");
+      expect(artifactTypes).toContain("arcon_vetting_memo");
+      expect(artifactTypes).toContain("audit_dossier_summary");
+    }
+  });
+
+  it("SCENARIO 4: Dynamic Intent Adaptation — Quick Regulatory Q&A streams natural editorial prose WITHOUT forcing a Pre-Flight Gate or KFS template", async () => {
+    const { CopilotOrchestrator } = await import(
+      "@/modules/conversations/copilot.orchestrator"
+    );
+
+    const mockGenAi = {
+      models: {
+        generateContent: vi.fn().mockResolvedValue({
+          text: "### ARCON Pre-Vetting for Influencer Skits\n\nYes. Under **[ARCON Act 2022 §54]** and **[ARCON ASP Code Art. 21]**, all influencer skits, paid partnerships, and social media endorsements promoting financial services in Nigeria require mandatory Advertising Standards Panel (ASP) vetting and a valid ASP Certificate of Approval before publication.",
+          functionCalls: [],
+        }),
+      },
+    };
+
+    const orchestrator = new CopilotOrchestrator(mockGenAi as never);
+
+    const events: SSEEvent[] = [];
+    for await (const ev of orchestrator.streamChat({
+      conversationId: "conv_qa_001",
+      tenantId: mockTenantContext.tenantId,
+      userId: mockTenantContext.userId,
+      userPrompt: "Does ARCON require pre-vetting for influencer skits?",
+    })) {
+      events.push(ev);
+    }
+
+    const assessmentCompleted = events.find((e) => e.type === "assessment.completed");
+    expect(assessmentCompleted).toBeUndefined();
+
+    const messageCompleted = events.find((e) => e.type === "message.completed");
+    expect(messageCompleted).toBeDefined();
+    if (messageCompleted && messageCompleted.type === "message.completed") {
+      expect(messageCompleted.data.structured_report).toBeUndefined();
     }
   });
 

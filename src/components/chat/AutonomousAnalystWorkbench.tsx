@@ -31,16 +31,18 @@ import type {
 export interface AgentExecutionPlanProps {
   steps: ExecutionPlanStep[];
   citationCount?: number;
+  matchedProductName?: string | null;
 }
 
 /**
- * Collapsed Thought Pill (Linear / Vanta style):
- * While running, displays active step progress. Once all 5 steps complete,
- * collapses into a single subtle badge: "✓ Audited X sources & 3 locks (click to expand)".
+ * Collapsed Thought Pill (Claude / Linear / Vanta style):
+ * While running, displays active step progress. Once all steps complete,
+ * collapses into a single subtle badge: "✓ Cross-checked QuickCash, CBN APR Engine & X sources".
  */
 export function AgentExecutionPlanCard({
   steps,
   citationCount = 0,
+  matchedProductName,
 }: AgentExecutionPlanProps) {
   const completedCount = steps ? steps.filter((s) => s.status === "COMPLETED").length : 0;
   const isAllDone = Boolean(steps && steps.length > 0 && completedCount === steps.length);
@@ -57,8 +59,8 @@ export function AgentExecutionPlanCard({
   const runningStep = steps.find((s) => s.status === "RUNNING") || steps[steps.length - 1];
 
   return (
-    <div className="my-2">
-      <div className="flex flex-col w-full rounded-lg border border-[#E5E7EB] bg-zinc-50/80 px-3 py-2 text-[12px] transition-all">
+    <div className="my-1.5">
+      <div className="flex flex-col w-full rounded-lg border border-zinc-200/90 bg-zinc-50/70 px-3 py-1.5 text-[12px] transition-all">
         <button
           type="button"
           onClick={() => setExpanded(!expanded)}
@@ -73,8 +75,13 @@ export function AgentExecutionPlanCard({
 
             {isAllDone ? (
               <span className="font-medium text-zinc-700 truncate">
-                Audited {citationCount > 0 ? `${citationCount} statutory sources & ` : ""}
-                3 deterministic locks across {steps.length} verification steps
+                {matchedProductName
+                  ? `Cross-checked ${matchedProductName}, CBN APR Engine${
+                      citationCount > 0 ? ` & ${citationCount} statutory sources` : ""
+                    }`
+                  : `Audited ${
+                      citationCount > 0 ? `${citationCount} statutory sources & ` : ""
+                    }compliance guardrails across ${steps.length} steps`}
               </span>
             ) : (
               <span className="font-medium text-zinc-900 truncate">
