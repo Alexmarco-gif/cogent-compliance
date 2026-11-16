@@ -71,9 +71,31 @@ export const Tab5SignOffDossier: React.FC<Tab5Props> = ({
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [currentRoleLabel, setCurrentRoleLabel] = useState<string | null>(null);
+  const [canApproveCampaign, setCanApproveCampaign] = useState<boolean>(true);
+  const [canSubmitReview, setCanSubmitReview] = useState<boolean>(true);
 
   const unwatermarkedExport = useEntitlement("export_unwatermarked");
   const isEvaluationWatermark = !unwatermarkedExport.isLoading && !unwatermarkedExport.allowed;
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/marketing-shield/v1/auth/me")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!active || !json?.success || !json.data) return;
+        const perms: string[] = Array.isArray(json.data.permissions) ? json.data.permissions : [];
+        setCurrentRoleLabel(json.data.roleMetadata?.label || json.data.role || null);
+        setCanApproveCampaign(perms.includes("approval.decide"));
+        setCanSubmitReview(perms.includes("campaign.submit_review"));
+      })
+      .catch(() => {
+        // Non-blocking fallback
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const fetchApprovals = useCallback(async () => {
     if (!campaign.id) return;
@@ -336,7 +358,7 @@ export const Tab5SignOffDossier: React.FC<Tab5Props> = ({
           <button
             type="button"
             onClick={handleSubmitReview}
-            disabled={submittingReview}
+            disabled={submittingReview || !canSubmitReview}
             className="w-full flex items-center justify-center gap-2 rounded-md bg-zinc-900 px-4 py-2.5 text-[13px] font-medium text-white hover:bg-zinc-800 disabled:opacity-50 transition-colors cursor-pointer"
           >
             {submittingReview ? (
@@ -351,6 +373,14 @@ export const Tab5SignOffDossier: React.FC<Tab5Props> = ({
               </>
             )}
           </button>
+          {!canSubmitReview && (
+            <p className="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+              Your current role ({currentRoleLabel || "Current Role"}) cannot submit campaigns for review. Assign Product &amp; Marketing Manager, Compliance Analyst, Legal Counsel, or CCO in{" "}
+              <Link href="/settings?tab=team" className="font-semibold underline">
+                Settings → Team &amp; Roles
+              </Link>.
+            </p>
+          )}
         </div>
       )}
 
@@ -381,12 +411,27 @@ export const Tab5SignOffDossier: React.FC<Tab5Props> = ({
           </span>
         </div>
 
+        {!canApproveCampaign && (
+          <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-[12px] text-amber-900 space-y-1">
+            <div className="font-semibold">
+              Approval Authority Required (Current role: {currentRoleLabel || "Restricted"})
+            </div>
+            <p className="text-amber-800 leading-relaxed">
+              Only <strong>Legal Counsel</strong> and the <strong>Chief Compliance Officer</strong> can approve or reject campaigns. You can update workspace member roles in{" "}
+              <Link href="/settings?tab=team" className="font-semibold underline">
+                Settings → Team &amp; Roles
+              </Link>.
+            </p>
+          </div>
+        )}
+
         {/* Decision Toggle */}
         <div className="grid grid-cols-2 gap-3">
           <button
             type="button"
+            disabled={!canApproveCampaign}
             onClick={() => setDecision("APPROVED")}
-            className={`flex items-center justify-center gap-2 rounded-md border py-2 text-[13px] font-medium transition-colors cursor-pointer ${
+            className={`flex items-center justify-center gap-2 rounded-md border py-2 text-[13px] font-medium transition-colors cursor-pointer disabled:opacity-50 ${
               decision === "APPROVED"
                 ? "border-emerald-600 bg-emerald-50 text-emerald-800"
                 : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
@@ -398,8 +443,9 @@ export const Tab5SignOffDossier: React.FC<Tab5Props> = ({
 
           <button
             type="button"
+            disabled={!canApproveCampaign}
             onClick={() => setDecision("REJECTED")}
-            className={`flex items-center justify-center gap-2 rounded-md border py-2 text-[13px] font-medium transition-colors cursor-pointer ${
+            className={`flex items-center justify-center gap-2 rounded-md border py-2 text-[13px] font-medium transition-colors cursor-pointer disabled:opacity-50 ${
               decision === "REJECTED"
                 ? "border-rose-600 bg-rose-50 text-rose-800"
                 : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
@@ -417,10 +463,11 @@ export const Tab5SignOffDossier: React.FC<Tab5Props> = ({
           </label>
           <textarea
             rows={2}
+            disabled={!canApproveCampaign}
             value={decisionReason}
             onChange={(e) => setDecisionReason(e.target.value)}
             placeholder="e.g. Verified against FCCPC Sales Promotion rules and approved rate schedule."
-            className="w-full rounded-md border border-zinc-300 p-2.5 text-[13px] text-zinc-900 focus:border-zinc-900 focus:outline-none"
+            className="w-full rounded-md border border-zinc-300 p-2.5 text-[13px] text-zinc-900 focus:border-zinc-900 focus:outline-none disabled:bg-zinc-50"
           />
         </div>
 
@@ -433,6 +480,7 @@ export const Tab5SignOffDossier: React.FC<Tab5Props> = ({
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
+                disabled={!canApproveCampaign}
                 checked={conditionArcon}
                 onChange={(e) => setConditionArcon(e.target.checked)}
                 className="rounded border-zinc-300 text-zinc-900 focus:ring-0"
@@ -442,6 +490,7 @@ export const Tab5SignOffDossier: React.FC<Tab5Props> = ({
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"
+                disabled={!canApproveCampaign}
                 checked={conditionAprVisibility}
                 onChange={(e) => setConditionAprVisibility(e.target.checked)}
                 className="rounded border-zinc-300 text-zinc-900 focus:ring-0"
@@ -454,7 +503,7 @@ export const Tab5SignOffDossier: React.FC<Tab5Props> = ({
         <button
           type="button"
           onClick={handleRecordDecision}
-          disabled={recordingDecision}
+          disabled={recordingDecision || !canApproveCampaign}
           className={`w-full flex items-center justify-center gap-2 rounded-md px-4 py-2.5 text-[13px] font-medium text-white transition-colors cursor-pointer ${
             decision === "APPROVED"
               ? "bg-emerald-700 hover:bg-emerald-800"

@@ -21,6 +21,8 @@ export async function POST(req: NextRequest) {
     const result = await onboardingService.saveInstitutionScope(
       tenantContext.tenantId,
       parseResult.data,
+      tenantContext.clerkUserId,
+      tenantContext.clerkOrgId,
     );
 
     return NextResponse.json(result, { status: 200 });

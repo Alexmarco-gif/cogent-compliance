@@ -71,8 +71,9 @@ describe("Knowledge Base RBAC & Separation of Duties", () => {
   });
 
   it("enforces product.write and knowledge.write boundaries across roles", () => {
-    // Marketing cannot alter product truth or upload institutional policy manuals
-    expect(ROLE_PERMISSIONS.MARKETING_GROWTH.has("product.write")).toBe(false);
+    // Product & Marketing Manager can manage product schedules (product.write),
+    // while institutional policy manuals (knowledge.write) remain compliance-restricted.
+    expect(ROLE_PERMISSIONS.MARKETING_GROWTH.has("product.write")).toBe(true);
     expect(ROLE_PERMISSIONS.MARKETING_GROWTH.has("knowledge.write")).toBe(false);
 
     // Compliance Analyst, Legal Counsel, and CCO can author drafts

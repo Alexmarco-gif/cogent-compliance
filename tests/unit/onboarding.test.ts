@@ -50,6 +50,52 @@ describe("OnboardingService & 60-Second Progressive Engine", () => {
       ]);
       expect(updatedSettings?.onboarding_step).toBe(1);
     });
+
+    it("persists creator_role to tenant_memberships when userId and creator_role are supplied", async () => {
+      let upsertedMembership: any = null;
+
+      vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue({
+        from: vi.fn().mockImplementation((table: string) => {
+          if (table === "tenants") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              single: vi.fn().mockResolvedValue({
+                data: { name: "Acme Bank", settings: {} },
+              }),
+              update: vi.fn().mockReturnValue({
+                eq: vi.fn().mockResolvedValue({ error: null }),
+              }),
+            };
+          }
+          if (table === "tenant_memberships") {
+            return {
+              upsert: vi.fn().mockImplementation((payload: any) => {
+                upsertedMembership = payload;
+                return Promise.resolve({ error: null });
+              }),
+            };
+          }
+          return { select: vi.fn().mockReturnThis() };
+        }),
+      } as any);
+
+      const res = await onboardingService.saveInstitutionScope(
+        tenantId,
+        {
+          scopes: ["DIGITAL_LENDING"],
+          organization_name: "Acme Bank",
+          creator_role: "MARKETING_GROWTH",
+        },
+        "user_creator_123",
+      );
+
+      expect(res.success).toBe(true);
+      expect(res.role).toBe("MARKETING_GROWTH");
+      expect(upsertedMembership?.role).toBe("MARKETING_GROWTH");
+      expect(upsertedMembership?.user_id).toBe("user_creator_123");
+      expect(upsertedMembership?.status).toBe("ACTIVE");
+    });
   });
 
   describe("Step 2: Seed Product Truth (Rate Card)", () => {

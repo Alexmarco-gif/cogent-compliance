@@ -93,12 +93,14 @@ export class OnboardingService {
 
   /**
    * Step 1: 1-Click Institution Scope Configuration
-   * Writes active scopes to tenant settings & updates progression
+   * Writes active scopes to tenant settings, updates creator role if provided, and updates progression
    */
   public async saveInstitutionScope(
     tenantId: string,
     payload: OnboardingScopeRequest,
-  ): Promise<{ success: boolean; scopes: RegulatoryScopeKey[] }> {
+    clerkUserId?: string,
+    clerkOrgId?: string,
+  ): Promise<{ success: boolean; scopes: RegulatoryScopeKey[]; role?: string }> {
     const supabase = createAdminSupabaseClient();
 
     // 1. Fetch current settings
@@ -134,12 +136,72 @@ export class OnboardingService {
       throw new Error("Failed to save regulatory scope configuration");
     }
 
+    // Persist chosen functional role for the onboarding user when provided
+    if (payload.creator_role && clerkUserId) {
+      try {
+        await supabase
+          .from("tenant_memberships")
+          .upsert(
+            {
+              tenant_id: tenantId,
+              user_id: clerkUserId,
+              role: payload.creator_role,
+              status: "ACTIVE",
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "tenant_id,user_id" },
+          );
+
+        if (clerkOrgId && process.env.NODE_ENV !== "test") {
+          try {
+            const { clerkClient } = await import("@clerk/nextjs/server");
+            const { mapCanonicalRoleToClerkOrgRole } = await import("@/modules/auth-tenancy/roles");
+            const client = await clerkClient();
+            await client.organizations.updateOrganizationMembershipMetadata({
+              organizationId: clerkOrgId,
+              userId: clerkUserId,
+              publicMetadata: { canonicalRole: payload.creator_role },
+            });
+            await client.organizations.updateOrganizationMembership({
+              organizationId: clerkOrgId,
+              userId: clerkUserId,
+              role: mapCanonicalRoleToClerkOrgRole(payload.creator_role),
+            });
+            if (payload.organization_name && payload.organization_name !== tenant?.name) {
+              await client.organizations.updateOrganization(clerkOrgId, {
+                name: payload.organization_name,
+              });
+            }
+          } catch (clerkSyncErr) {
+            logger.warn("Best-effort Clerk role/org sync during onboarding skipped", {
+              tenantId,
+              clerkUserId,
+              error: clerkSyncErr instanceof Error ? clerkSyncErr.message : String(clerkSyncErr),
+            });
+          }
+        }
+      } catch (roleErr) {
+        logger.error("Failed to persist creator_role during onboarding", {
+          tenantId,
+          clerkUserId,
+          creatorRole: payload.creator_role,
+          error: roleErr instanceof Error ? roleErr.message : String(roleErr),
+        });
+        throw new Error("Failed to update workspace member role");
+      }
+    }
+
     logger.info("Configured tenant regulatory scopes", {
       tenantId,
       scopes: payload.scopes,
+      creatorRole: payload.creator_role,
     });
 
-    return { success: true, scopes: payload.scopes };
+    return {
+      success: true,
+      scopes: payload.scopes,
+      role: payload.creator_role,
+    };
   }
 
   /**

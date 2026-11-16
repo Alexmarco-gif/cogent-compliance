@@ -25,6 +25,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<CanonicalRole, ReadonlySet<Permis
     "review.comment",
     "dossier.generate",
     "dossier.download",
+    "product.write",
   ]),
 
   COMPLIANCE_ANALYST: new Set<PermissionKey>([

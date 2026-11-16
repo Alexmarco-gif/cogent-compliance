@@ -10,8 +10,7 @@ import {
   Percent,
   CheckSquare,
   Activity,
-  Sliders,
-  CreditCard,
+  Settings,
   PanelLeftClose,
   MessageSquare,
   MoreHorizontal,
@@ -20,8 +19,14 @@ import {
   Check,
   LogIn,
   ArrowRight,
+  Camera,
+  Trash2,
+  User as UserIcon,
+  Building2,
+  LogOut,
+  ChevronUp,
 } from "lucide-react";
-import { OrganizationSwitcher, UserButton, useAuth, useUser } from "@clerk/nextjs";
+import { useAuth, useClerk, useUser } from "@clerk/nextjs";
 import { CogentLogo } from "@/components/brand/CogentLogo";
 import type { ConversationRecord } from "@/modules/conversations/conversation.service";
 
@@ -67,20 +72,38 @@ export function WorkspaceSidebar({
   const searchParams = useSearchParams();
   const activeKbTab = searchParams.get("tab") || "products";
   const { isLoaded, isSignedIn, orgId } = useAuth();
+  const { signOut } = useClerk();
   const { user } = useUser();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [updatingAvatar, setUpdatingAvatar] = useState(false);
   const [subSummary, setSubSummary] = useState<SubscriptionSummary | null>(null);
   const [selfConversations, setSelfConversations] = useState<ConversationRecord[]>([]);
   const [loadingSelfConversations, setLoadingSelfConversations] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const managesOwnThreads = conversations === undefined;
   const resolvedConversations = conversations ?? selfConversations;
   const resolvedLoading = managesOwnThreads ? loadingSelfConversations : loadingConversations;
+
+  const displayName =
+    user?.fullName?.trim() ||
+    [user?.firstName, user?.lastName].filter(Boolean).join(" ").trim() ||
+    user?.username ||
+    "Account";
+
+  const userInitials = displayName
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() || "")
+    .join("") || "U";
 
   // Keyboard shortcut Cmd/Ctrl + K focuses sidebar search
   useEffect(() => {
@@ -88,11 +111,53 @@ export function WorkspaceSidebar({
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         searchInputRef.current?.focus();
+      } else if (e.key === "Escape") {
+        setUserMenuOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // Close user menu on outside click
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    const onMouseDown = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [userMenuOpen]);
+
+  const handleAvatarFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !user) return;
+    setUpdatingAvatar(true);
+    try {
+      await user.setProfileImage({ file });
+      setUserMenuOpen(false);
+    } catch (err) {
+      console.error("Failed to update profile image", err);
+    } finally {
+      setUpdatingAvatar(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (!user) return;
+    setUpdatingAvatar(true);
+    try {
+      await user.setProfileImage({ file: null });
+      setUserMenuOpen(false);
+    } catch (err) {
+      console.error("Failed to remove profile image", err);
+    } finally {
+      setUpdatingAvatar(false);
+    }
+  };
 
   // Load saved threads on non-chat pages (e.g. /knowledge-base, /drift-monitors) so history stays accessible
   useEffect(() => {
@@ -476,51 +541,112 @@ export function WorkspaceSidebar({
 
         <div className="space-y-0.5">
           <Link
-            href="/onboarding"
+            href="/settings"
             onClick={onCloseMobile}
-            className={navLinkClass(pathname.startsWith("/onboarding"))}
+            className={navLinkClass(pathname.startsWith("/settings"))}
           >
-            <Sliders className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
-            <span>Workspace Setup</span>
-          </Link>
-          <Link
-            href="/settings/billing"
-            onClick={onCloseMobile}
-            className={navLinkClass(pathname.startsWith("/settings/billing"))}
-          >
-            <CreditCard className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
-            <span>Billing &amp; Plan</span>
+            <Settings className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+            <span>Settings</span>
           </Link>
         </div>
 
-        {/* Organization & User Control */}
+        {/* User Avatar & Name Footer (no Org icon, no email) */}
         {isLoaded && isSignedIn && (
-          <div className="pt-1.5 border-t border-zinc-200 space-y-1.5">
-            <OrganizationSwitcher
-              hidePersonal
-              afterSelectOrganizationUrl={pathname}
-              afterCreateOrganizationUrl={pathname}
-              appearance={{
-                elements: {
-                  rootBox: "w-full",
-                  organizationSwitcherTrigger:
-                    "w-full justify-between px-2.5 py-1.5 rounded-md bg-white border border-zinc-200 text-zinc-900 hover:bg-zinc-100/70 text-[12px] font-medium shadow-none",
-                },
-              }}
+          <div ref={userMenuRef} className="relative pt-1.5 border-t border-zinc-200">
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarFileSelected}
+              className="hidden"
             />
-            <div className="flex items-center gap-2 px-1 py-0.5">
-              <UserButton />
-              <div className="min-w-0 flex-1">
-                <p className="text-[12px] font-medium text-zinc-900 truncate">
-                  {user?.fullName || user?.primaryEmailAddress?.emailAddress || "Account"}
-                </p>
-                {user?.primaryEmailAddress?.emailAddress && user?.fullName && (
-                  <p className="text-[11px] text-zinc-400 truncate">
-                    {user.primaryEmailAddress.emailAddress}
-                  </p>
+
+            {userMenuOpen && (
+              <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-zinc-200 rounded-lg shadow-lg py-1.5 z-40 text-[12px]">
+                <button
+                  type="button"
+                  disabled={updatingAvatar}
+                  onClick={() => avatarInputRef.current?.click()}
+                  className="w-full text-left px-3 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <Camera className="h-3.5 w-3.5 text-zinc-500" />
+                  <span>{user?.hasImage ? "Change Photo" : "Upload Photo"}</span>
+                </button>
+                {user?.hasImage && (
+                  <button
+                    type="button"
+                    disabled={updatingAvatar}
+                    onClick={handleRemoveAvatar}
+                    className="w-full text-left px-3 py-1.5 text-rose-700 hover:bg-rose-50 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    <span>Remove Photo</span>
+                  </button>
                 )}
+                <div className="my-1 border-t border-zinc-100" />
+                <Link
+                  href="/settings?tab=profile"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    onCloseMobile?.();
+                  }}
+                  className="w-full px-3 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2"
+                >
+                  <UserIcon className="h-3.5 w-3.5 text-zinc-500" />
+                  <span>Profile Settings</span>
+                </Link>
+                <Link
+                  href="/settings?tab=organization"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    onCloseMobile?.();
+                  }}
+                  className="w-full px-3 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2"
+                >
+                  <Building2 className="h-3.5 w-3.5 text-zinc-500" />
+                  <span>Switch Organization</span>
+                </Link>
+                <div className="my-1 border-t border-zinc-100" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserMenuOpen(false);
+                    void signOut({ redirectUrl: "/sign-in" });
+                  }}
+                  className="w-full text-left px-3 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2 cursor-pointer"
+                >
+                  <LogOut className="h-3.5 w-3.5 text-zinc-500" />
+                  <span>Sign Out</span>
+                </button>
               </div>
-            </div>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setUserMenuOpen((prev) => !prev)}
+              className="w-full flex items-center gap-2.5 px-1.5 py-1.5 rounded-md hover:bg-zinc-200/50 transition-colors cursor-pointer text-left"
+              aria-label="User profile and account options"
+            >
+              {user?.hasImage && user.imageUrl ? (
+                <img
+                  src={user.imageUrl}
+                  alt={displayName}
+                  className="h-7 w-7 rounded-full object-cover border border-zinc-200 shrink-0"
+                />
+              ) : (
+                <div className="h-7 w-7 rounded-full bg-zinc-900 text-white text-[11px] font-semibold flex items-center justify-center shrink-0">
+                  {userInitials}
+                </div>
+              )}
+              <span className="text-[12.5px] font-medium text-zinc-900 truncate flex-1">
+                {displayName}
+              </span>
+              <ChevronUp
+                className={`h-3.5 w-3.5 text-zinc-400 shrink-0 transition-transform ${
+                  userMenuOpen ? "rotate-180" : ""
+                }`}
+              />
+            </button>
           </div>
         )}
 

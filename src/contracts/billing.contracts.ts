@@ -5,6 +5,7 @@
  */
 
 import { z } from "zod";
+import { CANONICAL_ROLES } from "@/modules/auth-tenancy/types";
 
 // ---------------------------------------------------------------------------
 // Regulatory Scopes
@@ -203,6 +204,7 @@ export const OnboardingScopeRequestSchema = z.object({
     .array(z.enum(REGULATORY_SCOPES))
     .min(1, "Please select at least one active regulatory scope"),
   organization_name: z.string().optional(),
+  creator_role: z.enum(CANONICAL_ROLES).optional(),
 });
 export type OnboardingScopeRequest = z.infer<typeof OnboardingScopeRequestSchema>;
 

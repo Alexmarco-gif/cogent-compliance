@@ -9,7 +9,14 @@ export async function GET(req: NextRequest) {
     const tenantContext = await resolveTenantContext(req);
     const status = await onboardingService.getOnboardingStatus(tenantContext.tenantId);
 
-    return NextResponse.json(status, { status: 200 });
+    return NextResponse.json(
+      {
+        ...status,
+        currentRole: tenantContext.role,
+        organizationName: tenantContext.orgName,
+      },
+      { status: 200 },
+    );
   } catch (err: unknown) {
     if (err instanceof AuthTenancyError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });

@@ -321,4 +321,75 @@ describe("Clerk Webhook Event Dispatcher (dispatchClerkWebhookEvent)", () => {
     expect(result.tenantId).toBe("tenant_existing_999");
     expect(insertSpy).not.toHaveBeenCalled();
   });
+
+  it("should prefer public_metadata.canonicalRole over generic Clerk org:member role on membership creation", async () => {
+    const mockClient = createAdminSupabaseClient();
+    let upsertedRole: string | null = null;
+
+    vi.mocked(mockClient.from).mockImplementationOnce(() => ({
+      select: () => ({
+        eq: () => ({
+          single: vi.fn().mockResolvedValue({
+            data: { id: "tenant_meta_1", settings: {} },
+            error: null,
+          }),
+        }),
+      }),
+    }) as any);
+
+    vi.mocked(mockClient.from).mockImplementationOnce(() => ({
+      upsert: (payload: { role: string }) => {
+        upsertedRole = payload.role;
+        return {
+          select: () => ({
+            single: vi.fn().mockResolvedValue({ data: { id: "mem_meta_1" }, error: null }),
+          }),
+        };
+      },
+    }) as any);
+
+    await dispatchClerkWebhookEvent("organizationMembership.created", {
+      id: "orgmem_legal_01",
+      role: "org:member",
+      public_metadata: { canonicalRole: "LEGAL_COUNSEL" },
+      organization: { id: "org_meta_1", name: "Meta Bank" },
+      public_user_data: { user_id: "user_legal_99", identifier: "legal@metabank.ng" },
+    });
+
+    expect(upsertedRole).toBe("LEGAL_COUNSEL");
+  });
+
+  it("should preserve specialized Supabase canonical role when Clerk updates generic org:admin without metadata", async () => {
+    const mockClient = createAdminSupabaseClient();
+    let updatedRole: string | null = null;
+
+    vi.mocked(mockClient.from).mockImplementationOnce(() => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: vi.fn().mockResolvedValue({
+            data: { role: "CHIEF_COMPLIANCE_OFFICER" },
+            error: null,
+          }),
+        }),
+      }),
+    }) as any);
+
+    vi.mocked(mockClient.from).mockImplementationOnce(() => ({
+      update: (payload: { role: string }) => {
+        updatedRole = payload.role;
+        return {
+          eq: vi.fn().mockResolvedValue({ error: null }),
+        };
+      },
+    }) as any);
+
+    await dispatchClerkWebhookEvent("organizationMembership.updated", {
+      id: "orgmem_cco_01",
+      role: "org:admin",
+      organization: { id: "org_meta_1" },
+      public_user_data: { user_id: "user_cco_99" },
+    });
+
+    expect(updatedRole).toBe("CHIEF_COMPLIANCE_OFFICER");
+  });
 });

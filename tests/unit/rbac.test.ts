@@ -59,6 +59,7 @@ describe("Role-Based Access Control (RBAC) Specification Compliance", () => {
       expect(hasPermission(ctx, "revision.propose")).toBe(true);
       expect(hasPermission(ctx, "campaign.submit_review")).toBe(true);
       expect(hasPermission(ctx, "dossier.download")).toBe(true);
+      expect(hasPermission(ctx, "product.write")).toBe(true);
 
       // Strictly Denied
       expect(hasPermission(ctx, "approval.decide")).toBe(false);

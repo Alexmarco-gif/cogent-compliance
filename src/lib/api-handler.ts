@@ -11,6 +11,18 @@ import { AuthTenancyError, PermissionKey, TenantContext } from "@/modules/auth-t
 import { logger } from "./logger";
 import { ApiErrorResponse, StandardErrorCode } from "@/contracts/api.contracts";
 
+export class AppApiError extends Error {
+  public readonly code: StandardErrorCode;
+  public readonly statusCode: number;
+
+  constructor(code: StandardErrorCode, message: string, statusCode: number = 400) {
+    super(message);
+    this.name = "AppApiError";
+    this.code = code;
+    this.statusCode = statusCode;
+  }
+}
+
 export interface ApiHandlerOptions<TBody = unknown, TQuery = unknown> {
   bodySchema?: z.ZodType<TBody>;
   querySchema?: z.ZodType<TQuery>;
@@ -189,6 +201,16 @@ export function createApiHandler<TData, TBody = unknown, TQuery = unknown>(
         });
 
         return createErrorResponse(err.code as StandardErrorCode, err.message, err.statusCode, requestId);
+      }
+
+      if (err instanceof AppApiError) {
+        requestLogger.warn(`API domain error: ${err.message}`, {
+          code: err.code,
+          statusCode: err.statusCode,
+          latencyMs,
+        });
+
+        return createErrorResponse(err.code, err.message, err.statusCode, requestId);
       }
 
       if (err instanceof ZodError) {

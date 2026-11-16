@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAuth, useOrganization, OrganizationList, UserButton } from "@clerk/nextjs";
+import { useAuth, useOrganization, useUser, OrganizationList } from "@clerk/nextjs";
 import { extractApiError } from "@/lib/api-client";
 import { CogentLogo } from "@/components/brand/CogentLogo";
 import {
@@ -11,6 +11,8 @@ import {
   REGULATORY_SCOPE_METADATA,
   RegulatoryScopeKey,
 } from "@/contracts/billing.contracts";
+import { CANONICAL_ROLE_CATALOG } from "@/modules/auth-tenancy/roles";
+import type { CanonicalRole } from "@/modules/auth-tenancy/types";
 import {
   CheckCircle2,
   AlertTriangle,
@@ -20,6 +22,10 @@ import {
   FileCheck,
   Check,
   Play,
+  Camera,
+  Trash2,
+  User as UserIcon,
+  ShieldCheck,
 } from "lucide-react";
 
 interface OnboardingFlowProps {
@@ -32,13 +38,21 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
   const stepParam = searchParams.get("step");
   const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
   const { organization } = useOrganization();
+  const { user } = useUser();
 
   const [currentStep, setCurrentStep] = useState<number>(
     stepParam ? parseInt(stepParam, 10) : initialStep
   );
   const [alreadyCompleted, setAlreadyCompleted] = useState(false);
 
-  // Step 1 State: Scope
+  // Step 1 State: Profile, Role, Org & Scope
+  const [firstName, setFirstName] = useState<string>("");
+  const [lastName, setLastName] = useState<string>("");
+  const [profileInitialized, setProfileInitialized] = useState(false);
+  const [updatingAvatar, setUpdatingAvatar] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+
+  const [creatorRole, setCreatorRole] = useState<CanonicalRole>("CHIEF_COMPLIANCE_OFFICER");
   const [orgName, setOrgName] = useState<string>("");
   const [selectedScopes, setSelectedScopes] = useState<RegulatoryScopeKey[]>([
     "DIGITAL_LENDING",
@@ -72,6 +86,14 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
   }, [organization?.name, orgName]);
 
   useEffect(() => {
+    if (user && !profileInitialized) {
+      setFirstName(user.firstName || "");
+      setLastName(user.lastName || "");
+      setProfileInitialized(true);
+    }
+  }, [user, profileInitialized]);
+
+  useEffect(() => {
     if (stepParam) {
       const parsed = parseInt(stepParam, 10);
       if (parsed >= 1 && parsed <= 3) {
@@ -96,6 +118,15 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
         if (Array.isArray(status.activeScopes) && status.activeScopes.length > 0) {
           setSelectedScopes(status.activeScopes as RegulatoryScopeKey[]);
         }
+        if (status.organizationName && !orgName) {
+          setOrgName(status.organizationName);
+        }
+        if (
+          status.currentRole &&
+          status.currentRole !== "WORKSPACE_ADMIN"
+        ) {
+          setCreatorRole(status.currentRole as CanonicalRole);
+        }
         if (status.onboardingCompleted) {
           setAlreadyCompleted(true);
         } else if (!stepParam && typeof status.stepCompleted === "number") {
@@ -110,7 +141,7 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
     return () => {
       cancelled = true;
     };
-  }, [clerkLoaded, isSignedIn, orgId, stepParam, router]);
+  }, [clerkLoaded, isSignedIn, orgId, stepParam, router, orgName]);
 
   const toggleScope = (scope: RegulatoryScopeKey) => {
     setSelectedScopes((prev) =>
@@ -118,18 +149,66 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
     );
   };
 
+  const handleAvatarSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || !user) return;
+    setUpdatingAvatar(true);
+    setStepError(null);
+    try {
+      await user.setProfileImage({ file });
+    } catch (err) {
+      setStepError(
+        err instanceof Error ? err.message : "Failed to upload profile image."
+      );
+    } finally {
+      setUpdatingAvatar(false);
+    }
+  };
+
+  const handleRemoveAvatar = async () => {
+    if (!user) return;
+    setUpdatingAvatar(true);
+    setStepError(null);
+    try {
+      await user.setProfileImage({ file: null });
+    } catch (err) {
+      setStepError(
+        err instanceof Error ? err.message : "Failed to remove profile image."
+      );
+    } finally {
+      setUpdatingAvatar(false);
+    }
+  };
+
   const handleScopeSubmit = async () => {
     if (selectedScopes.length === 0) return;
+    if (!firstName.trim()) {
+      setStepError("Please enter your first name so your team and audit log can identify you.");
+      return;
+    }
     setSavingScope(true);
     setStepError(null);
     setStepErrorStatus(null);
     try {
+      if (user) {
+        const nextFirst = firstName.trim();
+        const nextLast = lastName.trim();
+        if (nextFirst !== (user.firstName || "") || nextLast !== (user.lastName || "")) {
+          await user.update({
+            firstName: nextFirst,
+            lastName: nextLast,
+          });
+        }
+      }
+
       const res = await fetch("/api/marketing-shield/v1/onboarding/scope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           scopes: selectedScopes,
           organization_name: orgName.trim() || organization?.name || "Workspace",
+          creator_role: creatorRole,
         }),
       });
       const json = await res.json().catch(() => ({}));
@@ -143,7 +222,7 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
       router.push("/onboarding?step=2");
     } catch (err) {
       console.error("Failed to save scopes", err);
-      setStepError("Network error saving regulatory scopes.");
+      setStepError("Network error saving workspace setup.");
     } finally {
       setSavingScope(false);
     }
@@ -229,12 +308,37 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
     );
   }
 
+  const userDisplayName =
+    [firstName, lastName].filter(Boolean).join(" ").trim() ||
+    user?.fullName ||
+    "Account";
+  const userInitials =
+    userDisplayName
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((p) => p[0]?.toUpperCase() || "")
+      .join("") || "U";
+
   if (!orgId) {
     return (
       <div className="min-h-screen bg-[#FAFAFA] text-zinc-950 flex flex-col items-center py-10 px-4">
         <div className="w-full max-w-4xl flex items-center justify-between mb-8">
           <CogentLogo variant="dark" subtitle="Marketing Shield" />
-          <UserButton />
+          <div className="flex items-center gap-2 px-2.5 py-1 rounded-full border border-zinc-200 bg-white">
+            {user?.hasImage && user.imageUrl ? (
+              <img
+                src={user.imageUrl}
+                alt={userDisplayName}
+                className="h-6 w-6 rounded-full object-cover"
+              />
+            ) : (
+              <div className="h-6 w-6 rounded-full bg-zinc-900 text-white text-[10px] font-semibold flex items-center justify-center">
+                {userInitials}
+              </div>
+            )}
+            <span className="text-xs font-medium text-zinc-900">{userDisplayName}</span>
+          </div>
         </div>
 
         <div className="w-full max-w-2xl bg-white rounded-xl border border-zinc-200 p-8 text-center space-y-6">
@@ -279,7 +383,20 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
               Return to Workspace →
             </Link>
           )}
-          <UserButton />
+          <div className="flex items-center gap-2 px-2.5 py-1 rounded-full border border-zinc-200 bg-white">
+            {user?.hasImage && user.imageUrl ? (
+              <img
+                src={user.imageUrl}
+                alt={userDisplayName}
+                className="h-6 w-6 rounded-full object-cover"
+              />
+            ) : (
+              <div className="h-6 w-6 rounded-full bg-zinc-900 text-white text-[10px] font-semibold flex items-center justify-center">
+                {userInitials}
+              </div>
+            )}
+            <span className="text-xs font-medium text-zinc-900">{userDisplayName}</span>
+          </div>
         </div>
 
         {/* Progressive Stepper */}
@@ -298,7 +415,7 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
             ) : (
               <span>1</span>
             )}
-            <span>Scope</span>
+            <span>Profile &amp; Scope</span>
           </div>
 
           <div className="h-px w-4 bg-zinc-300" />
@@ -354,19 +471,185 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
           </div>
         )}
 
-        {/* STEP 1: Regulatory Scope */}
+        {/* STEP 1: Profile, Role & Regulatory Scope */}
         {currentStep === 1 && (
-          <div className="space-y-6">
+          <div className="space-y-7">
             <div>
               <span className="inline-block text-[11px] font-mono uppercase tracking-wider text-zinc-500 mb-1.5">
                 Step 1 of 3
               </span>
               <h2 className="text-2xl font-semibold tracking-tight text-zinc-950">
-                Select Your Regulatory Scope
+                Set Up Your Profile, Role &amp; Scope
               </h2>
               <p className="text-sm text-zinc-500 mt-1">
-                Choose the financial services your organization offers so campaign reviews apply the right CBN, FCCPC, ARCON, NDPC, and SEC rules.
+                Tell us your name, choose your workspace role, and select the financial domains your organization operates in.
               </p>
+            </div>
+
+            {/* Personal Profile + Avatar */}
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50/60 p-5 space-y-4">
+              <div className="flex items-center gap-2 text-xs font-semibold text-zinc-900 uppercase tracking-wider">
+                <UserIcon className="h-3.5 w-3.5 text-zinc-500" />
+                <span>Your Profile</span>
+              </div>
+
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarSelected}
+                  className="hidden"
+                />
+                {user?.hasImage && user.imageUrl ? (
+                  <img
+                    src={user.imageUrl}
+                    alt={userDisplayName}
+                    className="h-14 w-14 rounded-full object-cover border border-zinc-200 shrink-0"
+                  />
+                ) : (
+                  <div className="h-14 w-14 rounded-full bg-zinc-900 text-white text-base font-semibold flex items-center justify-center shrink-0">
+                    {userInitials}
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={updatingAvatar}
+                    onClick={() => avatarInputRef.current?.click()}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-zinc-300 bg-white hover:bg-zinc-50 text-xs font-medium text-zinc-800 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Camera className="h-3.5 w-3.5 text-zinc-500" />
+                    <span>
+                      {updatingAvatar
+                        ? "Updating..."
+                        : user?.hasImage
+                          ? "Change Photo"
+                          : "Upload Photo"}
+                    </span>
+                  </button>
+                  {user?.hasImage && (
+                    <button
+                      type="button"
+                      disabled={updatingAvatar}
+                      onClick={handleRemoveAvatar}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-rose-200 bg-white hover:bg-rose-50 text-xs font-medium text-rose-700 transition-colors cursor-pointer disabled:opacity-50"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>Remove</span>
+                    </button>
+                  )}
+                  <span className="text-[11px] text-zinc-500 w-full">
+                    Optional profile avatar shown in your workspace sidebar and team directory.
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-zinc-700">
+                    First Name <span className="text-rose-600">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-md border border-zinc-300 bg-white text-sm focus:outline-none focus:border-zinc-900"
+                    placeholder="e.g. Adaobi"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-xs font-medium text-zinc-700">
+                    Last Name
+                  </label>
+                  <input
+                    type="text"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    className="w-full px-3 py-2 rounded-md border border-zinc-300 bg-white text-sm focus:outline-none focus:border-zinc-900"
+                    placeholder="e.g. Okafor"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Functional Role Selection */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <label className="flex items-center gap-1.5 text-xs font-medium text-zinc-700">
+                  <ShieldCheck className="h-3.5 w-3.5 text-zinc-500" />
+                  <span>Your Functional Role in This Workspace</span>
+                </label>
+                <span className="text-[11px] text-zinc-500">
+                  Determines campaign, product, approval &amp; team permissions
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                {CANONICAL_ROLE_CATALOG.map((meta) => {
+                  const isSelected = creatorRole === meta.role;
+                  return (
+                    <button
+                      key={meta.role}
+                      type="button"
+                      onClick={() => setCreatorRole(meta.role)}
+                      className={`text-left p-3.5 rounded-xl border transition-colors cursor-pointer ${
+                        isSelected
+                          ? "border-zinc-950 bg-zinc-50"
+                          : "border-zinc-200 hover:border-zinc-300 bg-white"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-semibold text-[13px] text-zinc-950 truncate">
+                            {meta.label}
+                          </span>
+                          {meta.recommendedForCreator && (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                              Recommended
+                            </span>
+                          )}
+                        </div>
+                        <div
+                          className={`h-4 w-4 rounded-full flex items-center justify-center border shrink-0 ${
+                            isSelected
+                              ? "bg-zinc-900 border-zinc-900 text-white"
+                              : "border-zinc-300 bg-white"
+                          }`}
+                        >
+                          {isSelected && <Check className="h-2.5 w-2.5" />}
+                        </div>
+                      </div>
+                      <p className="text-[11.5px] text-zinc-500 mt-1 leading-relaxed">
+                        {meta.description}
+                      </p>
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {meta.canCreateCampaigns && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700">
+                            Campaigns
+                          </span>
+                        )}
+                        {meta.canManageProducts && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700">
+                            Rate Cards
+                          </span>
+                        )}
+                        {meta.canApproveCampaigns && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">
+                            Final Sign-Off
+                          </span>
+                        )}
+                        {meta.canManageTeamAndSettings && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700">
+                            Team &amp; Settings
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="space-y-1.5">

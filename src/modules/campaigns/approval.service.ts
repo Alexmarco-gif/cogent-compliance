@@ -81,19 +81,36 @@ export class ApprovalService {
       .eq("tenant_id", tenantId)
       .eq("id", campaignId);
 
-    // Fetch tenant institution name for notification
-    const { data: tenant } = await supabase
-      .from("tenants")
-      .select("name")
-      .eq("id", tenantId)
-      .maybeSingle();
+    // Fetch tenant institution name & settings for notification
+    let institutionName = "Regulated Financial Institution";
+    let reviewAlertEmail =
+      process.env.RESEND_FROM_EMAIL || "compliance@notifications.stem-cogent.com";
+    try {
+      const { data: tenant } = await supabase
+        .from("tenants")
+        .select("name, settings")
+        .eq("id", tenantId)
+        .maybeSingle();
 
-    const institutionName = tenant?.name || "Regulated Financial Institution";
+      if (tenant?.name) {
+        institutionName = tenant.name;
+      }
+      const settings = (tenant as { settings?: Record<string, unknown> } | null)?.settings;
+      const compliancePolicy = (settings?.compliance_policy || {}) as Record<string, unknown>;
+      const orgProfile = (settings?.organization_profile || {}) as Record<string, unknown>;
+      if (typeof compliancePolicy.cco_alert_email === "string" && compliancePolicy.cco_alert_email.trim()) {
+        reviewAlertEmail = compliancePolicy.cco_alert_email.trim();
+      } else if (typeof orgProfile.email === "string" && orgProfile.email.trim()) {
+        reviewAlertEmail = orgProfile.email.trim();
+      }
+    } catch {
+      // Fall back to default notification settings
+    }
 
     // Send transactional email notification to Compliance Team
     try {
       await notificationService.sendReviewRequest({
-        to: process.env.RESEND_FROM_EMAIL || "compliance@notifications.stem-cogent.com",
+        to: reviewAlertEmail,
         campaign_id: campaignId,
         campaign_title: campaign.campaign_name,
         submitter_name: userId,
@@ -192,7 +209,30 @@ export class ApprovalService {
       .single();
 
     // Dual-Control Enforcement: Author cannot self-approve their own revision
-    const enforceDualControl = process.env.ENFORCE_DUAL_CONTROL_APPROVAL === "true";
+    let enforceDualControl = process.env.ENFORCE_DUAL_CONTROL_APPROVAL === "true";
+    let decisionAlertEmail =
+      process.env.RESEND_FROM_EMAIL || "marketing@accessbankplc.com";
+    try {
+      const { data: tenantRow } = await supabase
+        .from("tenants")
+        .select("settings")
+        .eq("id", tenantId)
+        .maybeSingle();
+      const settings = (tenantRow as { settings?: Record<string, unknown> } | null)?.settings;
+      const compliancePolicy = (settings?.compliance_policy || {}) as Record<string, unknown>;
+      const orgProfile = (settings?.organization_profile || {}) as Record<string, unknown>;
+      if (typeof compliancePolicy.enforce_dual_control_approval === "boolean") {
+        enforceDualControl = compliancePolicy.enforce_dual_control_approval;
+      }
+      if (typeof compliancePolicy.cco_alert_email === "string" && compliancePolicy.cco_alert_email.trim()) {
+        decisionAlertEmail = compliancePolicy.cco_alert_email.trim();
+      } else if (typeof orgProfile.email === "string" && orgProfile.email.trim()) {
+        decisionAlertEmail = orgProfile.email.trim();
+      }
+    } catch {
+      // Fall back to environment defaults in mocked tests
+    }
+
     if (enforceDualControl && revision?.created_by === userId) {
       throw new Error(
         "DUAL_CONTROL_VIOLATION: Regulatory policy prohibits self-approval of authored campaign revision.",
@@ -248,7 +288,7 @@ export class ApprovalService {
     // Dispatch decision notification
     try {
       await notificationService.sendApprovalDecision({
-        to: process.env.RESEND_FROM_EMAIL || "marketing@accessbankplc.com",
+        to: decisionAlertEmail,
         campaign_id: campaignId,
         campaign_title: campaign.campaign_name,
         decision: input.decision,

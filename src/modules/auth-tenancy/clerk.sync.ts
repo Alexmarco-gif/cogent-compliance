@@ -5,6 +5,7 @@
 
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { mapClerkRoleToCanonical } from "./permissions";
+import { CANONICAL_ROLES, type CanonicalRole } from "./types";
 import { logger } from "@/lib/logger";
 
 export interface ClerkOrgEventData {
@@ -16,6 +17,9 @@ export interface ClerkOrgEventData {
 export interface ClerkMembershipEventData {
   id: string; // e.g. orgmem_xxx
   role: string; // e.g. org:admin, org:chief_compliance_officer, org:member
+  public_metadata?: {
+    canonicalRole?: string;
+  } | null;
   organization: {
     id: string; // e.g. org_xxx
     name?: string;
@@ -27,6 +31,15 @@ export interface ClerkMembershipEventData {
     first_name?: string | null;
     last_name?: string | null;
   };
+}
+
+function isCanonicalRole(value: unknown): value is CanonicalRole {
+  return typeof value === "string" && (CANONICAL_ROLES as readonly string[]).includes(value);
+}
+
+function isGenericClerkRole(clerkRole: string | undefined | null): boolean {
+  const normalized = (clerkRole || "").toLowerCase().trim();
+  return normalized === "org:admin" || normalized === "org:member" || normalized === "admin" || normalized === "member";
 }
 
 /**
@@ -196,11 +209,11 @@ export async function syncClerkMembershipCreated(data: ClerkMembershipEventData)
   // 1. Resolve parent tenant by Clerk organization ID
   const { data: initialTenant, error: tenantError } = await supabase
     .from("tenants")
-    .select("id")
+    .select("id, settings")
     .eq("clerk_org_id", data.organization.id)
     .single();
 
-  let tenant = initialTenant;
+  let tenant: { id: string; settings?: Record<string, unknown> | null } | null = initialTenant;
 
   // If the tenant hasn't been synced yet, auto-provision it
   if (!tenant || tenantError) {
@@ -209,10 +222,22 @@ export async function syncClerkMembershipCreated(data: ClerkMembershipEventData)
       name: data.organization.name || "Default Organization",
       slug: data.organization.slug,
     });
-    tenant = { id: created.tenantId };
+    tenant = { id: created.tenantId, settings: {} };
   }
 
-  const canonicalRole = mapClerkRoleToCanonical(data.role);
+  const tenantSettings = (tenant.settings || {}) as Record<string, unknown>;
+  const pendingRoles = (tenantSettings.pending_role_assignments || {}) as Record<string, unknown>;
+  const userEmail = data.public_user_data.identifier?.toLowerCase().trim();
+  const pendingRole = userEmail ? pendingRoles[userEmail] : undefined;
+
+  let canonicalRole: CanonicalRole;
+  if (isCanonicalRole(data.public_metadata?.canonicalRole)) {
+    canonicalRole = data.public_metadata.canonicalRole;
+  } else if (isCanonicalRole(pendingRole)) {
+    canonicalRole = pendingRole;
+  } else {
+    canonicalRole = mapClerkRoleToCanonical(data.role);
+  }
 
   const { data: membership, error: memError } = await supabase
     .from("tenant_memberships")
@@ -254,7 +279,35 @@ export async function syncClerkMembershipCreated(data: ClerkMembershipEventData)
  */
 export async function syncClerkMembershipUpdated(data: ClerkMembershipEventData): Promise<void> {
   const supabase = createAdminSupabaseClient();
-  const canonicalRole = mapClerkRoleToCanonical(data.role);
+
+  let canonicalRole: CanonicalRole;
+  if (isCanonicalRole(data.public_metadata?.canonicalRole)) {
+    canonicalRole = data.public_metadata.canonicalRole;
+  } else {
+    canonicalRole = mapClerkRoleToCanonical(data.role);
+    // Preserve specialized functional roles (e.g. CHIEF_COMPLIANCE_OFFICER, LEGAL_COUNSEL)
+    // when Clerk emits generic org:admin / org:member updates without public_metadata.
+    if (isGenericClerkRole(data.role)) {
+      try {
+        const { data: existing } = await supabase
+          .from("tenant_memberships")
+          .select("role")
+          .eq("clerk_membership_id", data.id)
+          .maybeSingle();
+
+        if (existing?.role && isCanonicalRole(existing.role)) {
+          const existingIsAdmin =
+            existing.role === "CHIEF_COMPLIANCE_OFFICER" || existing.role === "WORKSPACE_ADMIN";
+          const incomingIsAdmin = data.role.toLowerCase().includes("admin");
+          if (existingIsAdmin === incomingIsAdmin) {
+            canonicalRole = existing.role;
+          }
+        }
+      } catch {
+        // Fallback to mapped Clerk role if lookup fails
+      }
+    }
+  }
 
   const { error } = await supabase
     .from("tenant_memberships")

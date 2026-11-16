@@ -569,13 +569,32 @@ export class DriftService {
     // 7. Dispatch CCO email notification if drift detected
     if (isDriftDetected) {
       try {
+        let alertRecipient = "cco@institution.gov.ng";
+        try {
+          const { data: tenantRow } = await supabase
+            .from("tenants")
+            .select("settings")
+            .eq("id", tenantId)
+            .maybeSingle();
+          const tenantSettings = (tenantRow as { settings?: Record<string, unknown> } | null)?.settings;
+          const policy = (tenantSettings?.compliance_policy || {}) as Record<string, unknown>;
+          const orgProfile = (tenantSettings?.organization_profile || {}) as Record<string, unknown>;
+          if (typeof policy.cco_alert_email === "string" && policy.cco_alert_email.trim()) {
+            alertRecipient = policy.cco_alert_email.trim();
+          } else if (typeof orgProfile.email === "string" && orgProfile.email.trim()) {
+            alertRecipient = orgProfile.email.trim();
+          }
+        } catch {
+          // Fall back safely when tenant lookup is omitted in mocked tests
+        }
+
         const severityLabel =
           discrepancies.some((d) => d.severity === "CRITICAL")
             ? "CRITICAL_BREACH"
             : "HIGH_RISK";
 
         await notificationService.sendDriftAlert({
-          to: "cco@institution.gov.ng",
+          to: alertRecipient,
           campaign_id: monitor.campaign_id,
           campaign_title: monitor.campaign_title || "Monitored Campaign",
           drift_severity: severityLabel,

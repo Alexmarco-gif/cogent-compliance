@@ -5,11 +5,15 @@
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
 import { createAdminSupabaseClient } from "@/lib/supabase";
-import { AuthTenancyError, CanonicalRole, TenantContext } from "./types";
+import { AuthTenancyError, CANONICAL_ROLES, CanonicalRole, TenantContext } from "./types";
 import { getPermissionsForRole, mapClerkRoleToCanonical } from "./permissions";
 import { syncClerkOrganizationCreated } from "./clerk.sync";
 import { logger } from "@/lib/logger";
 import { env } from "@/lib/env";
+
+function isCanonicalRole(value: unknown): value is CanonicalRole {
+  return typeof value === "string" && (CANONICAL_ROLES as readonly string[]).includes(value);
+}
 
 export interface ResolveTenantOptions {
   /** Test context override exclusively active during automated unit testing */
@@ -96,7 +100,7 @@ export async function resolveTenantContext(
   // Find tenant by clerk_org_id
   let { data: tenant, error: tenantError } = await supabase
     .from("tenants")
-    .select("id, name, slug, status")
+    .select("id, name, slug, status, settings")
     .eq("clerk_org_id", orgId)
     .single();
 
@@ -127,7 +131,7 @@ export async function resolveTenantContext(
 
       const { data: reloadedTenant, error: reloadErr } = await supabase
         .from("tenants")
-        .select("id, name, slug, status")
+        .select("id, name, slug, status, settings")
         .eq("id", provisioned.tenantId)
         .single();
 
@@ -209,18 +213,28 @@ export async function resolveTenantContext(
     membershipStatus = membership.status as "ACTIVE" | "SUSPENDED" | "INVITED";
   } else {
     let effectiveOrgRole = orgRole;
+    let clerkMembershipId: string | undefined;
+    let clerkMetadataCanonicalRole: unknown;
+    let memberEmail: string | undefined;
+    let orgMemberCount = 0;
 
-    // Fallback to Clerk API when JWT session claims omit orgRole right after org creation
-    if (!effectiveOrgRole && process.env.NODE_ENV !== "test") {
+    // Inspect Clerk membership metadata & pending invitations when JWT/Supabase lacks a row
+    if (process.env.NODE_ENV !== "test") {
       try {
         const client = await clerkClient();
         const memList = await client.organizations.getOrganizationMembershipList({
           organizationId: orgId,
           limit: 100,
         });
+        orgMemberCount = memList.data.length;
         const clerkMem = memList.data.find((m) => m.publicUserData?.userId === userId);
-        if (clerkMem?.role) {
-          effectiveOrgRole = clerkMem.role;
+        if (clerkMem) {
+          clerkMembershipId = clerkMem.id;
+          clerkMetadataCanonicalRole = (clerkMem.publicMetadata as Record<string, unknown> | undefined)?.canonicalRole;
+          memberEmail = clerkMem.publicUserData?.identifier?.toLowerCase().trim();
+          if (!effectiveOrgRole && clerkMem.role) {
+            effectiveOrgRole = clerkMem.role;
+          }
         }
       } catch (memErr) {
         logger.warn("Unable to inspect Clerk organization memberships", {
@@ -231,27 +245,53 @@ export async function resolveTenantContext(
       }
     }
 
-    if (effectiveOrgRole) {
-      resolvedRole = mapClerkRoleToCanonical(effectiveOrgRole);
+    if (effectiveOrgRole || isCanonicalRole(clerkMetadataCanonicalRole)) {
+      const tenantSettings = ((tenant as { settings?: Record<string, unknown> | null }).settings || {}) as Record<
+        string,
+        unknown
+      >;
+      const pendingRoles = (tenantSettings.pending_role_assignments || {}) as Record<string, unknown>;
+      const pendingRole = memberEmail ? pendingRoles[memberEmail] : undefined;
+
+      if (isCanonicalRole(clerkMetadataCanonicalRole)) {
+        resolvedRole = clerkMetadataCanonicalRole;
+      } else if (isCanonicalRole(pendingRole)) {
+        resolvedRole = pendingRole;
+      } else if (
+        (effectiveOrgRole === "org:admin" || effectiveOrgRole === "admin") &&
+        orgMemberCount <= 1
+      ) {
+        // Founding workspace creator defaults to Chief Compliance Officer instead of IT-only Workspace Admin
+        resolvedRole = "CHIEF_COMPLIANCE_OFFICER";
+      } else {
+        resolvedRole = mapClerkRoleToCanonical(effectiveOrgRole);
+      }
+
       try {
+        const upsertPayload: Record<string, unknown> = {
+          tenant_id: tenant.id,
+          user_id: userId,
+          role: resolvedRole,
+          status: "ACTIVE",
+          updated_at: new Date().toISOString(),
+        };
+        if (clerkMembershipId) {
+          upsertPayload.clerk_membership_id = clerkMembershipId;
+        }
+
         const { data: reconciled } = await supabase
           .from("tenant_memberships")
-          .upsert(
-            {
-              tenant_id: tenant.id,
-              user_id: userId,
-              role: resolvedRole,
-              status: "ACTIVE",
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "tenant_id,user_id" },
-          )
+          .upsert(upsertPayload, { onConflict: "tenant_id,user_id" })
           .select("id")
           .single();
         if (reconciled?.id) {
           resolvedMembershipId = reconciled.id;
         }
-        logger.info("Auto-reconciled missing membership row", { userId, tenantId: tenant.id });
+        logger.info("Auto-reconciled missing membership row", {
+          userId,
+          tenantId: tenant.id,
+          role: resolvedRole,
+        });
       } catch (err: unknown) {
         logger.error("Failed to auto-reconcile membership", { error: err });
       }
