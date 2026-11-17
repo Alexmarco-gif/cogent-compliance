@@ -76,6 +76,12 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
   const [rewriteApplied, setRewriteApplied] = useState(false);
   const [completionModalOpen, setCompletionModalOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [subscriptionPlan, setSubscriptionPlan] = useState<{
+    slug: string;
+    name: string;
+    isTrial: boolean;
+    status: string;
+  } | null>(null);
   const [stepError, setStepError] = useState<string | null>(null);
   const [stepErrorStatus, setStepErrorStatus] = useState<number | null>(null);
 
@@ -120,6 +126,9 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
         }
         if (status.organizationName && !orgName) {
           setOrgName(status.organizationName);
+        }
+        if (status.subscriptionPlan) {
+          setSubscriptionPlan(status.subscriptionPlan);
         }
         if (
           status.currentRole &&
@@ -286,6 +295,9 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
         setStepErrorStatus(parsed.status);
         setStepError(parsed.message);
         return;
+      }
+      if (json.subscriptionPlan) {
+        setSubscriptionPlan(json.subscriptionPlan);
       }
       setRewriteApplied(true);
       setRawCopy(
@@ -1030,13 +1042,19 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
 
             <h3 className="text-lg font-semibold text-zinc-950">Workspace Ready</h3>
             <p className="text-sm text-zinc-600 mt-1.5">
-              Your 7-day evaluation includes 3 campaign reviews and access to Nigerian regulatory sources.
+              {subscriptionPlan && !subscriptionPlan.isTrial
+                ? `Your ${subscriptionPlan.name} workspace is active with full regulatory intelligence and team access.`
+                : "Your 7-day evaluation includes 3 campaign reviews and access to Nigerian regulatory sources."}
             </p>
 
             <div className="my-5 p-4 rounded-lg bg-zinc-50 border border-zinc-200 text-left text-xs space-y-2">
               <div className="flex justify-between gap-2">
                 <span className="text-zinc-500">Plan</span>
-                <span className="font-semibold text-zinc-950">Evaluation ($0 / 7 Days)</span>
+                <span className="font-semibold text-zinc-950">
+                  {subscriptionPlan && !subscriptionPlan.isTrial
+                    ? `${subscriptionPlan.name} (Active)`
+                    : "Evaluation ($0 / 7 Days)"}
+                </span>
               </div>
               <div className="flex justify-between gap-2">
                 <span className="text-zinc-500">Scopes</span>

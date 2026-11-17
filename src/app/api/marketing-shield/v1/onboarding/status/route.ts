@@ -2,18 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveTenantContext } from "@/modules/auth-tenancy/tenant.resolver";
 import { AuthTenancyError } from "@/modules/auth-tenancy/types";
 import { onboardingService } from "@/modules/onboarding/onboarding.service";
+import { entitlementsService } from "@/modules/billing/entitlements.service";
 import { logger } from "@/lib/logger";
 
 export async function GET(req: NextRequest) {
   try {
     const tenantContext = await resolveTenantContext(req);
-    const status = await onboardingService.getOnboardingStatus(tenantContext.tenantId);
+    const [status, subInfo] = await Promise.all([
+      onboardingService.getOnboardingStatus(tenantContext.tenantId),
+      entitlementsService.getTenantSubscriptionInfo(tenantContext.tenantId),
+    ]);
 
     return NextResponse.json(
       {
         ...status,
         currentRole: tenantContext.role,
         organizationName: tenantContext.orgName,
+        subscriptionPlan: {
+          slug: subInfo.plan.slug,
+          name: subInfo.plan.name,
+          isTrial: subInfo.isTrial,
+          status: subInfo.status,
+        },
       },
       { status: 200 },
     );

@@ -7,12 +7,17 @@ import { createAdminSupabaseClient } from "@/lib/supabase";
 import { mapClerkRoleToCanonical } from "./permissions";
 import { CANONICAL_ROLES, type CanonicalRole } from "./types";
 import { logger } from "@/lib/logger";
+import {
+  parseInternalEnterpriseEmails,
+  provisionEnterpriseForAllowlistedCreator,
+} from "@/modules/billing/enterprise-allowlist.service";
 
 export interface ClerkOrgEventData {
   id: string; // e.g. org_xxx
   name: string;
   slug?: string | null;
   created_at?: number | string | null;
+  created_by?: string | null;
 }
 
 export interface ClerkMembershipEventData {
@@ -115,6 +120,23 @@ export async function syncClerkOrganizationCreated(data: ClerkOrgEventData): Pro
         name: data.name,
         slug: candidateSlug,
       });
+
+      if (data.created_by && parseInternalEnterpriseEmails().size > 0) {
+        try {
+          await provisionEnterpriseForAllowlistedCreator({
+            tenantId: tenant.id,
+            clerkUserId: data.created_by,
+            clerkOrgId: data.id,
+            isCreatorHint: true,
+          });
+        } catch (allowlistErr) {
+          logger.warn("Allowlist Enterprise check skipped during organization sync", {
+            tenantId: tenant.id,
+            error: allowlistErr instanceof Error ? allowlistErr.message : String(allowlistErr),
+          });
+        }
+      }
+
       return { tenantId: tenant.id };
     }
 
@@ -283,6 +305,22 @@ export async function syncClerkMembershipCreated(data: ClerkMembershipEventData)
     canonicalRole = pendingRole;
   } else {
     canonicalRole = mapClerkRoleToCanonical(data.role);
+    if (
+      process.env.NODE_ENV !== "test" &&
+      (data.role === "org:admin" || data.role === "admin")
+    ) {
+      try {
+        const { count } = await supabase
+          .from("tenant_memberships")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenant.id);
+        if ((count ?? 0) === 0) {
+          canonicalRole = "CHIEF_COMPLIANCE_OFFICER";
+        }
+      } catch {
+        // Non-blocking founding creator promotion
+      }
+    }
   }
 
   const { data: membership, error: memError } = await supabase
@@ -344,6 +382,25 @@ export async function syncClerkMembershipCreated(data: ClerkMembershipEventData)
       });
     } catch {
       // Non-blocking metadata sync
+    }
+  }
+
+  if (
+    parseInternalEnterpriseEmails().size > 0 &&
+    !tenantSettings.enterprise_comp_owner_user_id &&
+    !tenantSettings.enterprise_comp_checked_at
+  ) {
+    try {
+      await provisionEnterpriseForAllowlistedCreator({
+        tenantId: tenant.id,
+        clerkUserId: data.public_user_data.user_id,
+        clerkOrgId: data.organization.id,
+      });
+    } catch (allowlistErr) {
+      logger.warn("Allowlist Enterprise check skipped during membership sync", {
+        tenantId: tenant.id,
+        error: allowlistErr instanceof Error ? allowlistErr.message : String(allowlistErr),
+      });
     }
   }
 

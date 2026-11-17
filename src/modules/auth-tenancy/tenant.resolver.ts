@@ -8,6 +8,10 @@ import { createAdminSupabaseClient } from "@/lib/supabase";
 import { AuthTenancyError, CANONICAL_ROLES, CanonicalRole, TenantContext } from "./types";
 import { getPermissionsForRole, mapClerkRoleToCanonical } from "./permissions";
 import { syncClerkOrganizationCreated } from "./clerk.sync";
+import {
+  parseInternalEnterpriseEmails,
+  provisionEnterpriseForAllowlistedCreator,
+} from "@/modules/billing/enterprise-allowlist.service";
 import { logger } from "@/lib/logger";
 import { env } from "@/lib/env";
 
@@ -111,6 +115,7 @@ export async function resolveTenantContext(
       let resolvedOrgName = orgSlug || `Organization ${orgId.slice(-6)}`;
       let resolvedOrgSlug = orgSlug || null;
       let resolvedOrgCreatedAt: number | undefined;
+      let resolvedOrgCreatedBy: string | undefined;
 
       try {
         const client = await clerkClient();
@@ -118,6 +123,7 @@ export async function resolveTenantContext(
         if (org?.name) resolvedOrgName = org.name;
         if (org?.slug) resolvedOrgSlug = org.slug;
         if (org?.createdAt) resolvedOrgCreatedAt = org.createdAt;
+        if (org?.createdBy) resolvedOrgCreatedBy = org.createdBy;
       } catch (clerkErr) {
         logger.warn("Unable to fetch org metadata from Clerk during lazy tenant provisioning", {
           clerkOrgId: orgId,
@@ -130,6 +136,7 @@ export async function resolveTenantContext(
         name: resolvedOrgName,
         slug: resolvedOrgSlug,
         created_at: resolvedOrgCreatedAt,
+        created_by: resolvedOrgCreatedBy,
       });
 
       const { data: reloadedTenant, error: reloadErr } = await supabase
@@ -383,6 +390,33 @@ export async function resolveTenantContext(
         `User ${userId} is not an authorized member of institution ${tenant.name}.`,
         403,
       );
+    }
+  }
+
+  const tenantSettings = ((tenant as { settings?: Record<string, unknown> | null }).settings || {}) as Record<
+    string,
+    unknown
+  >;
+  const existingSub = tenantSettings.subscription as { status?: string } | undefined;
+  if (
+    orgId !== "org_demo_1111" &&
+    parseInternalEnterpriseEmails().size > 0 &&
+    (resolvedRole === "CHIEF_COMPLIANCE_OFFICER" || resolvedRole === "WORKSPACE_ADMIN") &&
+    !tenantSettings.enterprise_comp_owner_user_id &&
+    !tenantSettings.enterprise_comp_checked_at &&
+    existingSub?.status !== "active"
+  ) {
+    try {
+      const compResult = await provisionEnterpriseForAllowlistedCreator({
+        tenantId: tenant.id,
+        clerkUserId: userId,
+        clerkOrgId: orgId,
+      });
+      if (compResult.granted && resolvedRole === "WORKSPACE_ADMIN") {
+        resolvedRole = "CHIEF_COMPLIANCE_OFFICER";
+      }
+    } catch {
+      // Non-blocking Enterprise allowlist evaluation
     }
   }
 
