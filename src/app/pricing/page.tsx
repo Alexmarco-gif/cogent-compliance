@@ -1,13 +1,72 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import Link from "next/link";
 import {
   BillingInterval,
   PlanSlug,
 } from "@/contracts/billing.contracts";
-import { CogentLogo } from "@/components/brand/CogentLogo";
-import { Check, ArrowRight, Globe, ArrowLeft } from "lucide-react";
+import { MarketingHeader } from "@/components/marketing/MarketingHeader";
+import { MarketingFooter } from "@/components/marketing/MarketingFooter";
+import { Check, ArrowRight, Globe } from "lucide-react";
+
+const PLAN_MATRIX_ROWS = [
+  {
+    feature: "Monthly Campaign Audits",
+    evaluation: "3 (7-day pilot)",
+    growth: "25 / month",
+    scale: "Unlimited",
+    enterprise: "Unlimited",
+  },
+  {
+    feature: "Team Seats (RBAC Roles)",
+    evaluation: "2 Seats",
+    growth: "3 Seats",
+    scale: "10 Seats",
+    enterprise: "Unlimited",
+  },
+  {
+    feature: "Compliant Channel Rewrites",
+    evaluation: "10 Rewrites",
+    growth: "Unlimited",
+    scale: "Unlimited",
+    enterprise: "Unlimited",
+  },
+  {
+    feature: "Internal Product Rate Cards",
+    evaluation: "1 Schedule",
+    growth: "5 Schedules",
+    scale: "Unlimited",
+    enterprise: "Unlimited",
+  },
+  {
+    feature: "Statutory PDF Audit Dossiers",
+    evaluation: "Watermarked Preview",
+    growth: "Unwatermarked PDF",
+    scale: "Signed SHA-256 PDF",
+    enterprise: "Custom Branded PDF",
+  },
+  {
+    feature: "Live URL Drift Monitors",
+    evaluation: "—",
+    growth: "—",
+    scale: "15 Monitors",
+    enterprise: "Unlimited",
+  },
+  {
+    feature: "Dual-Control CCO Sign-Off",
+    evaluation: "—",
+    growth: "Role Permissions",
+    scale: "Enforced CCO Lock",
+    enterprise: "Custom Approval Chains",
+  },
+  {
+    feature: "Regulatory Evidence Retention",
+    evaluation: "7 Days",
+    growth: "90 Days",
+    scale: "2 Years (FCCPC Reg. 32)",
+    enterprise: "7 Years (BOFIA)",
+  },
+];
 
 export default function PricingPage() {
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly");
@@ -74,32 +133,10 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FAFAFA] text-zinc-950 flex flex-col items-center">
-      {/* Clean Top Navigation */}
-      <header className="w-full border-b border-zinc-200 bg-white">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
-          <Link href="/chat">
-            <CogentLogo variant="dark" />
-          </Link>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/chat"
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-600 hover:text-zinc-950 transition-colors"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Workspace</span>
-            </Link>
-            <Link
-              href="/sign-in"
-              className="px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition-colors"
-            >
-              Sign in
-            </Link>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-[#FAFAFA] text-zinc-950 flex flex-col">
+      <MarketingHeader />
 
-      <div className="w-full max-w-6xl px-4 sm:px-6 lg:px-8 py-12">
+      <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex-1">
         {/* Header */}
         <div className="text-center mb-10">
           <h1 className="text-3xl sm:text-4xl font-semibold tracking-tight text-zinc-950">
@@ -478,7 +515,72 @@ export default function PricingPage() {
             </table>
           </div>
         </div>
+
+        {/* Full Plan Feature Matrix */}
+        <div className="max-w-5xl mx-auto mt-10 bg-white rounded-xl border border-zinc-200 p-7">
+          <h3 className="text-base font-semibold text-zinc-950 mb-1">
+            Full Plan Entitlements Matrix
+          </h3>
+          <p className="text-xs text-zinc-500 mb-5">
+            Transparent quotas across seats, audit volume, live URL drift monitors, and dossier retention.
+          </p>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-zinc-200 text-zinc-500 font-medium">
+                  <th className="py-2.5 pr-4">Capability</th>
+                  <th className="py-2.5 px-3">Evaluation</th>
+                  <th className="py-2.5 px-3">Growth</th>
+                  <th className="py-2.5 px-3 text-zinc-950 font-semibold">Scale</th>
+                  <th className="py-2.5 pl-3">Enterprise</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100">
+                {PLAN_MATRIX_ROWS.map((row) => (
+                  <tr key={row.feature}>
+                    <td className="py-3 pr-4 font-medium text-zinc-950">{row.feature}</td>
+                    <td className="py-3 px-3 text-zinc-600">{row.evaluation}</td>
+                    <td className="py-3 px-3 text-zinc-700">{row.growth}</td>
+                    <td className="py-3 px-3 font-semibold text-zinc-950">{row.scale}</td>
+                    <td className="py-3 pl-3 text-zinc-700">{row.enterprise}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Billing & Paystack FAQ */}
+        <div className="max-w-5xl mx-auto mt-10 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white rounded-xl border border-zinc-200 p-5">
+            <h4 className="text-xs font-semibold text-zinc-950">
+              How does USD display &amp; Paystack Naira settlement work?
+            </h4>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-600">
+              Plans are benchmarked in USD and converted at checkout using the live Paystack NGN FX rate (₦{fxRate.toLocaleString()}/$1) so Nigerian institutions settle seamlessly via local Naira cards or bank transfer.
+            </p>
+          </div>
+          <div className="bg-white rounded-xl border border-zinc-200 p-5">
+            <h4 className="text-xs font-semibold text-zinc-950">
+              Can we invite Legal &amp; Marketing seats during the pilot?
+            </h4>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-600">
+              Yes. The 7-day Evaluation includes 2 seats so Marketing and Compliance Counsel can test dual-control submissions together before upgrading.
+            </p>
+          </div>
+          <div className="bg-white rounded-xl border border-zinc-200 p-5">
+            <h4 className="text-xs font-semibold text-zinc-950">
+              Do we lose historical dossiers if we upgrade or switch intervals?
+            </h4>
+            <p className="mt-2 text-xs leading-relaxed text-zinc-600">
+              No. Existing SHA-256 dossiers, campaign revisions, and audit records stay preserved in your isolated tenant vault across upgrades.
+            </p>
+          </div>
+        </div>
       </div>
+
+      <MarketingFooter />
     </div>
   );
 }

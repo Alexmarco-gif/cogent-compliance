@@ -1,11 +1,62 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import { getPublicSiteUrl } from "@/lib/site-url";
 import "./globals.css";
 
+const siteUrl = getPublicSiteUrl();
+
 export const metadata: Metadata = {
-  title: "Cogent | Marketing Compliance Workspace",
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: "Cogent | Nigerian Regulatory Compliance Operating System",
+    template: "%s | Cogent",
+  },
   description:
-    "Verify financial marketing claims, internal rate cards, and regulatory evidence in one workspace.",
+    "Verify financial promotional copy, loan flyers, effective APR math, and live URLs against CBN, FCCPC, ARCON, NDPC, and SEC rules before publication.",
+  applicationName: "Cogent Marketing Shield",
+  keywords: [
+    "Nigerian RegTech",
+    "CBN compliance",
+    "FCCPC DEON compliance",
+    "ARCON pre-vetting",
+    "NDPA 2023 compliance",
+    "SEC Nigeria marketing compliance",
+    "effective APR calculator Nigeria",
+    "financial marketing compliance",
+    "Stem-Cogent",
+    "Cogent Marketing Shield",
+  ],
+  authors: [{ name: "Stem-Cogent", url: siteUrl }],
+  creator: "Stem-Cogent",
+  publisher: "Stem-Cogent",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_NG",
+    url: siteUrl,
+    siteName: "Cogent Marketing Shield",
+    title: "Cogent | Nigerian Regulatory Compliance Operating System",
+    description:
+      "Pre-publication marketing compliance, deterministic APR verification, flyer OCR forensics, and 2-year SHA-256 dossiers across CBN, FCCPC, ARCON, NDPC, and SEC.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Cogent | Nigerian Regulatory Compliance Operating System",
+    description:
+      "Verify financial promotional copy, loan flyers, effective APR math, and live URLs against CBN, FCCPC, ARCON, NDPC, and SEC rules before publication.",
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+    },
+  },
 };
 
 export default function RootLayout({

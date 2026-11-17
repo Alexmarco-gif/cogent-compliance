@@ -13,7 +13,19 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
  * - Clerk Svix webhook ingestion endpoint
  */
 const isAlwaysPublicRoute = createRouteMatcher([
+  "/",
+  "/platform(.*)",
+  "/solutions(.*)",
+  "/regulatory-vault(.*)",
+  "/resources(.*)",
+  "/company(.*)",
+  "/legal(.*)",
   "/pricing(.*)",
+  "/robots.txt",
+  "/sitemap.xml",
+  "/opengraph-image(.*)",
+  "/twitter-image(.*)",
+  "/manifest.webmanifest",
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/marketing-shield/v1/health",
@@ -38,8 +50,8 @@ export default clerkMiddleware(async (auth, req) => {
     return;
   }
 
-  // Protect all application routes (including /, /onboarding, /chat, /knowledge-base, /drift-monitors)
-  // so unauthenticated visitors always authenticate via /sign-in before onboarding or chat.
+  // Protect all authenticated application routes (/onboarding, /chat, /knowledge-base, /drift-monitors, /settings)
+  // so unauthenticated visitors always authenticate via /sign-in before entering the workspace.
   await auth.protect({
     unauthenticatedUrl: new URL("/sign-in", req.url).toString(),
   });

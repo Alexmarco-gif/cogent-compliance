@@ -1,5 +1,14 @@
+import type { Metadata } from "next";
 import { SignIn } from "@clerk/nextjs";
 import { AuthSplitLayout, clerkAuthAppearance } from "@/components/auth/AuthSplitLayout";
+
+export const metadata: Metadata = {
+  title: "Sign in",
+  robots: {
+    index: false,
+    follow: true,
+  },
+};
 
 export default function SignInPage() {
   return (
@@ -9,7 +18,7 @@ export default function SignInPage() {
         path="/sign-in"
         routing="path"
         signUpUrl="/sign-up"
-        fallbackRedirectUrl="/"
+        fallbackRedirectUrl="/chat"
       />
     </AuthSplitLayout>
   );

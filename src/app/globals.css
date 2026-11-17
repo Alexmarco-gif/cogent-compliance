@@ -34,3 +34,33 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #D4D4D8;
 }
+
+.marketing-cobalt-wash {
+  background: linear-gradient(155deg, #FAFBFF 0%, #EEF2FF 42%, #E0E7FF 100%);
+}
+
+.marketing-frame-shadow {
+  box-shadow:
+    0 1px 2px rgba(9, 9, 11, 0.04),
+    0 16px 40px -16px rgba(9, 9, 11, 0.12);
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

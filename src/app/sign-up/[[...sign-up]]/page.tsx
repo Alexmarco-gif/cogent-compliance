@@ -1,5 +1,14 @@
+import type { Metadata } from "next";
 import { SignUp } from "@clerk/nextjs";
 import { AuthSplitLayout, clerkAuthAppearance } from "@/components/auth/AuthSplitLayout";
+
+export const metadata: Metadata = {
+  title: "Create Account",
+  robots: {
+    index: false,
+    follow: true,
+  },
+};
 
 export default function SignUpPage() {
   return (
