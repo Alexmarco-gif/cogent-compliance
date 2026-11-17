@@ -7,13 +7,15 @@
  *   pnpm dlx tsx --env-file=.env.local scripts/ingest-statutory-vault.ts --wave=2
  */
 
-import { existsSync, readdirSync, statSync } from "fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "fs";
+import crypto from "crypto";
 import path from "path";
 import {
   statutoryVaultIngestionService,
   type DocumentMetadata,
   type IngestedDocumentResult,
 } from "../src/modules/regulatory-vault/ingestion.service";
+import { createAdminSupabaseClient } from "../src/lib/supabase/server";
 import { logger } from "../src/lib/logger";
 
 interface CoreDocSpec {
@@ -382,7 +384,22 @@ async function main() {
   }
 
   if (isWave2) {
-    const allFiles = getAllPdfFiles(basePath);
+    const regArg = args.find((a) => a.startsWith("--regulator="));
+    const targetReg = regArg ? regArg.split("=")[1]?.toUpperCase() : null;
+
+    let allFiles = getAllPdfFiles(basePath);
+    if (targetReg) {
+      allFiles = allFiles.filter((f) => f.toUpperCase().includes(`/${targetReg.toLowerCase()}/`));
+      console.log(`[Wave 2] Filtered to regulator: ${targetReg} (${allFiles.length} PDFs)`);
+    }
+
+    // Pre-fetch all indexed hashes from Supabase in a single query for sub-second deduplication
+    const supabase = createAdminSupabaseClient();
+    const { data: existingVersions } = await supabase
+      .from("regulatory_document_versions")
+      .select("document_hash");
+    const indexedHashes = new Set((existingVersions || []).map((v) => v.document_hash));
+    console.log(`[Wave 2] Pre-loaded ${indexedHashes.size} verified document hashes from database.`);
     console.log(`[Wave 2] Discovered ${allFiles.length} Total PDFs. Starting batched processing...\n`);
 
     for (let i = 0; i < allFiles.length; i++) {
@@ -395,10 +412,19 @@ async function main() {
         continue;
       }
 
+      // Fast-path in-memory check
+      const fileBuf = readFileSync(filePath);
+      const sha256 = crypto.createHash("sha256").update(fileBuf).digest("hex");
+      if (indexedHashes.has(sha256)) {
+        console.log(`[${i + 1}/${allFiles.length}] ${meta.regulatorAcronym} - ${path.basename(filePath)}: (already in database, skipped)`);
+        continue;
+      }
+
       console.log(`[${i + 1}/${allFiles.length}] Processing: ${meta.regulatorAcronym} - ${path.basename(filePath)}`);
       try {
         const res = await statutoryVaultIngestionService.ingestPdf(filePath, meta);
         results.push(res);
+        indexedHashes.add(sha256);
         console.log(`  ✓ Result: ${res.clauseCount} clauses | ${res.skippedDeduplication ? "(deduped)" : "newly indexed"}`);
       } catch (err) {
         console.error(`  ✗ Error:`, (err as Error).message);

@@ -276,7 +276,7 @@ export class StatutoryVaultIngestionService {
    */
   public async batchEmbedClauses(
     texts: string[],
-    batchSize = 16
+    batchSize = 50
   ): Promise<number[][]> {
     const allEmbeddings: number[][] = [];
 
@@ -338,8 +338,8 @@ export class StatutoryVaultIngestionService {
         throw new Error(`Failed to generate embeddings for batch starting at index ${i}`);
       }
 
-      // 1.5s pause between batches to pace requests smoothly
-      await new Promise((r) => setTimeout(r, 1500));
+      // 2s pause between batches to pace requests smoothly
+      await new Promise((r) => setTimeout(r, 2000));
     }
 
     return allEmbeddings;
