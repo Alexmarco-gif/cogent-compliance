@@ -581,22 +581,22 @@ export const CO_FOUNDERS: CoFounderProfile[] = [
     shortLabel: "Odion O. Alex · CEO",
     name: "Odion O. Alex",
     roleBadge: "CO-FOUNDER & CEO",
-    discipline: "Product & Execution · Stem Systems",
-    bio: "Odion O. Alex leads product architecture and execution at Stem Systems—focused on compressing week-long regulatory research, policy drafting, and audit bottlenecks into five-minute workflows that Nigerian and African financial teams trust daily.",
+    discipline: "Product & Engineering · Stem Systems",
+    bio: "Odion O. Alex is the Co-founder and CEO of Stem Systems. Having spent years building software at the coalface of African fintech, he saw how ambitious product teams repeatedly hit the same wall: losing weeks waiting on regulatory research, manual policy updates, and sponsor-bank approvals. He built Cogent to take the fear and friction out of compliance—giving founders, compliance officers, and engineers the instant statutory clarity they need to ship bold financial products without the week-long wait.",
     quote:
-      "Compliance shouldn't be a five-day tax on building good financial products. We built Cogent so Legal, Compliance, and Product teams move with the same speed and certainty.",
-    imagePath: "/images/odion-alex.jpg",
+      "Building a fintech in Nigeria is already hard enough. You shouldn't have to spend five days guessing whether a new circular breaks your launch. We built Cogent so your team moves with speed, certainty, and zero compliance surprises.",
+    imagePath: "/images/odion-alex.png",
     mandates: [
       {
-        title: "Work Product, Not Noise",
+        title: "Built for Builders & Operators",
         description:
-          "Software only matters when it hands a busy CCO or GC a finished memo, policy clause, or formal reply ready for signature.",
+          "Software should eliminate friction, not create more paperwork. When an engineering or product team has a question, Cogent delivers clear, actionable answers in minutes.",
         icon: "layers",
       },
       {
-        title: "Built for Verifiable Proof",
+        title: "Evidence You Can Stand Behind",
         description:
-          "Every citation, policy comparison, and approval leaves an inspectable audit trail institutions can stand behind.",
+          "In financial services, guessing is dangerous. Every citation and policy clause we produce is grounded in verified Nigerian and African law so institutions can defend it with confidence.",
         icon: "shield",
       },
     ],
@@ -607,22 +607,22 @@ export const CO_FOUNDERS: CoFounderProfile[] = [
     shortLabel: "Gift Chinedu Nduka · CSO",
     name: "Gift Chinedu Nduka",
     roleBadge: "CO-FOUNDER & CSO",
-    discipline: "Strategy & Positioning · Stem Systems",
-    bio: "Gift Chinedu Nduka is the Co-founder and Chief Strategy Officer (CSO) at Stem Systems, a decision intelligence platform built to help fintech companies navigate market shifts with clarity and confidence. Sitting at the intersection of market intelligence, brand positioning, and execution, she translates complex market signals into actionable growth strategies. Drawing on her background as a brand strategist and designer, Gift ensures that Stem Systems builds lasting market credibility, challenges costly assumptions early, and scales through evidence-backed decision.",
+    discipline: "Strategy & Partnerships · Stem Systems",
+    bio: "Gift Chinedu Nduka is the Co-founder and Chief Strategy Officer (CSO) at Stem Systems. She works closely with financial institutions, digital lenders, and emerging fintechs to turn regulatory compliance into a competitive advantage. Gift bridges the gap between what regulators demand and how fast-moving businesses actually operate—helping executive teams build lasting market credibility, avoid costly missteps, and scale across African borders with confidence.",
     quote:
-      "When your regulatory intelligence is clear and your execution is disciplined, market trust stops being a bottleneck—it becomes your durable edge.",
-    imagePath: "/images/gift-nduka.jpg",
+      "In African financial services, trust isn't a marketing claim—it is your license to operate. When your compliance is rock-solid from day one, banks partner with you faster, regulators respect your work, and your business scales on solid ground.",
+    imagePath: "/images/gift-nduka.png",
     mandates: [
       {
-        title: "Market Intelligence & Clarity",
+        title: "Turn Compliance into Trust",
         description:
-          "Translates shifting Nigerian and African regulatory signals into decisive product and expansion positioning.",
+          "Great financial brands aren't built on regulatory shortcuts. We help institutions make airtight compliance their strongest differentiator when partnering with banks and regulators.",
         icon: "compass",
       },
       {
-        title: "Evidence-Backed Credibility",
+        title: "Clarity Across African Borders",
         description:
-          "Challenges costly assumptions early so financial institutions scale on durable trust rather than guesswork.",
+          "Regulations evolve quickly from Lagos to Nairobi. We give executive teams the foresight to navigate shifting central bank policies early and expand without unexpected road bumps.",
         icon: "lock",
       },
     ],

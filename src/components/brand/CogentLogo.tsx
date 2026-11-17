@@ -11,41 +11,23 @@ export interface CogentLogoProps {
 }
 
 /**
- * Bespoke Cogent geometric brand mark.
- * Interlocking precision architectural corners forming a verified shield frame.
+ * Authentic Cogent brand icon mark.
+ * Shipped directly from the canonical Stem Systems identity system.
  */
 export function CogentMark({
-  className = "h-4 w-4",
+  className = "h-5 w-5",
 }: {
   className?: string;
 }) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      className={className}
-      aria-hidden="true"
-    >
-      <path
-        d="M15.5 4.5H7C5.61929 4.5 4.5 5.61929 4.5 7V17C4.5 18.3807 5.61929 19.5 7 19.5H15.5"
-        stroke="currentColor"
-        strokeWidth="2.1"
-        strokeLinecap="round"
-      />
-      <path
-        d="M19.5 8.5V15.5C19.5 16.0523 19.0523 16.5 18.5 16.5H10.5C9.94772 16.5 9.5 16.0523 9.5 15.5V8.5C9.5 7.94772 9.94772 7.5 10.5 7.5H18.5C19.0523 7.5 19.5 7.94772 19.5 8.5Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M12.75 12L14.25 13.5L17 10.5"
-        stroke="currentColor"
-        strokeWidth="1.9"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    /* eslint-disable-next-line @next/next/no-img-element */
+    <img
+      src="/icon.png"
+      alt="Cogent"
+      className={`shrink-0 object-contain rounded-md ${className}`}
+      width={32}
+      height={32}
+    />
   );
 }
 
@@ -60,23 +42,16 @@ export function CogentLogo({
 }: CogentLogoProps) {
   const boxSize =
     size === "lg"
-      ? "h-10 w-10 rounded-xl"
+      ? "h-9 w-9 rounded-lg"
       : size === "sm"
         ? "h-6 w-6 rounded-md"
-        : "h-8 w-8 rounded-xl";
+        : "h-7 w-7 rounded-lg";
 
   const markSize =
-    size === "lg" ? "h-5 w-5" : size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4";
-
-  const boxStyle =
-    variant === "blue"
-      ? "bg-[#1D63ED] text-white shadow-sm shadow-blue-600/25"
-      : variant === "light"
-        ? "bg-white text-slate-950 border border-slate-200"
-        : "bg-slate-900 text-white";
+    size === "lg" ? "h-9 w-9" : size === "sm" ? "h-6 w-6" : "h-7 w-7";
 
   const wordmarkTextStyle =
-    wordmarkColor === "blue" ? "text-[#2A4BFF]" : "text-zinc-950";
+    wordmarkColor === "blue" ? "text-[#1D4ED8]" : "text-[#0B1220]";
 
   if (variant === "mark") {
     return <CogentMark className={`${markSize} ${className}`} />;
@@ -86,9 +61,16 @@ export function CogentLogo({
     <div className={`inline-flex items-center gap-2.5 ${className}`}>
       {showMark && (
         <div
-          className={`flex shrink-0 items-center justify-center ${boxSize} ${boxStyle}`}
+          className={`flex shrink-0 items-center justify-center overflow-hidden ${boxSize}`}
         >
-          <CogentMark className={markSize} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/icon.png"
+            alt="Cogent logo mark"
+            className="h-full w-full object-contain rounded-lg shadow-2xs"
+            width={36}
+            height={36}
+          />
         </div>
       )}
       {showWordmark && (
@@ -99,7 +81,7 @@ export function CogentLogo({
             Cogent
           </span>
           {subtitle && (
-            <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
+            <span className="mt-0.5 block font-mono text-[9.5px] font-medium uppercase tracking-[0.12em] text-slate-400">
               {subtitle}
             </span>
           )}

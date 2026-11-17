@@ -21,10 +21,10 @@ function PortraitStage({ profile }: { profile: CoFounderProfile }) {
   const [imgFailed, setImgFailed] = useState(false);
 
   return (
-    <div className="relative mx-auto flex h-[305px] sm:h-[335px] w-full max-w-[260px] items-end justify-center">
-      {/* Crisp architectural arch frame */}
+    <div className="relative mx-auto flex h-[310px] sm:h-[350px] w-full max-w-[280px] items-end justify-center">
+      {/* Soft architectural arch glow behind cutout */}
       <div
-        className="pointer-events-none absolute inset-x-3 bottom-0 top-5 rounded-t-[130px] border border-white/25 bg-white/5"
+        className="pointer-events-none absolute inset-x-4 bottom-0 top-6 rounded-t-full bg-white/10 blur-xl"
         aria-hidden="true"
       />
 
@@ -34,7 +34,7 @@ function PortraitStage({ profile }: { profile: CoFounderProfile }) {
           src={profile.imagePath}
           alt={`${profile.name} — ${profile.roleBadge}`}
           onError={() => setImgFailed(true)}
-          className="relative z-10 h-[285px] sm:h-[318px] w-[228px] rounded-t-[114px] object-cover object-top"
+          className="relative z-10 max-h-[305px] sm:max-h-[345px] w-auto object-contain object-bottom filter drop-shadow-[0_16px_28px_rgba(11,18,32,0.45)]"
         />
       ) : (
         <div className="relative z-10 flex h-[280px] sm:h-[310px] w-[224px] flex-col items-center justify-center rounded-t-[112px] border border-white/30 bg-[#0F2A75] px-5 text-center">
@@ -65,7 +65,7 @@ export function FounderSpotlight() {
       {/* Architectural Co-Founder Selector */}
       <div className="relative z-20 mx-auto mb-5 flex w-fit flex-col items-center gap-2">
         <div
-          className="flex flex-wrap items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white p-1.5"
+          className="flex flex-wrap items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white p-1.5 shadow-2xs"
           role="tablist"
           aria-label="Stem Systems Co-Founders"
         >
