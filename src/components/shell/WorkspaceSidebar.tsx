@@ -668,7 +668,7 @@ export function WorkspaceSidebar({
                 : `Active ${subSummary.planName} plan`}
             </p>
             <Link
-              href="/settings/billing"
+              href="/pricing"
               className="inline-flex items-center gap-1 text-[11.5px] font-medium text-zinc-900 hover:underline pt-0.5"
             >
               <span>{subSummary.isTrial ? "Upgrade plan" : "Manage plan"}</span>

@@ -572,7 +572,7 @@ export const Tab5SignOffDossier: React.FC<Tab5Props> = ({
               <div className="pt-1 flex items-center justify-between text-[11.5px] text-zinc-600 bg-zinc-50 border border-zinc-200 rounded-md px-3 py-2">
                 <span>Evaluation workspace exports carry a preview watermark.</span>
                 <Link
-                  href="/settings/billing"
+                  href="/pricing"
                   className="font-medium text-zinc-950 underline underline-offset-2 shrink-0 ml-2"
                 >
                   Upgrade plan →

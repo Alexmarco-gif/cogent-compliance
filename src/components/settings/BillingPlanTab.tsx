@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import {
@@ -14,10 +15,7 @@ import {
   Layers,
   Loader2,
   XCircle,
-  Check,
-  Globe,
 } from "lucide-react";
-import type { BillingInterval, PlanSlug } from "@/contracts/billing.contracts";
 
 interface SubscriptionData {
   plan: {
@@ -43,65 +41,10 @@ interface SubscriptionData {
   trialHoursRemaining?: number;
 }
 
-const PLAN_OPTIONS: Array<{
-  slug: Exclude<PlanSlug, "evaluation">;
-  name: string;
-  subtitle: string;
-  monthlyUsd: number;
-  annualMonthlyUsd: number;
-  annualTotalUsd: number;
-  recommended?: boolean;
-  highlights: string[];
-}> = [
-  {
-    slug: "growth",
-    name: "Growth",
-    subtitle: "For seed fintechs, digital lenders, and emerging MFBs.",
-    monthlyUsd: 149,
-    annualMonthlyUsd: 119,
-    annualTotalUsd: 1428,
-    highlights: [
-      "25 campaign reviews / month",
-      "3 team seats with roles",
-      "Unlimited compliant rewrites",
-      "Unwatermarked filing PDFs",
-    ],
-  },
-  {
-    slug: "scale",
-    name: "Scale",
-    subtitle: "For growth-stage fintechs, MMOs, and commercial institutions.",
-    monthlyUsd: 449,
-    annualMonthlyUsd: 359,
-    annualTotalUsd: 4308,
-    recommended: true,
-    highlights: [
-      "Unlimited campaign reviews",
-      "10 team seats + CCO sign-off lock",
-      "15 live URL drift monitors",
-      "2-year evidence retention",
-    ],
-  },
-  {
-    slug: "enterprise",
-    name: "Enterprise",
-    subtitle: "For Tier-1 commercial banks and financial holding groups.",
-    monthlyUsd: 1499,
-    annualMonthlyUsd: 1199,
-    annualTotalUsd: 14388,
-    highlights: [
-      "Unlimited seats & campaign reviews",
-      "Unlimited live URL drift monitors",
-      "Custom internal policy libraries",
-      "7-year archival retention",
-    ],
-  },
-];
-
 function formatDetailedTrialRemaining(sub: SubscriptionData): string {
   const hoursTotal = sub.trialHoursRemaining ?? sub.trialDaysRemaining * 24;
   if (sub.isTrialExpired || sub.status === "past_due" || hoursTotal <= 0) {
-    return "Your 7-day evaluation period has expired. Upgrade below to restore compliance audits.";
+    return "Your 7-day evaluation period has expired. Upgrade to restore compliance audits.";
   }
   const days = Math.floor(hoursTotal / 24);
   const hours = hoursTotal % 24;
@@ -135,10 +78,6 @@ export function BillingPlanTab() {
 
   const [subData, setSubData] = useState<SubscriptionData | null>(null);
   const [loadingSub, setLoadingSub] = useState(true);
-  const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly");
-  const [fxRate, setFxRate] = useState<number>(1550.0);
-  const [checkoutLoading, setCheckoutLoading] = useState<PlanSlug | null>(null);
-  const [checkoutError, setCheckoutError] = useState<string | null>(null);
   const [verifyState, setVerifyState] = useState<{
     status: "idle" | "verifying" | "verified" | "failed";
     message?: string;
@@ -147,19 +86,12 @@ export function BillingPlanTab() {
   const loadBilling = useCallback(async () => {
     setLoadingSub(true);
     try {
-      const [entRes, plansRes] = await Promise.all([
-        fetch("/api/marketing-shield/v1/billing/entitlements", { cache: "no-store" }),
-        fetch("/api/marketing-shield/v1/billing/plans", { cache: "no-store" }),
-      ]);
-      if (entRes.ok) {
-        const json = await entRes.json();
+      const res = await fetch("/api/marketing-shield/v1/billing/entitlements", {
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const json = await res.json();
         setSubData(json.subscription);
-      }
-      if (plansRes.ok) {
-        const plansJson = await plansRes.json();
-        if (plansJson.fx_rate) {
-          setFxRate(plansJson.fx_rate);
-        }
       }
     } catch (err) {
       console.error("Failed to fetch billing state", err);
@@ -223,33 +155,6 @@ export function BillingPlanTab() {
       cancelled = true;
     };
   }, [clerkLoaded, isSignedIn, orgId, checkoutStatus, checkoutRef]);
-
-  const handleCheckout = async (slug: PlanSlug) => {
-    setCheckoutLoading(slug);
-    setCheckoutError(null);
-    try {
-      const res = await fetch("/api/marketing-shield/v1/billing/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planSlug: slug, billingInterval }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.authorization_url) {
-        throw new Error(data.error || "Unable to initiate Paystack checkout");
-      }
-      window.location.href = data.authorization_url;
-    } catch (err: unknown) {
-      setCheckoutError(err instanceof Error ? err.message : "Checkout error");
-      setCheckoutLoading(null);
-    }
-  };
-
-  const formatNaira = (usd: number) =>
-    new Intl.NumberFormat("en-NG", {
-      style: "currency",
-      currency: "NGN",
-      maximumFractionDigits: 0,
-    }).format(Math.round(usd * fxRate));
 
   const plan = subData?.plan;
   const isTrial = subData?.isTrial ?? true;
@@ -332,13 +237,13 @@ export function BillingPlanTab() {
                 Settled in NGN via Paystack
               </div>
             </div>
-            <a
-              href="#workspace-plans"
+            <Link
+              href="/pricing"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition-colors"
             >
               <span>{isExpired ? "Upgrade Now" : "Change Plan"}</span>
               <ArrowRight className="h-3.5 w-3.5" />
-            </a>
+            </Link>
           </div>
         </div>
 
@@ -358,14 +263,14 @@ export function BillingPlanTab() {
               )}
               <span>{formatDetailedTrialRemaining(subData)}</span>
             </div>
-            <a
-              href="#workspace-plans"
+            <Link
+              href="/pricing"
               className={`whitespace-nowrap font-semibold hover:underline ${
                 isExpired ? "text-rose-900" : "text-zinc-950"
               }`}
             >
               {isExpired ? "Upgrade plan →" : "View plans →"}
-            </a>
+            </Link>
           </div>
         )}
 
@@ -434,133 +339,6 @@ export function BillingPlanTab() {
                 : "Evaluation stamp applied"}
             </p>
           </div>
-        </div>
-      </div>
-
-      {/* Workspace Upgrade Selector (Settled via Paystack) */}
-      <div id="workspace-plans" className="bg-white rounded-xl border border-zinc-200 p-6 scroll-mt-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-100 pb-5">
-          <div>
-            <h3 className="text-sm font-semibold text-zinc-950">Upgrade Workspace Plan</h3>
-            <p className="text-xs text-zinc-500 mt-0.5 flex items-center gap-1.5">
-              <Globe className="h-3.5 w-3.5 text-zinc-400" />
-              <span>Settled via Paystack at ₦{fxRate.toLocaleString()}/$1</span>
-            </p>
-          </div>
-
-          <div className="flex items-center gap-2.5">
-            <span
-              className={`text-xs font-medium ${
-                billingInterval === "monthly" ? "text-zinc-950" : "text-zinc-400"
-              }`}
-            >
-              Monthly
-            </span>
-            <button
-              type="button"
-              onClick={() =>
-                setBillingInterval((prev) => (prev === "monthly" ? "annual" : "monthly"))
-              }
-              className="w-10 h-5 rounded-full bg-zinc-900 p-0.5 transition-colors relative cursor-pointer"
-              aria-label="Toggle billing interval"
-            >
-              <div
-                className={`w-4 h-4 rounded-full bg-white transition-transform ${
-                  billingInterval === "annual" ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </button>
-            <span
-              className={`text-xs font-medium ${
-                billingInterval === "annual" ? "text-zinc-950" : "text-zinc-400"
-              }`}
-            >
-              Annual
-            </span>
-            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Save 20%
-            </span>
-          </div>
-        </div>
-
-        {checkoutError && (
-          <div className="mt-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs">
-            {checkoutError}
-          </div>
-        )}
-
-        <div className="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
-          {PLAN_OPTIONS.map((option) => {
-            const usd =
-              billingInterval === "annual" ? option.annualMonthlyUsd : option.monthlyUsd;
-            const totalUsd =
-              billingInterval === "annual" ? option.annualTotalUsd : option.monthlyUsd;
-            const isCurrent =
-              !isTrial && subData?.status === "active" && plan?.slug === option.slug;
-
-            return (
-              <div
-                key={option.slug}
-                className={`rounded-xl p-5 flex flex-col justify-between ${
-                  option.recommended
-                    ? "border-2 border-zinc-950 bg-zinc-50/40"
-                    : "border border-zinc-200 bg-white"
-                }`}
-              >
-                <div>
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-semibold text-zinc-950">{option.name}</h4>
-                    {option.recommended && (
-                      <span className="px-2 py-0.5 rounded bg-zinc-950 text-white text-[10px] font-semibold uppercase tracking-wide">
-                        Popular
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-[11.5px] text-zinc-500 mt-1 min-h-[32px]">
-                    {option.subtitle}
-                  </p>
-
-                  <div className="mt-4">
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-2xl font-semibold text-zinc-950 tabular-nums">
-                        ${usd.toLocaleString()}
-                      </span>
-                      <span className="text-[11px] text-zinc-400">/ month</span>
-                    </div>
-                    <div className="text-[11px] font-mono text-zinc-500 mt-0.5">
-                      {formatNaira(totalUsd)}/{billingInterval === "annual" ? "yr" : "mo"}
-                    </div>
-                  </div>
-
-                  <ul className="mt-4 pt-4 border-t border-zinc-100 space-y-2 text-[11.5px] text-zinc-700">
-                    {option.highlights.map((item) => (
-                      <li key={item} className="flex items-start gap-2">
-                        <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-
-                <button
-                  type="button"
-                  disabled={isCurrent || checkoutLoading === option.slug}
-                  onClick={() => handleCheckout(option.slug)}
-                  className={`mt-5 w-full py-2 rounded-md text-xs font-medium transition-colors cursor-pointer disabled:opacity-50 ${
-                    option.recommended
-                      ? "bg-zinc-950 hover:bg-zinc-800 text-white"
-                      : "border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-900"
-                  }`}
-                >
-                  {isCurrent
-                    ? "Current Plan"
-                    : checkoutLoading === option.slug
-                      ? "Preparing Paystack..."
-                      : `Choose ${option.name}`}
-                </button>
-              </div>
-            );
-          })}
         </div>
       </div>
 
@@ -660,16 +438,16 @@ export function BillingPlanTab() {
             <div>
               <div className="font-medium text-zinc-900">Card &amp; Bank Settlement</div>
               <div className="text-zinc-500 text-[11px]">
-                Manage or upgrade your active subscription plan above
+                Manage or upgrade your active subscription plan
               </div>
             </div>
           </div>
-          <a
-            href="#workspace-plans"
+          <Link
+            href="/pricing"
             className="text-xs font-medium text-zinc-950 hover:underline shrink-0"
           >
             Update plan →
-          </a>
+          </Link>
         </div>
       </div>
     </div>

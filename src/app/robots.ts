@@ -21,6 +21,7 @@ export default function robots(): MetadataRoute.Robots {
           "/knowledge-base",
           "/drift-monitors",
           "/settings",
+          "/pricing",
           "/studio",
           "/api/",
         ],
