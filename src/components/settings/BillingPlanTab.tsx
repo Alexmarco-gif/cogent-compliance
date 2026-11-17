@@ -15,6 +15,7 @@ import {
   Layers,
   Loader2,
   XCircle,
+  Globe,
 } from "lucide-react";
 
 interface SubscriptionData {
@@ -25,10 +26,15 @@ interface SubscriptionData {
     monthly_audit_limit: number;
     seat_limit: number;
     url_drift_monitor_limit: number;
+    monthly_live_search_limit?: number;
+    allowed_search_jurisdictions?: string[];
     features: {
       export_unwatermarked: boolean;
       cco_approval_lock: boolean;
       url_drift_monitoring: boolean;
+      live_web_search?: boolean;
+      cross_border_research?: boolean;
+      work_product_docx_export?: boolean;
     };
   };
   status: string;
@@ -39,6 +45,15 @@ interface SubscriptionData {
   trialEndsAt?: string;
   trialDaysRemaining: number;
   trialHoursRemaining?: number;
+}
+
+interface SearchQuotaData {
+  live_web_allowed: boolean;
+  cross_border_allowed: boolean;
+  allowed_jurisdictions: string[];
+  used_this_month: number;
+  monthly_limit: number;
+  remaining: number;
 }
 
 function formatDetailedTrialRemaining(sub: SubscriptionData): string {
@@ -72,11 +87,11 @@ function formatDetailedTrialRemaining(sub: SubscriptionData): string {
 export function BillingPlanTab() {
   const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
   const searchParams = useSearchParams();
-  const checkoutStatus = searchParams.get("checkout");
   const checkoutRef =
     searchParams.get("reference") || searchParams.get("trxref") || searchParams.get("ref");
 
   const [subData, setSubData] = useState<SubscriptionData | null>(null);
+  const [searchQuota, setSearchQuota] = useState<SearchQuotaData | null>(null);
   const [loadingSub, setLoadingSub] = useState(true);
   const [verifyState, setVerifyState] = useState<{
     status: "idle" | "verifying" | "verified" | "failed";
@@ -86,12 +101,21 @@ export function BillingPlanTab() {
   const loadBilling = useCallback(async () => {
     setLoadingSub(true);
     try {
-      const res = await fetch("/api/marketing-shield/v1/billing/entitlements", {
-        cache: "no-store",
-      });
-      if (res.ok) {
-        const json = await res.json();
+      const [entRes, quotaRes] = await Promise.all([
+        fetch("/api/marketing-shield/v1/billing/entitlements", { cache: "no-store" }),
+        fetch("/api/marketing-shield/v1/search/quota", { cache: "no-store" }),
+      ]);
+      if (entRes.ok) {
+        const json = await entRes.json();
         setSubData(json.subscription);
+      }
+      if (quotaRes.ok) {
+        const qJson = await quotaRes.json();
+        if (qJson?.data) {
+          setSearchQuota(qJson.data);
+        } else if (typeof qJson?.monthly_limit === "number") {
+          setSearchQuota(qJson);
+        }
       }
     } catch (err) {
       console.error("Failed to fetch billing state", err);
@@ -105,10 +129,10 @@ export function BillingPlanTab() {
     loadBilling();
   }, [clerkLoaded, isSignedIn, orgId, loadBilling]);
 
-  // Verify Paystack transaction automatically upon returning from hosted checkout
+  // Verify Paystack transaction automatically whenever returning with a Paystack reference
   useEffect(() => {
     if (!clerkLoaded || !isSignedIn || !orgId) return;
-    if (checkoutStatus !== "success" || !checkoutRef) return;
+    if (!checkoutRef) return;
 
     let cancelled = false;
     async function verifyCheckout() {
@@ -130,6 +154,7 @@ export function BillingPlanTab() {
             status: "verified",
             message: `Payment verified via Paystack. Your ${json.planSlug || "paid"} plan is now active.`,
           });
+          loadBilling();
           window.dispatchEvent(new Event("cogent:billing-updated"));
         } else {
           setVerifyState({
@@ -154,7 +179,7 @@ export function BillingPlanTab() {
     return () => {
       cancelled = true;
     };
-  }, [clerkLoaded, isSignedIn, orgId, checkoutStatus, checkoutRef]);
+  }, [clerkLoaded, isSignedIn, orgId, checkoutRef, loadBilling]);
 
   const plan = subData?.plan;
   const isTrial = subData?.isTrial ?? true;
@@ -162,6 +187,16 @@ export function BillingPlanTab() {
     Boolean(subData?.isTrialExpired) ||
     subData?.status === "past_due" ||
     (isTrial && subData !== null && (subData.trialHoursRemaining ?? subData.trialDaysRemaining * 24) <= 0);
+
+  const liveSearchLimit =
+    searchQuota?.monthly_limit ?? plan?.monthly_live_search_limit ?? 0;
+  const liveSearchEnabled =
+    searchQuota?.live_web_allowed ?? Boolean(plan?.features.live_web_search);
+  const crossBorderEnabled =
+    searchQuota?.cross_border_allowed ?? Boolean(plan?.features.cross_border_research);
+  const docxExportEnabled = Boolean(
+    plan?.features.work_product_docx_export ?? plan?.features.export_unwatermarked,
+  );
 
   return (
     <div className="space-y-6">
@@ -186,12 +221,20 @@ export function BillingPlanTab() {
       )}
 
       {verifyState.status === "failed" && (
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center gap-3">
-          <XCircle className="h-5 w-5 text-amber-600 shrink-0" />
-          <div className="text-xs">
-            <span className="font-semibold">Payment not yet confirmed:</span> {verifyState.message}{" "}
-            Reference: <span className="font-mono">{checkoutRef}</span>.
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <XCircle className="h-5 w-5 text-amber-600 shrink-0" />
+            <div className="text-xs">
+              <span className="font-semibold">Payment not yet confirmed:</span> {verifyState.message}{" "}
+              Reference: <span className="font-mono">{checkoutRef}</span>.
+            </div>
           </div>
+          <Link
+            href="/pricing"
+            className="text-xs font-semibold text-zinc-950 hover:underline whitespace-nowrap shrink-0"
+          >
+            Retry Checkout →
+          </Link>
         </div>
       )}
 
@@ -275,7 +318,7 @@ export function BillingPlanTab() {
         )}
 
         {/* Entitlements & Usage Limits */}
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="p-4 rounded-lg border border-zinc-200 bg-zinc-50/50">
             <div className="flex items-center justify-between text-xs font-medium text-zinc-600 mb-2">
               <span>Monthly Reviews</span>
@@ -300,6 +343,29 @@ export function BillingPlanTab() {
 
           <div className="p-4 rounded-lg border border-zinc-200 bg-zinc-50/50">
             <div className="flex items-center justify-between text-xs font-medium text-zinc-600 mb-2">
+              <span>Live Web Search</span>
+              <Globe className="h-3.5 w-3.5 text-zinc-400" />
+            </div>
+            <div className="text-xl font-semibold text-zinc-950 tabular-nums">
+              {!liveSearchEnabled ? (
+                "Vault Only"
+              ) : liveSearchLimit === -1 ? (
+                "Unlimited"
+              ) : (
+                <span>
+                  {searchQuota?.used_this_month ?? 0}/{liveSearchLimit}
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-zinc-500 mt-1">
+              {!liveSearchEnabled
+                ? "Exa + SerpAPI on Growth+"
+                : (searchQuota?.allowed_jurisdictions || plan?.allowed_search_jurisdictions || ["NG"]).join(", ")}
+            </p>
+          </div>
+
+          <div className="p-4 rounded-lg border border-zinc-200 bg-zinc-50/50">
+            <div className="flex items-center justify-between text-xs font-medium text-zinc-600 mb-2">
               <span>URL Drift Monitors</span>
               <TrendingUp className="h-3.5 w-3.5 text-zinc-400" />
             </div>
@@ -319,7 +385,7 @@ export function BillingPlanTab() {
 
           <div className="p-4 rounded-lg border border-zinc-200 bg-zinc-50/50">
             <div className="flex items-center justify-between text-xs font-medium text-zinc-600 mb-2">
-              <span>PDF Dossiers</span>
+              <span>PDF &amp; Word Exports</span>
               <FileText className="h-3.5 w-3.5 text-zinc-400" />
             </div>
             <div className="text-sm font-semibold text-zinc-950">
@@ -334,8 +400,8 @@ export function BillingPlanTab() {
               )}
             </div>
             <p className="text-[11px] text-zinc-500 mt-1">
-              {plan?.features.export_unwatermarked
-                ? "Ready for regulatory filing"
+              {docxExportEnabled
+                ? "Word (.docx), PDF & Markdown"
                 : "Evaluation stamp applied"}
             </p>
           </div>
@@ -352,9 +418,9 @@ export function BillingPlanTab() {
         <div className="divide-y divide-zinc-100 text-xs">
           <div className="py-3 flex items-center justify-between gap-4">
             <div>
-              <span className="font-medium text-zinc-900">Campaign Reviews</span>
+              <span className="font-medium text-zinc-900">Campaign Reviews &amp; Statutory Vault</span>
               <p className="text-zinc-500 text-[11px]">
-                Review promotional copy, flyers, and landing pages against statutory standards
+                Review promotional copy, flyers, and landing pages against 141 verified Nigerian statutory documents
               </p>
             </div>
             <span className="px-2 py-0.5 rounded text-[10.5px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
@@ -364,9 +430,49 @@ export function BillingPlanTab() {
 
           <div className="py-3 flex items-center justify-between gap-4">
             <div>
-              <span className="font-medium text-zinc-900">Unwatermarked PDF Dossiers</span>
+              <span className="font-medium text-zinc-900">Live Regulatory Web Search (Exa AI + SerpAPI)</span>
               <p className="text-zinc-500 text-[11px]">
-                Export filing-ready compliance records without preview watermarks
+                Real-time search across official regulator portals, top African law firms, and breaking enforcement news
+              </p>
+            </div>
+            <span
+              className={`px-2 py-0.5 rounded text-[10.5px] font-semibold border shrink-0 ${
+                liveSearchEnabled
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "bg-zinc-100 text-zinc-500 border-zinc-200"
+              }`}
+            >
+              {liveSearchEnabled
+                ? liveSearchLimit === -1
+                  ? "UNLIMITED"
+                  : `${liveSearchLimit}/MO`
+                : "GROWTH+"}
+            </span>
+          </div>
+
+          <div className="py-3 flex items-center justify-between gap-4">
+            <div>
+              <span className="font-medium text-zinc-900">Pan-African Cross-Border Search</span>
+              <p className="text-zinc-500 text-[11px]">
+                Compare regulatory rules across Nigeria (NG), Kenya (KE), Ghana (GH), South Africa (ZA), Rwanda (RW), and Egypt (EG)
+              </p>
+            </div>
+            <span
+              className={`px-2 py-0.5 rounded text-[10.5px] font-semibold border shrink-0 ${
+                crossBorderEnabled
+                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                  : "bg-zinc-100 text-zinc-500 border-zinc-200"
+              }`}
+            >
+              {crossBorderEnabled ? "ENABLED" : "SCALE+"}
+            </span>
+          </div>
+
+          <div className="py-3 flex items-center justify-between gap-4">
+            <div>
+              <span className="font-medium text-zinc-900">Unwatermarked PDF &amp; Word (.docx) Exports</span>
+              <p className="text-zinc-500 text-[11px]">
+                Export filing-ready compliance dossiers and editable Word work products without preview watermarks
               </p>
             </div>
             <span
@@ -376,7 +482,7 @@ export function BillingPlanTab() {
                   : "bg-zinc-100 text-zinc-500 border-zinc-200"
               }`}
             >
-              {plan?.features.export_unwatermarked ? "ENABLED" : "UPGRADE REQUIRED"}
+              {plan?.features.export_unwatermarked ? "ENABLED" : "GROWTH+"}
             </span>
           </div>
 
@@ -424,7 +530,7 @@ export function BillingPlanTab() {
           <div>
             <h3 className="text-sm font-semibold text-zinc-950">Payment Method</h3>
             <p className="text-xs text-zinc-500">
-              Processed via Paystack with Naira (NGN) and USD card settlement.
+              Processed via Paystack with Card, Pay with Bank, USSD, and NGN settlement.
             </p>
           </div>
           <div className="h-7 px-2.5 rounded border border-zinc-200 bg-zinc-50 flex items-center justify-center text-[10px] font-semibold text-zinc-600 font-mono">

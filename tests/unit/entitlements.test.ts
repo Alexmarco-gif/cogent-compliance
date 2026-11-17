@@ -389,5 +389,53 @@ describe("EntitlementsService & Contextual Feature Gating", () => {
       expect(res.allowed).toBe(false);
       expect(res.reason).toContain("Unable to verify monthly live search quota");
     });
+
+    it("does not allow a stale/past_due tenant_subscriptions row to mask an active tenant settings subscription mirror", async () => {
+      vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue({
+        from: vi.fn().mockImplementation((table: string) => {
+          if (table === "tenants") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: {
+                  created_at: new Date().toISOString(),
+                  settings: {
+                    subscription: {
+                      plan_slug: "scale",
+                      status: "active",
+                      current_period_end: new Date(Date.now() + 86400000 * 30).toISOString(),
+                    },
+                  },
+                },
+              }),
+            };
+          }
+          if (table === "tenant_subscriptions") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: {
+                  status: "past_due",
+                  billing_interval: "monthly",
+                  current_period_end: new Date(Date.now() - 86400000 * 2).toISOString(),
+                  subscription_plans: [{ slug: "growth" }],
+                },
+              }),
+            };
+          }
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+          };
+        }),
+      } as any);
+
+      const info = await entitlementsService.getTenantSubscriptionInfo(tenantId);
+      expect(info.status).toBe("active");
+      expect(info.plan.slug).toBe("scale");
+    });
   });
 });

@@ -124,10 +124,26 @@ export type TenantSubscription = z.infer<typeof TenantSubscriptionSchema>;
 // ---------------------------------------------------------------------------
 // Checkout Schemas
 // ---------------------------------------------------------------------------
+export const PAYSTACK_PAYMENT_CHANNELS = [
+  "card",
+  "bank",
+  "bank_transfer",
+  "ussd",
+  "qr",
+  "mobile_money",
+  "apple_pay",
+] as const;
+export type PaystackChannel = (typeof PAYSTACK_PAYMENT_CHANNELS)[number];
+
+export const PAYMENT_PREFERENCES = ["card_bank", "all_channels", "bank_transfer"] as const;
+export type PaymentPreference = (typeof PAYMENT_PREFERENCES)[number];
+
 export const CheckoutRequestSchema = z.object({
   planSlug: z.enum(PLAN_SLUGS),
   billingInterval: z.enum(BILLING_INTERVALS).default("monthly"),
   emailOverride: z.string().email().optional(),
+  paymentPreference: z.enum(PAYMENT_PREFERENCES).optional().default("card_bank"),
+  channels: z.array(z.enum(PAYSTACK_PAYMENT_CHANNELS)).min(1).optional(),
 });
 export type CheckoutRequest = z.infer<typeof CheckoutRequestSchema>;
 

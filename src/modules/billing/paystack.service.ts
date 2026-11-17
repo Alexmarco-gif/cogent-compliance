@@ -10,10 +10,27 @@ import { logger } from "@/lib/logger";
 import {
   BillingInterval,
   CheckoutResponse,
+  PaymentPreference,
+  PaystackChannel,
   PaystackWebhookEvent,
   PlanSlug,
   SubscriptionPlan,
 } from "@/contracts/billing.contracts";
+
+/**
+ * Paystack Nigeria caps single online NGN transactions at ₦10,000,000 (1,000,000,000 kobo).
+ */
+export const PAYSTACK_MAX_NGN_TX_KOBO = 1_000_000_000;
+
+export class PaystackCheckoutValidationError extends Error {
+  public readonly code: string;
+
+  constructor(message: string, code: string = "CHECKOUT_VALIDATION_ERROR") {
+    super(message);
+    this.name = "PaystackCheckoutValidationError";
+    this.code = code;
+  }
+}
 
 export const DEFAULT_PLANS: Record<PlanSlug, SubscriptionPlan> = {
   evaluation: {
@@ -216,6 +233,42 @@ export class PaystackBillingService {
     return defaultPlan;
   }
 
+  public resolveCheckoutChannels(
+    paymentPreference: PaymentPreference = "card_bank",
+    explicitChannels?: PaystackChannel[],
+  ): PaystackChannel[] {
+    if (explicitChannels && explicitChannels.length > 0) {
+      return Array.from(new Set(explicitChannels));
+    }
+    if (paymentPreference === "all_channels") {
+      return ["card", "bank", "ussd", "qr", "bank_transfer"];
+    }
+    if (paymentPreference === "bank_transfer") {
+      return ["bank_transfer", "bank", "card"];
+    }
+    // Default ("card_bank"): prioritizes instant Card & Pay with Bank and avoids Paystack Transfer rejections on higher tiers
+    return ["card", "bank"];
+  }
+
+  private parseMetadata(raw: unknown): Record<string, unknown> | undefined {
+    if (!raw) return undefined;
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed as Record<string, unknown>;
+        }
+      } catch {
+        return undefined;
+      }
+      return undefined;
+    }
+    if (typeof raw === "object" && !Array.isArray(raw)) {
+      return raw as Record<string, unknown>;
+    }
+    return undefined;
+  }
+
   /**
    * Initializes a Paystack checkout transaction.
    * Dual-currency engine: USD pricing -> NGN Kobo settlement.
@@ -226,8 +279,18 @@ export class PaystackBillingService {
     billingInterval: BillingInterval;
     userEmail: string;
     callbackUrl?: string;
+    paymentPreference?: PaymentPreference;
+    channels?: PaystackChannel[];
   }): Promise<CheckoutResponse> {
-    const { tenantId, planSlug, billingInterval, userEmail, callbackUrl } = params;
+    const {
+      tenantId,
+      planSlug,
+      billingInterval,
+      userEmail,
+      callbackUrl,
+      paymentPreference = "card_bank",
+      channels: explicitChannels,
+    } = params;
     const plan = await this.getPlan(planSlug);
     const fxRate = await this.getFxRate();
 
@@ -236,9 +299,25 @@ export class PaystackBillingService {
 
     const amountKobo = this.calculateKoboAmount(priceUsdCents, fxRate);
     if (amountKobo <= 0) {
-      throw new Error("The Evaluation Pilot plan is free ($0) and does not require Paystack checkout.");
+      throw new PaystackCheckoutValidationError(
+        "The Evaluation Pilot plan is free ($0) and does not require Paystack checkout.",
+        "FREE_PLAN_NO_CHECKOUT",
+      );
     }
 
+    if (amountKobo > PAYSTACK_MAX_NGN_TX_KOBO) {
+      const nairaFormatted = new Intl.NumberFormat("en-NG", {
+        style: "currency",
+        currency: "NGN",
+        maximumFractionDigits: 0,
+      }).format(amountKobo / 100);
+      throw new PaystackCheckoutValidationError(
+        `${plan.name} (${billingInterval}) totals ${nairaFormatted}, which exceeds Paystack's ₦10,000,000 single online transaction cap. Please switch to Monthly billing or contact enterprise@cogentshield.com for corporate bank wire invoicing.`,
+        "PAYSTACK_TX_LIMIT_EXCEEDED",
+      );
+    }
+
+    const resolvedChannels = this.resolveCheckoutChannels(paymentPreference, explicitChannels);
     const reference = `COG_${tenantId.slice(0, 8)}_${Date.now()}`;
     const paystackSecret = process.env.PAYSTACK_SECRET_KEY || "";
     const isMock =
@@ -264,6 +343,7 @@ export class PaystackBillingService {
           currency: "NGN",
           reference,
           callback_url: resolvedCallbackUrl,
+          channels: resolvedChannels,
           metadata: {
             tenant_id: tenantId,
             plan_id: plan.id,
@@ -271,6 +351,7 @@ export class PaystackBillingService {
             billing_interval: billingInterval,
             usd_cents: priceUsdCents,
             fx_rate: fxRate,
+            payment_preference: paymentPreference,
           },
         }),
       });
@@ -282,8 +363,35 @@ export class PaystackBillingService {
           paystackData,
           tenantId,
           planSlug,
+          channels: resolvedChannels,
         });
         throw new Error(paystackData.message || "Paystack checkout initialization failed");
+      }
+
+      // Best-effort pending audit record so webhook/verify can recover tenant context even if Paystack strips metadata
+      try {
+        const supabase = createAdminSupabaseClient();
+        await supabase.from("billing_transactions").insert({
+          tenant_id: tenantId,
+          paystack_reference: reference,
+          amount_kobo: amountKobo,
+          amount_usd_cents: priceUsdCents,
+          fx_rate_applied: fxRate,
+          currency: "NGN",
+          status: "pending",
+          channel: resolvedChannels[0] || "card",
+          raw_payload: {
+            plan_slug: plan.slug,
+            billing_interval: billingInterval,
+            channels: resolvedChannels,
+            access_code: paystackData.data.access_code,
+          },
+        });
+      } catch (pendingErr) {
+        logger.warn("Unable to record pending billing transaction (non-blocking)", {
+          reference,
+          pendingErr,
+        });
       }
 
       return {
@@ -303,7 +411,7 @@ export class PaystackBillingService {
 
     // Deterministic sandbox checkout session strictly for NODE_ENV=test or dev mock keys
     const accessCode = `acc_${crypto.randomBytes(8).toString("hex")}`;
-    const authorizationUrl = `https://checkout.paystack.com/${accessCode}?reference=${reference}&callback=${encodeURIComponent(resolvedCallbackUrl)}`;
+    const authorizationUrl = `https://checkout.paystack.com/${accessCode}?reference=${reference}&channels=${encodeURIComponent(resolvedChannels.join(","))}&callback=${encodeURIComponent(resolvedCallbackUrl)}`;
 
     return {
       authorization_url: authorizationUrl,
@@ -380,8 +488,9 @@ export class PaystackBillingService {
     }
 
     const txData = paystackData.data;
+    const parsedMeta = this.parseMetadata(txData.metadata);
     const txStatus = String(txData.status || "unknown");
-    const txTenantId = txData.metadata?.tenant_id as string | undefined;
+    const txTenantId = parsedMeta?.tenant_id as string | undefined;
 
     if (txTenantId && txTenantId !== expectedTenantId) {
       logger.warn("Cross-tenant Paystack verification attempt blocked", {
@@ -393,6 +502,19 @@ export class PaystackBillingService {
     }
 
     if (txStatus !== "success") {
+      try {
+        const supabase = createAdminSupabaseClient();
+        await supabase
+          .from("billing_transactions")
+          .update({
+            status: txStatus === "failed" ? "failed" : "pending",
+            raw_payload: txData,
+          })
+          .eq("paystack_reference", cleanRef)
+          .eq("tenant_id", expectedTenantId);
+      } catch {
+        // Non-blocking audit update
+      }
       return {
         verified: false,
         status: txStatus,
@@ -400,6 +522,11 @@ export class PaystackBillingService {
         message: txData.gateway_response || `Transaction status is '${txStatus}'.`,
       };
     }
+
+    const mergedMeta = {
+      ...(parsedMeta || {}),
+      tenant_id: txTenantId || expectedTenantId,
+    };
 
     await this.processChargeSuccess({
       event: "charge.success",
@@ -414,12 +541,7 @@ export class PaystackBillingService {
         paid_at: txData.paid_at,
         customer: txData.customer,
         subscription_code: txData.plan_object?.plan_code || null,
-        metadata: txData.metadata?.tenant_id
-          ? txData.metadata
-          : {
-              ...(txData.metadata || {}),
-              tenant_id: expectedTenantId,
-            },
+        metadata: mergedMeta as PaystackWebhookEvent["data"]["metadata"],
       },
     });
 
@@ -427,7 +549,7 @@ export class PaystackBillingService {
       verified: true,
       status: "success",
       reference: cleanRef,
-      planSlug: (txData.metadata?.plan_slug as PlanSlug) || "scale",
+      planSlug: (parsedMeta?.plan_slug as PlanSlug) || "scale",
     };
   }
 
@@ -462,32 +584,66 @@ export class PaystackBillingService {
   }> {
     const data = event.data;
     const reference = data.reference;
-    const metadata = data.metadata;
+    const metadata = this.parseMetadata(data.metadata) as
+      | PaystackWebhookEvent["data"]["metadata"]
+      | undefined;
 
-    if (!metadata?.tenant_id) {
+    const supabase = createAdminSupabaseClient();
+    let tenantId = metadata?.tenant_id;
+    let fallbackPlanSlug: PlanSlug | undefined;
+    let fallbackInterval: BillingInterval | undefined;
+
+    // Recover tenant_id from pending billing_transactions record if Paystack webhook omitted metadata
+    if (!tenantId && reference) {
+      try {
+        const { data: pendingRow } = await supabase
+          .from("billing_transactions")
+          .select("tenant_id, raw_payload")
+          .eq("paystack_reference", reference)
+          .maybeSingle();
+        if (pendingRow?.tenant_id) {
+          tenantId = pendingRow.tenant_id as string;
+          const rawPayload = pendingRow.raw_payload as Record<string, unknown> | undefined;
+          if (typeof rawPayload?.plan_slug === "string") {
+            fallbackPlanSlug = rawPayload.plan_slug as PlanSlug;
+          }
+          if (rawPayload?.billing_interval === "annual" || rawPayload?.billing_interval === "monthly") {
+            fallbackInterval = rawPayload.billing_interval;
+          }
+        }
+      } catch {
+        // Ignore lookup error and handle missing tenant_id below
+      }
+    }
+
+    if (!tenantId) {
       logger.warn("Paystack charge.success missing tenant_id in metadata", { reference });
       return { processed: false, reason: "Missing tenant_id in metadata" };
     }
 
-    const tenantId = metadata.tenant_id;
-    const planSlug = (metadata.plan_slug as PlanSlug) || "scale";
-    const billingInterval = (metadata.billing_interval as BillingInterval) || "monthly";
+    const planSlug = ((metadata?.plan_slug as PlanSlug) || fallbackPlanSlug || "scale") as PlanSlug;
+    const billingInterval =
+      ((metadata?.billing_interval as BillingInterval) || fallbackInterval || "monthly") as BillingInterval;
     const plan = await this.getPlan(planSlug);
-    const supabase = createAdminSupabaseClient();
 
-    // 1. Idempotency Check
+    // 1. Idempotency Check (only skip if already recorded as 'success' or legacy row without status)
+    let hasPendingRow = false;
     try {
       const { data: existingTx, error: idempErr } = await supabase
         .from("billing_transactions")
-        .select("id")
+        .select("id, status")
         .eq("paystack_reference", reference)
         .maybeSingle();
 
       if (idempErr) throw idempErr;
 
       if (existingTx) {
-        logger.info("Transaction already processed (idempotent skip)", { reference });
-        return { processed: false, reason: "Transaction already processed", tenantId };
+        const txRow = existingTx as { id?: string; status?: string };
+        if (!("status" in txRow) || txRow.status === "success") {
+          logger.info("Transaction already processed (idempotent skip)", { reference });
+          return { processed: false, reason: "Transaction already processed", tenantId };
+        }
+        hasPendingRow = true;
       }
     } catch {
       // Table unreachable fallback; check tenant settings ledger
@@ -505,20 +661,37 @@ export class PaystackBillingService {
       }
     }
 
-    // 2. Record Billing Transaction
+    // 2. Record Billing Transaction (update pending row or insert new row)
     try {
-      const { error: txInsertErr } = await supabase.from("billing_transactions").insert({
-        tenant_id: tenantId,
-        paystack_reference: reference,
-        amount_kobo: data.amount,
-        amount_usd_cents: metadata.usd_cents || plan.price_usd_cents,
-        fx_rate_applied: metadata.fx_rate || 1550.0,
-        currency: data.currency || "NGN",
-        status: "success",
-        channel: data.channel || "card",
-        raw_payload: data,
-      });
-      if (txInsertErr) throw txInsertErr;
+      if (hasPendingRow) {
+        const { error: txUpdateErr } = await supabase
+          .from("billing_transactions")
+          .update({
+            amount_kobo: data.amount,
+            amount_usd_cents: metadata?.usd_cents || plan.price_usd_cents,
+            fx_rate_applied: metadata?.fx_rate || 1550.0,
+            currency: data.currency || "NGN",
+            status: "success",
+            channel: data.channel || "card",
+            raw_payload: data,
+          })
+          .eq("paystack_reference", reference)
+          .eq("tenant_id", tenantId);
+        if (txUpdateErr) throw txUpdateErr;
+      } else {
+        const { error: txInsertErr } = await supabase.from("billing_transactions").insert({
+          tenant_id: tenantId,
+          paystack_reference: reference,
+          amount_kobo: data.amount,
+          amount_usd_cents: metadata?.usd_cents || plan.price_usd_cents,
+          fx_rate_applied: metadata?.fx_rate || 1550.0,
+          currency: data.currency || "NGN",
+          status: "success",
+          channel: data.channel || "card",
+          raw_payload: data,
+        });
+        if (txInsertErr) throw txInsertErr;
+      }
     } catch (insertErr) {
       logger.warn("Could not insert into billing_transactions table, recording in tenant settings", {
         insertErr,

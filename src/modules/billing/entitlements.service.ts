@@ -184,6 +184,14 @@ export class EntitlementsService {
     const trialDaysRemaining = isTrialExpiredByClock ? 0 : Math.ceil(remainingMs / DAY_MS);
 
     // 2. Try querying tenant_subscriptions table
+    const settingsSub = tenantSettings.subscription as
+      | {
+          plan_slug?: PlanSlug;
+          status?: SubscriptionStatus;
+          current_period_end?: string;
+        }
+      | undefined;
+
     try {
       const { data: sub, error } = await supabase
         .from("tenant_subscriptions")
@@ -195,39 +203,30 @@ export class EntitlementsService {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rawPlanJoin = sub.subscription_plans as any;
         const planData = Array.isArray(rawPlanJoin) ? rawPlanJoin[0] : rawPlanJoin;
-        const settingsFallbackSlug = (
-          tenantSettings.subscription as { plan_slug?: PlanSlug } | undefined
-        )?.plan_slug;
-        const planSlug = (planData?.slug || settingsFallbackSlug || "evaluation") as PlanSlug;
+        const planSlug = (planData?.slug || settingsSub?.plan_slug || "evaluation") as PlanSlug;
         const plan = await paystackBillingService.getPlan(planSlug);
         const currentPeriodEnd = new Date(sub.current_period_end || trialEnd);
         const isActive = sub.status === "active" && currentPeriodEnd > now;
 
-        return {
-          plan,
-          status: isActive ? "active" : (sub.status as SubscriptionStatus),
-          currentPeriodEnd,
-          isTrial: false,
-          isTrialExpired: false,
-          trialStartedAt: trialStart,
-          trialEndsAt: trialEnd,
-          trialDaysRemaining,
-          trialHoursRemaining,
-        };
+        if (isActive || !(settingsSub?.plan_slug && settingsSub.status === "active")) {
+          return {
+            plan,
+            status: isActive ? "active" : (sub.status as SubscriptionStatus),
+            currentPeriodEnd,
+            isTrial: false,
+            isTrialExpired: false,
+            trialStartedAt: trialStart,
+            trialEndsAt: trialEnd,
+            trialDaysRemaining,
+            trialHoursRemaining,
+          };
+        }
       }
     } catch {
       // Table may not exist yet, fallback to tenant settings
     }
 
     // 3. Check tenant.settings.subscription fallback
-    const settingsSub = tenantSettings.subscription as
-      | {
-          plan_slug?: PlanSlug;
-          status?: SubscriptionStatus;
-          current_period_end?: string;
-        }
-      | undefined;
-
     if (settingsSub?.plan_slug && settingsSub.status === "active") {
       const plan = await paystackBillingService.getPlan(settingsSub.plan_slug);
       const periodEnd = settingsSub.current_period_end

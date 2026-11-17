@@ -3,7 +3,10 @@ import { currentUser } from "@clerk/nextjs/server";
 import { resolveTenantContext } from "@/modules/auth-tenancy/tenant.resolver";
 import { AuthTenancyError } from "@/modules/auth-tenancy/types";
 import { CheckoutRequestSchema } from "@/contracts/billing.contracts";
-import { paystackBillingService } from "@/modules/billing/paystack.service";
+import {
+  paystackBillingService,
+  PaystackCheckoutValidationError,
+} from "@/modules/billing/paystack.service";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 
@@ -82,7 +85,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { planSlug, billingInterval, emailOverride } = parseResult.data;
+    const { planSlug, billingInterval, emailOverride, paymentPreference, channels } =
+      parseResult.data;
     const userEmail = await resolveBillingEmail(tenantContext.tenantId, emailOverride);
 
     if (!userEmail) {
@@ -101,12 +105,17 @@ export async function POST(req: NextRequest) {
       billingInterval,
       userEmail,
       callbackUrl,
+      paymentPreference,
+      channels,
     });
 
     return NextResponse.json(checkout, { status: 200 });
   } catch (err: unknown) {
     if (err instanceof AuthTenancyError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
+    }
+    if (err instanceof PaystackCheckoutValidationError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: 400 });
     }
     const message = err instanceof Error ? err.message : "Internal server error";
     logger.error("Checkout initialization failed", { error: err });

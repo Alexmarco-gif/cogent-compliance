@@ -5,10 +5,11 @@ import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import {
   BillingInterval,
+  PaymentPreference,
   PlanSlug,
 } from "@/contracts/billing.contracts";
 import { WorkspaceShell } from "@/components/shell/WorkspaceShell";
-import { Check, ArrowRight, ArrowLeft, Globe, Info } from "lucide-react";
+import { Check, ArrowRight, ArrowLeft, Globe, Info, CreditCard, ShieldCheck } from "lucide-react";
 
 interface CurrentSubBanner {
   planSlug: string;
@@ -20,6 +21,8 @@ interface CurrentSubBanner {
   trialHoursRemaining: number;
 }
 
+const PAYSTACK_MAX_NGN_NAIRA = 10_000_000;
+
 const PLAN_MATRIX_ROWS = [
   {
     feature: "Monthly Campaign Audits",
@@ -27,6 +30,34 @@ const PLAN_MATRIX_ROWS = [
     growth: "25 / month",
     scale: "Unlimited",
     enterprise: "Unlimited",
+  },
+  {
+    feature: "Live Web Search (Exa AI + SerpAPI)",
+    evaluation: "— (Vault Only)",
+    growth: "100 / month",
+    scale: "500 / month",
+    enterprise: "Unlimited",
+  },
+  {
+    feature: "Search Jurisdiction Scope",
+    evaluation: "141-PDF NG Vault",
+    growth: "Nigeria (NG)",
+    scale: "Pan-African (NG, KE, GH, ZA, RW, EG)",
+    enterprise: "Africa + Global",
+  },
+  {
+    feature: "Work Product Studio & Exports",
+    evaluation: "PDF / MD Preview",
+    growth: "Word (.docx), PDF, MD",
+    scale: "Word (.docx), Signed PDF, MD",
+    enterprise: "Word (.docx), Branded PDF, MD",
+  },
+  {
+    feature: "Regulatory Ripple Live Web Scans",
+    evaluation: "—",
+    growth: "—",
+    scale: "Included",
+    enterprise: "Included",
   },
   {
     feature: "Team Seats (RBAC Roles)",
@@ -82,6 +113,7 @@ const PLAN_MATRIX_ROWS = [
 export default function PlatformPricingPage() {
   const { isLoaded: authLoaded, isSignedIn, orgId } = useAuth();
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly");
+  const [paymentPreference, setPaymentPreference] = useState<PaymentPreference>("card_bank");
   const [fxRate, setFxRate] = useState<number>(1550.0);
   const [currentSub, setCurrentSub] = useState<CurrentSubBanner | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState<PlanSlug | null>(null);
@@ -164,6 +196,7 @@ export default function PlatformPricingPage() {
         body: JSON.stringify({
           planSlug: slug,
           billingInterval,
+          paymentPreference,
         }),
       });
 
@@ -216,7 +249,7 @@ export default function PlatformPricingPage() {
             Workspace Plans &amp; Upgrades
           </h1>
           <p className="max-w-xl mx-auto text-sm text-zinc-600 mt-2">
-            Upgrade your organization&apos;s workspace for higher audit quotas, unwatermarked dossiers, CCO approval locks, and live URL drift monitoring.
+            Upgrade your organization&apos;s workspace for higher audit quotas, paid Exa AI + SerpAPI live web search, Pan-African coverage, Word/PDF exports, and live URL drift monitoring.
           </p>
 
           {currentSub && (
@@ -289,6 +322,41 @@ export default function PlatformPricingPage() {
             </div>
           </div>
 
+          {/* Paystack Channel Preference (Prevents Pay with Transfer rejections on ₦200k+ tiers) */}
+          <div className="mt-4 flex flex-col items-center gap-1.5">
+            <div className="inline-flex items-center rounded-lg border border-zinc-200 bg-zinc-100/80 p-0.5 text-[11.5px]">
+              <button
+                type="button"
+                onClick={() => setPaymentPreference("card_bank")}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors cursor-pointer ${
+                  paymentPreference === "card_bank"
+                    ? "bg-white text-zinc-950 shadow-xs border border-zinc-200/80"
+                    : "text-zinc-600 hover:text-zinc-950"
+                }`}
+              >
+                <CreditCard className="h-3.5 w-3.5" />
+                <span>Card &amp; Bank (Recommended)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPaymentPreference("all_channels")}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors cursor-pointer ${
+                  paymentPreference === "all_channels"
+                    ? "bg-white text-zinc-950 shadow-xs border border-zinc-200/80"
+                    : "text-zinc-600 hover:text-zinc-950"
+                }`}
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                <span>All Channels (Card, Transfer, USSD)</span>
+              </button>
+            </div>
+            <p className="text-[11px] text-zinc-500">
+              {paymentPreference === "card_bank"
+                ? "Opens Paystack directly on Visa / Mastercard / Verve Card and Pay with Bank for instant activation."
+                : "Shows all Paystack Nigeria channels. Note: Pay with Transfer may be capped by bank limits on ₦500k+ plans."}
+            </p>
+          </div>
+
           {checkoutError && (
             <div className="mt-4 max-w-md mx-auto p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-800 text-xs">
               {checkoutError}
@@ -328,15 +396,23 @@ export default function PlatformPricingPage() {
                 </div>
                 <div className="flex items-center gap-2 text-zinc-700">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>2 Seats</span>
+                  <span>2 Seats &amp; 1 Product Schedule</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>141-PDF NG Statutory Vault</span>
                 </div>
                 <div className="flex items-center gap-2 text-zinc-700">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                   <span>10 Compliant Rewrites</span>
                 </div>
-                <div className="flex items-center gap-2 text-zinc-700">
-                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>1 Product Schedule</span>
+                <div className="flex items-center gap-2 text-zinc-400">
+                  <span className="w-3.5 text-center font-medium">–</span>
+                  <span>Live Web Search (Exa + SerpAPI)</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-400">
+                  <span className="w-3.5 text-center font-medium">–</span>
+                  <span>Word (.docx) &amp; Multi-Country</span>
                 </div>
                 <div className="flex items-center gap-2 text-zinc-400">
                   <span className="w-3.5 text-center font-medium">–</span>
@@ -395,21 +471,21 @@ export default function PlatformPricingPage() {
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                   <span>25 Reviews / month</span>
                 </div>
+                <div className="flex items-center gap-2 text-zinc-900 font-semibold">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>100 Live Web Searches / mo (NG)</span>
+                </div>
                 <div className="flex items-center gap-2 text-zinc-700">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                   <span>3 Seats (Role Permissions)</span>
                 </div>
                 <div className="flex items-center gap-2 text-zinc-700">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>Unlimited Rewrites</span>
-                </div>
-                <div className="flex items-center gap-2 text-zinc-700">
-                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>5 Product Schedules</span>
+                  <span>Unlimited Rewrites &amp; 5 Rate Cards</span>
                 </div>
                 <div className="flex items-center gap-2 text-zinc-800 font-medium">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>Unwatermarked PDF Dossiers</span>
+                  <span>Word (.docx), PDF &amp; MD Exports</span>
                 </div>
                 <div className="flex items-center gap-2 text-zinc-700">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
@@ -468,25 +544,29 @@ export default function PlatformPricingPage() {
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                   <span>Unlimited Campaign Reviews</span>
                 </div>
-                <div className="flex items-center gap-2 text-zinc-700">
+                <div className="flex items-center gap-2 text-zinc-950 font-semibold">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>10 Seats</span>
+                  <span>500 Live Web Searches / month</span>
                 </div>
                 <div className="flex items-center gap-2 text-zinc-900 font-medium">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>15 Live URL Drift Monitors</span>
+                  <span>Pan-African (NG, KE, GH, ZA, RW, EG)</span>
                 </div>
                 <div className="flex items-center gap-2 text-zinc-700">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>CCO Sign-Off Workflow</span>
+                  <span>10 Seats &amp; 15 Live Drift Monitors</span>
                 </div>
                 <div className="flex items-center gap-2 text-zinc-700">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>Signed PDF Dossiers</span>
+                  <span>Word (.docx), Signed PDF &amp; MD Exports</span>
                 </div>
                 <div className="flex items-center gap-2 text-zinc-700">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>2-Year Record Retention</span>
+                  <span>Regulatory Ripple Live Web Scans</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>CCO Sign-Off Lock &amp; 2-Yr Retention</span>
                 </div>
               </div>
             </div>
@@ -540,23 +620,23 @@ export default function PlatformPricingPage() {
               <div className="border-t border-zinc-100 pt-4 space-y-2.5 text-xs">
                 <div className="flex items-center gap-2 text-zinc-800 font-medium">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>Unlimited Seats &amp; Reviews</span>
+                  <span>Unlimited Seats, Reviews &amp; Monitors</span>
                 </div>
-                <div className="flex items-center gap-2 text-zinc-800 font-medium">
+                <div className="flex items-center gap-2 text-zinc-950 font-semibold">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>Unlimited Drift Monitors</span>
-                </div>
-                <div className="flex items-center gap-2 text-zinc-700">
-                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>Custom Policy Libraries</span>
+                  <span>Unlimited Live Web Search (Global)</span>
                 </div>
                 <div className="flex items-center gap-2 text-zinc-700">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>Custom Branded PDF Dossiers</span>
+                  <span>Word (.docx), Branded PDF &amp; MD Exports</span>
                 </div>
                 <div className="flex items-center gap-2 text-zinc-700">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>7-Year BOFIA Retention</span>
+                  <span>Regulatory Ripple Live Web Scans</span>
+                </div>
+                <div className="flex items-center gap-2 text-zinc-700">
+                  <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                  <span>Custom Policy Libraries &amp; 7-Yr BOFIA</span>
                 </div>
                 <div className="flex items-center gap-2 text-zinc-700">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
@@ -565,21 +645,43 @@ export default function PlatformPricingPage() {
               </div>
             </div>
 
-            <div className="mt-8">
-              <button
-                type="button"
-                onClick={() => handleCheckout("enterprise")}
-                disabled={
-                  checkoutLoading === "enterprise" || isCurrentActivePaid("enterprise")
-                }
-                className="w-full py-2.5 rounded-md border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-900 text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
-              >
-                {isCurrentActivePaid("enterprise")
-                  ? "Current Plan"
-                  : checkoutLoading === "enterprise"
-                    ? "Preparing..."
-                    : "Choose Enterprise"}
-              </button>
+            <div className="mt-8 space-y-2">
+              {billingInterval === "annual" && 14388 * fxRate > PAYSTACK_MAX_NGN_NAIRA ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setBillingInterval("monthly")}
+                    className="w-full py-2.5 rounded-md border border-zinc-900 bg-white hover:bg-zinc-50 text-zinc-950 text-xs font-medium transition-colors cursor-pointer"
+                  >
+                    Switch to Monthly for Paystack ({formatNaira(Math.round(1499 * fxRate * 100))}/mo)
+                  </button>
+                  <p className="text-[10.5px] text-zinc-500 text-center">
+                    Annual Enterprise exceeds Paystack&apos;s ₦10M online cap;{" "}
+                    <a
+                      href="mailto:enterprise@cogentshield.com?subject=Enterprise%20Annual%20Invoice"
+                      className="underline text-zinc-800 font-medium"
+                    >
+                      request wire invoice
+                    </a>
+                    .
+                  </p>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleCheckout("enterprise")}
+                  disabled={
+                    checkoutLoading === "enterprise" || isCurrentActivePaid("enterprise")
+                  }
+                  className="w-full py-2.5 rounded-md border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-900 text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {isCurrentActivePaid("enterprise")
+                    ? "Current Plan"
+                    : checkoutLoading === "enterprise"
+                      ? "Preparing..."
+                      : "Choose Enterprise"}
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -588,9 +690,8 @@ export default function PlatformPricingPage() {
         <div className="max-w-4xl mx-auto mt-8 bg-white rounded-xl border border-zinc-200 p-4 flex items-start gap-3 text-xs text-zinc-600">
           <Info className="h-4 w-4 text-zinc-500 shrink-0 mt-0.5" />
           <div>
-            <span className="font-medium text-zinc-900">Paystack Checkout Channels:</span>{" "}
-            Supports Card, Bank, Transfer, USSD, OPay, and Zap. If{" "}
-            <strong>Pay with Transfer</strong> displays &ldquo;Unable to process transaction&rdquo; in test/sandbox mode or for higher Naira tiers, select <strong>Card</strong> or <strong>Bank</strong> inside the Paystack checkout window.
+            <span className="font-medium text-zinc-900">Instant Paystack Settlement:</span>{" "}
+            Checkout defaults to <strong>Card &amp; Pay with Bank</strong> so Visa, Mastercard, Verve, and direct bank debits clear without Paystack virtual-account transfer limits. Need USSD, OPay, or Bank Transfer on eligible tiers? Switch the channel toggle above to <strong>All Channels</strong> before clicking a plan.
           </div>
         </div>
 
@@ -600,7 +701,7 @@ export default function PlatformPricingPage() {
             Full Plan Entitlements Matrix
           </h3>
           <p className="text-xs text-zinc-500 mb-5">
-            Transparent quotas across seats, audit volume, live URL drift monitors, and dossier retention.
+            Transparent quotas across seats, audit volume, live Exa AI + SerpAPI web search, work product exports, and dossier retention.
           </p>
 
           <div className="overflow-x-auto">
