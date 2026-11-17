@@ -396,7 +396,7 @@ export function WorkspaceSidebar({
             }}
             className="inline-flex items-center"
           >
-            <CogentLogo variant="dark" size="sm" />
+            <CogentLogo variant="blue" size="sm" showMark={false} wordmarkColor="blue" />
           </Link>
           {onToggleCollapse && (
             <button

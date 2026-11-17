@@ -3,7 +3,9 @@ import React from "react";
 export interface CogentLogoProps {
   variant?: "dark" | "light" | "blue" | "mark";
   size?: "sm" | "md" | "lg";
+  showMark?: boolean;
   showWordmark?: boolean;
+  wordmarkColor?: "dark" | "blue";
   subtitle?: string;
   className?: string;
 }
@@ -50,7 +52,9 @@ export function CogentMark({
 export function CogentLogo({
   variant = "dark",
   size = "md",
+  showMark = true,
   showWordmark = true,
+  wordmarkColor = "dark",
   subtitle,
   className = "",
 }: CogentLogoProps) {
@@ -71,20 +75,27 @@ export function CogentLogo({
         ? "bg-white text-zinc-950 border border-zinc-200"
         : "bg-zinc-900 text-white";
 
+  const wordmarkTextStyle =
+    wordmarkColor === "blue" ? "text-[#2A4BFF]" : "text-zinc-950";
+
   if (variant === "mark") {
     return <CogentMark className={`${markSize} ${className}`} />;
   }
 
   return (
     <div className={`inline-flex items-center gap-2.5 ${className}`}>
-      <div
-        className={`flex shrink-0 items-center justify-center ${boxSize} ${boxStyle}`}
-      >
-        <CogentMark className={markSize} />
-      </div>
+      {showMark && (
+        <div
+          className={`flex shrink-0 items-center justify-center ${boxSize} ${boxStyle}`}
+        >
+          <CogentMark className={markSize} />
+        </div>
+      )}
       {showWordmark && (
         <div className="leading-none">
-          <span className="block text-[15px] font-semibold tracking-tight text-zinc-950">
+          <span
+            className={`block text-[15px] font-semibold tracking-tight ${wordmarkTextStyle}`}
+          >
             Cogent
           </span>
           {subtitle && (

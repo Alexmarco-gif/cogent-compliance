@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { PanelLeftOpen, Menu } from "lucide-react";
+import { PanelLeftOpen, Menu, ShieldCheck } from "lucide-react";
 
 export interface WorkspaceHeaderProps {
   section?: string;
@@ -20,6 +20,8 @@ export function WorkspaceHeader({
   onOpenMobileSidebar,
   rightActions,
 }: WorkspaceHeaderProps) {
+  const isMarketingShield = section === "Marketing Shield";
+
   return (
     <header className="h-[52px] border-b border-zinc-200 bg-white px-4 sm:px-6 flex items-center justify-between gap-4 shrink-0">
       <div className="flex items-center gap-2.5 min-w-0">
@@ -50,7 +52,17 @@ export function WorkspaceHeader({
           aria-label="Breadcrumb"
           className="flex items-center gap-2 text-[13px] min-w-0 truncate"
         >
-          <span className="text-zinc-400 shrink-0">{section}</span>
+          {isMarketingShield ? (
+            <span
+              title={section}
+              aria-label={section}
+              className="inline-flex items-center justify-center h-6 w-6 rounded-md bg-[#2A4BFF]/10 text-[#2A4BFF] shrink-0"
+            >
+              <ShieldCheck className="h-3.5 w-3.5" />
+            </span>
+          ) : (
+            <span className="text-zinc-400 shrink-0">{section}</span>
+          )}
           <span className="text-zinc-300 shrink-0">/</span>
           <span className="text-zinc-950 font-medium truncate">{title}</span>
         </nav>
