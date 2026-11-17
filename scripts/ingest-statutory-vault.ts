@@ -15,7 +15,7 @@ import {
   type DocumentMetadata,
   type IngestedDocumentResult,
 } from "../src/modules/regulatory-vault/ingestion.service";
-import { createAdminSupabaseClient } from "../src/lib/supabase/server";
+import { createAdminSupabaseClient } from "../src/lib/supabase";
 import { logger } from "../src/lib/logger";
 
 interface CoreDocSpec {
@@ -389,7 +389,7 @@ async function main() {
 
     let allFiles = getAllPdfFiles(basePath);
     if (targetReg) {
-      allFiles = allFiles.filter((f) => f.toUpperCase().includes(`/${targetReg.toLowerCase()}/`));
+      allFiles = allFiles.filter((f) => f.toLowerCase().includes(`/${targetReg.toLowerCase()}/`));
       console.log(`[Wave 2] Filtered to regulator: ${targetReg} (${allFiles.length} PDFs)`);
     }
 
