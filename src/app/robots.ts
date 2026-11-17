@@ -12,8 +12,6 @@ export default function robots(): MetadataRoute.Robots {
           "/",
           "/platform",
           "/solutions",
-          "/regulatory-vault",
-          "/pricing",
           "/company",
           "/resources/",
         ],

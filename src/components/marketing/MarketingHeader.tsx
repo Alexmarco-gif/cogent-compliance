@@ -9,12 +9,12 @@ import {
   Menu,
   X,
   ArrowRight,
-  ShieldCheck,
+  FileCheck2,
   Calculator,
-  ScanEye,
   Activity,
-  Landmark,
+  ShieldCheck,
   Smartphone,
+  Landmark,
   Wallet,
   LineChart,
 } from "lucide-react";
@@ -24,28 +24,28 @@ type MenuKey = "platform" | "solutions" | null;
 
 const PLATFORM_LINKS = [
   {
-    href: "/platform#grounding",
-    title: "Three-Source Statutory Grounding",
-    description: "Golden 50 vault, tenant playbooks & live .gov.ng search.",
-    icon: ShieldCheck,
+    href: "/platform#pre-check",
+    title: "Flyer & Ad Copy Checks",
+    description: "Catch risky claims and tiny disclaimers before launch.",
+    icon: FileCheck2,
   },
   {
-    href: "/platform#deterministic-locks",
-    title: "Deterministic Locks & APR Engine",
-    description: "Mechanical checks & true IRR/APR math outside the LLM.",
+    href: "/platform#rate-match",
+    title: "Rate & Fee Verification",
+    description: "Ensure every ad matches your approved product numbers.",
     icon: Calculator,
   },
   {
-    href: "/platform#forensics",
-    title: "Flyer OCR & App Store Forensics",
-    description: "Fine-print ratios, ARCON ASP IDs & <60-day Play Store checks.",
-    icon: ScanEye,
+    href: "/platform#page-watcher",
+    title: "Live Page Monitoring",
+    description: "Get alerted immediately if a live webpage changes.",
+    icon: Activity,
   },
   {
-    href: "/platform#governance",
-    title: "2-Year Dossiers & URL Drift Sentinels",
-    description: "Dual-control CCO sign-off, SHA-256 PDFs & live monitoring.",
-    icon: Activity,
+    href: "/platform#signoff",
+    title: "Team & CCO Sign-Off",
+    description: "Separate marketing drafts from final compliance approval.",
+    icon: ShieldCheck,
   },
 ];
 
@@ -53,29 +53,29 @@ const SOLUTIONS_LINKS = [
   {
     href: "/solutions#digital-lenders",
     title: "Digital Lenders",
-    tag: "FCCPC DEON · Play Store",
-    description: "Drip-pricing APR checks & 60-day minimum tenor guardrails.",
+    tag: "FCCPC · Play Store",
+    description: "60-day tenor rules, real repayment math & clean copy.",
     icon: Smartphone,
   },
   {
     href: "/solutions#banking",
     title: "MFBs & Commercial Banks",
-    tag: "CBN CPF · BOFIA · ARCON",
-    description: "NDIC deposit qualifiers, flyer ratios & CCO approval chains.",
+    tag: "CBN · NDIC · ARCON",
+    description: "Deposit coverage wording & quick branch flyer clearance.",
     icon: Landmark,
   },
   {
     href: "/solutions#payments",
     title: "PSBs & Mobile Money",
-    tag: "CBN PSB · MMO · NDPA",
-    description: "License-boundary locks & live landing-page drift alerts.",
+    tag: "CBN · NDPC",
+    description: "Clear partner disclosures & daily webpage monitoring.",
     icon: Wallet,
   },
   {
     href: "/solutions#wealthtech",
-    title: "WealthTech & VASPs",
-    tag: "SEC ISA · Rule 102",
-    description: "Prohibited yield guarantees & risk-disclosure enforcement.",
+    title: "WealthTech & SEC",
+    tag: "SEC Nigeria",
+    description: "Keep yield promises & risk disclosures accurate.",
     icon: LineChart,
   },
 ];
@@ -90,7 +90,7 @@ export function MarketingHeader() {
   const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
+    const onScroll = () => setScrolled(window.scrollY > 10);
     onScroll();
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
@@ -132,7 +132,7 @@ export function MarketingHeader() {
     cancelClose();
     closeTimeoutRef.current = setTimeout(() => {
       setOpenMenu(null);
-    }, 130);
+    }, 140);
   };
 
   const handleTriggerHover = (key: MenuKey) => {
@@ -143,21 +143,23 @@ export function MarketingHeader() {
   return (
     <header
       ref={headerRef}
-      className={`sticky top-0 z-50 w-full transition-colors duration-200 ${
-        scrolled || openMenu
-          ? "border-b border-zinc-200 bg-white/95 backdrop-blur-md"
-          : "border-b border-zinc-200/70 bg-white/85 backdrop-blur-md"
-      }`}
+      className="sticky top-0 z-50 w-full px-4 pt-3 sm:px-6 sm:pt-4 pointer-events-none"
     >
-      <div className="mx-auto flex h-16 max-w-[1200px] items-center justify-between px-5 sm:px-8">
+      <div
+        className={`pointer-events-auto mx-auto flex h-14 max-w-[1060px] items-center justify-between rounded-2xl border px-3.5 sm:px-5 transition-all duration-300 ${
+          scrolled || openMenu || mobileOpen
+            ? "border-slate-200/90 bg-white/95 backdrop-blur-xl shadow-[0_12px_36px_-10px_rgba(15,23,42,0.12)]"
+            : "border-slate-200/75 bg-white/85 backdrop-blur-lg shadow-[0_8px_28px_-12px_rgba(29,99,237,0.14)]"
+        }`}
+      >
         {/* Brand Wordmark */}
         <Link href="/" className="shrink-0 focus:outline-none">
-          <CogentLogo variant="blue" size="md" subtitle="Marketing Shield" />
+          <CogentLogo variant="blue" size="md" />
         </Link>
 
-        {/* Desktop Navigation */}
+        {/* Centered Navigation Links (Clean routes only; Vault & Pricing removed) */}
         <nav className="hidden lg:flex items-center gap-1" aria-label="Main navigation">
-          {/* Platform Mega-Dropdown Trigger */}
+          {/* Platform Dropdown */}
           <div
             className="relative"
             onMouseEnter={() => handleTriggerHover("platform")}
@@ -167,10 +169,10 @@ export function MarketingHeader() {
               type="button"
               onClick={() => setOpenMenu((prev) => (prev === "platform" ? null : "platform"))}
               aria-expanded={openMenu === "platform"}
-              className={`inline-flex items-center gap-1 rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1 rounded-xl px-3.5 py-2 text-[13.5px] font-medium transition-colors cursor-pointer ${
                 pathname.startsWith("/platform") || openMenu === "platform"
-                  ? "bg-zinc-100 text-zinc-950"
-                  : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950"
+                  ? "bg-blue-50/80 text-[#1D63ED]"
+                  : "text-slate-600 hover:bg-slate-100/70 hover:text-slate-950"
               }`}
             >
               <span>Platform</span>
@@ -183,28 +185,28 @@ export function MarketingHeader() {
 
             {openMenu === "platform" && (
               <div
-                className="absolute left-0 top-full pt-2.5 w-[620px]"
+                className="absolute left-0 top-full pt-3 w-[520px]"
                 onMouseEnter={cancelClose}
                 onMouseLeave={scheduleClose}
               >
-                <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl shadow-zinc-950/5 grid grid-cols-12 gap-4">
-                  <div className="col-span-7 space-y-1">
+                <div className="rounded-2xl border border-slate-200/90 bg-white/98 p-3.5 shadow-[0_24px_48px_-12px_rgba(15,23,42,0.14)] backdrop-blur-xl">
+                  <div className="grid grid-cols-1 gap-1.5">
                     {PLATFORM_LINKS.map((item) => {
                       const Icon = item.icon;
                       return (
                         <Link
                           key={item.href}
                           href={item.href}
-                          className="group flex items-start gap-3 rounded-xl p-2.5 hover:bg-zinc-50 transition-colors"
+                          className="group flex items-start gap-3 rounded-xl p-2.5 hover:bg-blue-50/50 transition-colors"
                         >
-                          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-zinc-200 bg-zinc-50 text-zinc-700 group-hover:border-zinc-300 group-hover:bg-white group-hover:text-zinc-950">
-                            <Icon className="h-4 w-4" strokeWidth={1.7} />
+                          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-600 group-hover:border-blue-200 group-hover:bg-[#1D63ED] group-hover:text-white transition-colors">
+                            <Icon className="h-4 w-4" strokeWidth={1.8} />
                           </div>
                           <div>
-                            <p className="text-[13px] font-semibold text-zinc-950">
+                            <p className="text-[13px] font-semibold text-slate-950">
                               {item.title}
                             </p>
-                            <p className="mt-0.5 text-[12px] leading-snug text-zinc-500">
+                            <p className="mt-0.5 text-[12px] leading-snug text-slate-500">
                               {item.description}
                             </p>
                           </div>
@@ -212,41 +214,16 @@ export function MarketingHeader() {
                       );
                     })}
                   </div>
-
-                  {/* Right Live Architecture Card */}
-                  <div className="col-span-5 flex flex-col justify-between rounded-xl border border-zinc-200 bg-zinc-50 p-4">
-                    <div>
-                      <p className="font-mono text-[10px] uppercase tracking-[0.08em] text-zinc-500">
-                        Pre-Flight Gate
-                      </p>
-                      <div className="mt-2.5 rounded-lg border border-zinc-200 bg-white p-3 space-y-2">
-                        <div className="flex items-center justify-between text-[11px] font-mono">
-                          <span className="text-zinc-600">Lock 1 · Terms</span>
-                          <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700 font-semibold">
-                            PASS
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] font-mono">
-                          <span className="text-zinc-600">Lock 2 · Rate Card</span>
-                          <span className="rounded bg-rose-50 px-1.5 py-0.5 text-rose-700 font-semibold">
-                            FAIL
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between text-[11px] font-mono">
-                          <span className="text-zinc-600">Lock 3 · Disclosures</span>
-                          <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700 font-semibold">
-                            PASS
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
+                  <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2.5 px-2">
+                    <span className="text-[11.5px] text-slate-500">
+                      Built for Growth, Legal &amp; Compliance Teams
+                    </span>
                     <Link
                       href="/platform"
-                      className="mt-4 inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-zinc-950 hover:text-[#2A4BFF] transition-colors"
+                      className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#1D63ED] hover:underline"
                     >
-                      <span>Explore Platform Architecture</span>
-                      <ArrowRight className="h-3.5 w-3.5" />
+                      <span>See Platform Tour</span>
+                      <ArrowRight className="h-3 w-3" />
                     </Link>
                   </div>
                 </div>
@@ -254,7 +231,7 @@ export function MarketingHeader() {
             )}
           </div>
 
-          {/* Solutions Mega-Dropdown Trigger */}
+          {/* Solutions Dropdown */}
           <div
             className="relative"
             onMouseEnter={() => handleTriggerHover("solutions")}
@@ -264,10 +241,10 @@ export function MarketingHeader() {
               type="button"
               onClick={() => setOpenMenu((prev) => (prev === "solutions" ? null : "solutions"))}
               aria-expanded={openMenu === "solutions"}
-              className={`inline-flex items-center gap-1 rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors cursor-pointer ${
+              className={`inline-flex items-center gap-1 rounded-xl px-3.5 py-2 text-[13.5px] font-medium transition-colors cursor-pointer ${
                 pathname.startsWith("/solutions") || openMenu === "solutions"
-                  ? "bg-zinc-100 text-zinc-950"
-                  : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950"
+                  ? "bg-blue-50/80 text-[#1D63ED]"
+                  : "text-slate-600 hover:bg-slate-100/70 hover:text-slate-950"
               }`}
             >
               <span>Solutions</span>
@@ -280,48 +257,48 @@ export function MarketingHeader() {
 
             {openMenu === "solutions" && (
               <div
-                className="absolute left-0 top-full pt-2.5 w-[580px]"
+                className="absolute left-0 top-full pt-3 w-[540px]"
                 onMouseEnter={cancelClose}
                 onMouseLeave={scheduleClose}
               >
-                <div className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl shadow-zinc-950/5">
-                  <div className="grid grid-cols-2 gap-2.5">
+                <div className="rounded-2xl border border-slate-200/90 bg-white/98 p-3.5 shadow-[0_24px_48px_-12px_rgba(15,23,42,0.14)] backdrop-blur-xl">
+                  <div className="grid grid-cols-2 gap-2">
                     {SOLUTIONS_LINKS.map((item) => {
                       const Icon = item.icon;
                       return (
                         <Link
                           key={item.href}
                           href={item.href}
-                          className="group rounded-xl border border-zinc-100 bg-zinc-50/70 p-3.5 hover:border-zinc-200 hover:bg-white transition-colors"
+                          className="group rounded-xl border border-slate-100 bg-slate-50/60 p-3 hover:border-blue-200 hover:bg-blue-50/40 transition-colors"
                         >
                           <div className="flex items-center justify-between">
                             <Icon
-                              className="h-4 w-4 text-zinc-700 group-hover:text-[#2A4BFF]"
-                              strokeWidth={1.7}
+                              className="h-4 w-4 text-slate-600 group-hover:text-[#1D63ED] transition-colors"
+                              strokeWidth={1.8}
                             />
-                            <span className="font-mono text-[10px] text-zinc-500">
+                            <span className="text-[10px] font-medium text-slate-400">
                               {item.tag}
                             </span>
                           </div>
-                          <p className="mt-2.5 text-[13px] font-semibold text-zinc-950">
+                          <p className="mt-2 text-[13px] font-semibold text-slate-950">
                             {item.title}
                           </p>
-                          <p className="mt-1 text-[12px] leading-snug text-zinc-500">
+                          <p className="mt-0.5 text-[11.5px] leading-snug text-slate-500">
                             {item.description}
                           </p>
                         </Link>
                       );
                     })}
                   </div>
-                  <div className="mt-3 flex items-center justify-between border-t border-zinc-100 pt-3 px-1">
-                    <span className="text-[12px] text-zinc-500">
-                      Covers 10 CBN, FCCPC &amp; SEC license classifications
+                  <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2.5 px-1.5">
+                    <span className="text-[11.5px] text-slate-500">
+                      Tailored to your exact Nigerian financial license
                     </span>
                     <Link
                       href="/solutions"
-                      className="inline-flex items-center gap-1 text-[12px] font-semibold text-zinc-950 hover:text-[#2A4BFF]"
+                      className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#1D63ED] hover:underline"
                     >
-                      <span>View all solutions</span>
+                      <span>View All Solutions</span>
                       <ArrowRight className="h-3 w-3" />
                     </Link>
                   </div>
@@ -331,33 +308,11 @@ export function MarketingHeader() {
           </div>
 
           <Link
-            href="/regulatory-vault"
-            className={`rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors ${
-              pathname.startsWith("/regulatory-vault")
-                ? "bg-zinc-100 text-zinc-950"
-                : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950"
-            }`}
-          >
-            Statutory Vault
-          </Link>
-
-          <Link
-            href="/pricing"
-            className={`rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors ${
-              pathname.startsWith("/pricing")
-                ? "bg-zinc-100 text-zinc-950"
-                : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950"
-            }`}
-          >
-            Pricing
-          </Link>
-
-          <Link
             href="/company"
-            className={`rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors ${
+            className={`rounded-xl px-3.5 py-2 text-[13.5px] font-medium transition-colors ${
               pathname.startsWith("/company")
-                ? "bg-zinc-100 text-zinc-950"
-                : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950"
+                ? "bg-blue-50/80 text-[#1D63ED]"
+                : "text-slate-600 hover:bg-slate-100/70 hover:text-slate-950"
             }`}
           >
             Company
@@ -365,10 +320,10 @@ export function MarketingHeader() {
 
           <Link
             href="/resources/faq"
-            className={`rounded-lg px-3.5 py-2 text-[13.5px] font-medium transition-colors ${
+            className={`rounded-xl px-3.5 py-2 text-[13.5px] font-medium transition-colors ${
               pathname.startsWith("/resources")
-                ? "bg-zinc-100 text-zinc-950"
-                : "text-zinc-600 hover:bg-zinc-50 hover:text-zinc-950"
+                ? "bg-blue-50/80 text-[#1D63ED]"
+                : "text-slate-600 hover:bg-slate-100/70 hover:text-slate-950"
             }`}
           >
             FAQ
@@ -376,11 +331,11 @@ export function MarketingHeader() {
         </nav>
 
         {/* Right Conversion CTAs */}
-        <div className="hidden lg:flex items-center gap-2.5">
+        <div className="hidden lg:flex items-center gap-2">
           {isLoaded && isSignedIn ? (
             <Link
               href="/chat"
-              className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-950 px-4 py-2 text-[13px] font-medium text-white hover:bg-zinc-800 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-xl bg-[#1D63ED] px-4 py-2 text-[13px] font-semibold text-white shadow-sm shadow-blue-600/25 hover:bg-[#1552CC] transition-colors"
             >
               <span>Open Workspace</span>
               <ArrowRight className="h-3.5 w-3.5" />
@@ -389,104 +344,87 @@ export function MarketingHeader() {
             <>
               <Link
                 href="/sign-in"
-                className="rounded-lg px-3.5 py-2 text-[13px] font-medium text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950 transition-colors"
+                className="rounded-xl border border-slate-200 bg-white px-3.5 py-1.5 text-[13px] font-medium text-slate-700 hover:border-slate-300 hover:bg-slate-50 transition-colors"
               >
-                Sign in
+                Login
               </Link>
               <Link
                 href="/sign-up"
-                className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-950 px-4 py-2 text-[13px] font-medium text-white hover:bg-zinc-800 transition-colors"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#1D63ED] px-4 py-2 text-[13px] font-semibold text-white shadow-sm shadow-blue-600/25 hover:bg-[#1552CC] transition-colors"
               >
-                <span>Start 7-Day Evaluation</span>
-                <ArrowRight className="h-3.5 w-3.5" />
+                <span>Create Account</span>
               </Link>
             </>
           )}
         </div>
 
-        {/* Mobile Menu Toggle */}
+        {/* Mobile Menu Button */}
         <button
           type="button"
           onClick={() => setMobileOpen((prev) => !prev)}
           aria-label={mobileOpen ? "Close menu" : "Open menu"}
           aria-expanded={mobileOpen}
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-800 lg:hidden cursor-pointer"
+          className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-800 lg:hidden cursor-pointer"
         >
           {mobileOpen ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
         </button>
       </div>
 
-      {/* Mobile Drawer */}
+      {/* Mobile Floating Drawer */}
       {mobileOpen && (
-        <div className="border-t border-zinc-200 bg-white px-5 py-5 lg:hidden max-h-[calc(100vh-4rem)] overflow-y-auto">
+        <div className="pointer-events-auto mx-auto mt-2 max-w-[1060px] rounded-2xl border border-slate-200 bg-white/98 p-4 shadow-2xl backdrop-blur-xl lg:hidden max-h-[calc(100vh-5.5rem)] overflow-y-auto">
           <div className="space-y-4">
-            <div>
-              <p className="font-mono text-[10.5px] uppercase tracking-wider text-zinc-400">
+            <div className="space-y-1">
+              <p className="px-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                 Platform
               </p>
-              <div className="mt-2 space-y-1">
-                {PLATFORM_LINKS.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="block rounded-lg px-3 py-2 text-[14px] font-medium text-zinc-800 hover:bg-zinc-50"
-                  >
-                    {item.title}
-                  </Link>
-                ))}
-              </div>
+              {PLATFORM_LINKS.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="block rounded-xl px-3 py-2 text-[14px] font-medium text-slate-800 hover:bg-blue-50/50"
+                >
+                  {item.title}
+                </Link>
+              ))}
             </div>
 
-            <div className="border-t border-zinc-100 pt-4">
-              <p className="font-mono text-[10.5px] uppercase tracking-wider text-zinc-400">
+            <div className="border-t border-slate-100 pt-3 space-y-1">
+              <p className="px-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
                 Solutions
               </p>
-              <div className="mt-2 grid grid-cols-1 gap-1">
-                {SOLUTIONS_LINKS.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="flex items-center justify-between rounded-lg px-3 py-2 text-[14px] font-medium text-zinc-800 hover:bg-zinc-50"
-                  >
-                    <span>{item.title}</span>
-                    <span className="font-mono text-[10.5px] text-zinc-400">{item.tag}</span>
-                  </Link>
-                ))}
-              </div>
+              {SOLUTIONS_LINKS.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="flex items-center justify-between rounded-xl px-3 py-2 text-[14px] font-medium text-slate-800 hover:bg-blue-50/50"
+                >
+                  <span>{item.title}</span>
+                  <span className="text-[11px] text-slate-400">{item.tag}</span>
+                </Link>
+              ))}
             </div>
 
-            <div className="border-t border-zinc-100 pt-4 space-y-1">
-              <Link
-                href="/regulatory-vault"
-                className="block rounded-lg px-3 py-2 text-[14px] font-medium text-zinc-800 hover:bg-zinc-50"
-              >
-                Statutory Vault
-              </Link>
-              <Link
-                href="/pricing"
-                className="block rounded-lg px-3 py-2 text-[14px] font-medium text-zinc-800 hover:bg-zinc-50"
-              >
-                Pricing
-              </Link>
+            <div className="border-t border-slate-100 pt-3 space-y-1">
               <Link
                 href="/company"
-                className="block rounded-lg px-3 py-2 text-[14px] font-medium text-zinc-800 hover:bg-zinc-50"
+                className="block rounded-xl px-3 py-2 text-[14px] font-medium text-slate-800 hover:bg-blue-50/50"
               >
-                Company &amp; Leadership
+                Company &amp; Founders
               </Link>
               <Link
                 href="/resources/faq"
-                className="block rounded-lg px-3 py-2 text-[14px] font-medium text-zinc-800 hover:bg-zinc-50"
+                className="block rounded-xl px-3 py-2 text-[14px] font-medium text-slate-800 hover:bg-blue-50/50"
               >
-                Compliance FAQ
+                FAQ
               </Link>
             </div>
 
-            <div className="border-t border-zinc-200 pt-4 flex flex-col gap-2.5">
+            <div className="border-t border-slate-100 pt-3 flex flex-col gap-2">
               {isLoaded && isSignedIn ? (
                 <Link
                   href="/chat"
-                  className="flex h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-950 text-[14px] font-medium text-white"
+                  className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-[#1D63ED] text-[14px] font-semibold text-white"
                 >
                   <span>Open Workspace</span>
                   <ArrowRight className="h-4 w-4" />
@@ -495,16 +433,16 @@ export function MarketingHeader() {
                 <>
                   <Link
                     href="/sign-up"
-                    className="flex h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-zinc-950 text-[14px] font-medium text-white"
+                    className="flex h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-[#1D63ED] text-[14px] font-semibold text-white"
                   >
-                    <span>Start 7-Day Evaluation</span>
+                    <span>Create Account</span>
                     <ArrowRight className="h-4 w-4" />
                   </Link>
                   <Link
                     href="/sign-in"
-                    className="flex h-11 w-full items-center justify-center rounded-lg border border-zinc-200 bg-white text-[14px] font-medium text-zinc-800"
+                    className="flex h-11 w-full items-center justify-center rounded-xl border border-slate-200 text-[14px] font-medium text-slate-700"
                   >
-                    Sign in to Workspace
+                    Login
                   </Link>
                 </>
               )}

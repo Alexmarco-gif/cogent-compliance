@@ -1,150 +1,273 @@
 /**
- * Canonical marketing scenarios, regulator metrics, license verticals, and comparison data.
- * Strictly grounded in Cogent's implemented compliance engines and Nigerian statutory corpus.
+ * StoryBrand (SB7) Marketing Content & Interactive Product Board Scenarios
+ * Clear, human-spoken copy built to pass the 5-Second Grunt Test for Nigerian financial teams.
  */
 
-export interface HeroScenario {
-  id: "flyer" | "drift" | "appstore";
-  tabLabel: string;
-  channelBadge: string;
-  campaignTitle: string;
-  productMatched: string;
-  submittedTitle: string;
-  submittedCopy: string;
-  flaggedPhrase: string;
-  initialVerdict: "BLOCK" | "CONDITIONAL";
-  riskScore: number;
-  resolvedRiskScore: number;
-  locks: {
-    lock1: { label: string; initial: "FAIL" | "PASS" };
-    lock2: { label: string; initial: "FAIL" | "PASS" };
-    lock3: { label: string; initial: "FAIL" | "PASS" };
-  };
-  aprSummary?: {
-    advertised: string;
-    effective: string;
-    netDisbursed: string;
-    totalRepayable: string;
-  };
-  blindSpot: string;
-  consequence: string;
-  statutes: string[];
-  compliantRewrite: string;
-  rewriteHighlights: string[];
+export type BoardLane = "submitted" | "review" | "cleared";
+
+export interface BoardCampaignCard {
+  id: string;
+  code: string;
+  title: string;
+  lane: BoardLane;
+  channel: "Loan Flyer" | "Landing Page" | "App Listing" | "Social Ad";
+  regulatorTag: string;
+  updatedAt: string;
+  ownerInitials: string;
+  ownerRole: string;
+  statusLabel: string;
+  checksDone: number;
+  checksTotal: number;
+  originalCopy: string;
+  flaggedIssue: string;
+  plainFix: string;
+  cleanRewrite: string;
+  ruleCited: string;
 }
 
-export const HERO_SCENARIOS: HeroScenario[] = [
+export const HERO_BOARD_CARDS: BoardCampaignCard[] = [
   {
-    id: "flyer",
-    tabLabel: "Loan Flyer Audit",
-    channelBadge: "INSTAGRAM FLYER · OCR + APR ENGINE",
-    campaignTitle: "QuickCash Salary Advance Promo",
-    productMatched: "QuickCash Loan (4.5%/mo · 1.5% fee · 30d)",
-    submittedTitle: "Submitted Flyer Copy",
-    submittedCopy:
-      "Get an instant ₦50,000 loan in 3 minutes! 5% monthly interest, 0% hidden charges, guaranteed approval for all Nigerians.",
-    flaggedPhrase: "0% hidden charges, guaranteed approval",
-    initialVerdict: "BLOCK",
-    riskScore: 89,
-    resolvedRiskScore: 4,
-    locks: {
-      lock1: { label: "Lock 1 · Prohibited Terms", initial: "FAIL" },
-      lock2: { label: "Lock 2 · Product Rate Match", initial: "FAIL" },
-      lock3: { label: "Lock 3 · Mandatory Disclosures", initial: "FAIL" },
-    },
-    aprSummary: {
-      advertised: "60.0% implied p.a.",
-      effective: "79.8% Effective APR",
-      netDisbursed: "₦49,250",
-      totalRepayable: "₦52,250",
-    },
-    blindSpot:
-      "Upfront 1.5% processing fee reduces net cash to ₦49,250 while 'guaranteed approval' & '0% hidden charges' breach Lock 1. Missing ARCON ASP ID and CBN license footer.",
-    consequence:
-      "FCCPA §115 deceptive pricing fine (up to ₦100M or 1% turnover) + ARCON ASP pre-vetting sanction (₦1M–₦3M per unvetted ad).",
-    statutes: ["FCCPA §115", "CBN CPF §3.2", "ARCON Code §4.2"],
-    compliantRewrite:
-      "Apply for up to ₦50,000 QuickCash credit, subject to KYC and credit assessment. Monthly rate: 4.5% plus 1.5% one-off fee (Net Disbursed: ₦49,250; Total Repayable over 30 days: ₦52,250; Effective APR: 79.8% p.a.). Licensed by the Central Bank of Nigeria (CBN). [ARCON/ASP/2026/0419] Terms and Conditions apply.",
-    rewriteHighlights: [
-      "subject to KYC and credit assessment",
-      "Effective APR: 79.8% p.a.",
-      "Licensed by the Central Bank of Nigeria (CBN)",
-      "[ARCON/ASP/2026/0419]",
-      "Terms and Conditions apply.",
-    ],
+    id: "card-quickcash",
+    code: "CMP-246",
+    title: "QuickCash Salary Advance Flyer",
+    lane: "submitted",
+    channel: "Loan Flyer",
+    regulatorTag: "FCCPC · ARCON",
+    updatedAt: "Today",
+    ownerInitials: "AO",
+    ownerRole: "Growth Lead",
+    statusLabel: "2 Issues Found",
+    checksDone: 3,
+    checksTotal: 5,
+    originalCopy:
+      "Get an instant ₦50,000 loan in 3 minutes! 5% monthly interest, 0% hidden charges, guaranteed approval.",
+    flaggedIssue:
+      "The promo promises '0% hidden charges' even though the product carries a 1.5% setup fee, and uses 'guaranteed approval' without a credit check caveat.",
+    plainFix:
+      "State the true rate and 1.5% fee clearly, remove the guarantee claim, and add your license and approval footer.",
+    cleanRewrite:
+      "Apply for up to ₦50,000 QuickCash credit, subject to KYC and credit assessment. Monthly rate: 4.5% plus a 1.5% one-off fee (Total repayable over 30 days: ₦52,250). Licensed by the CBN. Terms apply.",
+    ruleCited: "FCCPA §115 · CBN Consumer Protection · ARCON Code",
   },
   {
-    id: "drift",
-    tabLabel: "Live URL Drift",
-    channelBadge: "24H URL SENTINEL · PRICING PAGE DIFF",
-    campaignTitle: "Personal Credit Landing Page",
-    productMatched: "FlexiCredit 90-Day Facility",
-    submittedTitle: "Detected Live Page Mutation",
-    submittedCopy:
-      "Borrow up to ₦2,000,000 in minutes. Representative APR and Key Facts Statement link removed during latest marketing deployment.",
-    flaggedPhrase: "Key Facts Statement link removed",
-    initialVerdict: "BLOCK",
-    riskScore: 82,
-    resolvedRiskScore: 6,
-    locks: {
-      lock1: { label: "Lock 1 · Prohibited Terms", initial: "PASS" },
-      lock2: { label: "Lock 2 · Product Rate Match", initial: "PASS" },
-      lock3: { label: "Lock 3 · Mandatory Disclosures", initial: "FAIL" },
-    },
-    blindSpot:
-      "Live pricing page mutated vs. Approved Revision #4: Key Facts Statement (KFS) disclosure link and 24-hour complaint resolution email were dropped.",
-    consequence:
-      "Breaches CBN Consumer Protection Regulations pre-contract transparency mandate and invalidates FCCPC Reg. 32 baseline parity.",
-    statutes: ["CBN CPR §2.1", "FCCPC DEON Reg. 18"],
-    compliantRewrite:
-      "Borrow up to ₦2,000,000 subject to credit appraisal. View full Key Facts Statement (Effective APR 54.0% p.a., 90–180 day tenor). 24h Complaints: compliance@institution.ng. Licensed by the CBN. Terms and Conditions apply.",
-    rewriteHighlights: [
-      "subject to credit appraisal",
-      "Key Facts Statement",
-      "24h Complaints: compliance@institution.ng",
-      "Licensed by the CBN.",
-      "Terms and Conditions apply.",
-    ],
+    id: "card-playstore",
+    code: "CMP-254",
+    title: "Google Play Credit Store Listing",
+    lane: "submitted",
+    channel: "App Listing",
+    regulatorTag: "Play Policy · NDPA",
+    updatedAt: "Today",
+    ownerInitials: "MK",
+    ownerRole: "Product Marketing",
+    statusLabel: "Action Needed",
+    checksDone: 2,
+    checksTotal: 5,
+    originalCopy:
+      "Repay in 14 to 30 days with fast approval. App reads contacts for instant scoring and reminders.",
+    flaggedIssue:
+      "Google Play blocks personal loan apps under 60 days, and FCCPC/NDPA rules ban scraping customer contact lists.",
+    plainFix:
+      "Update advertised loan tenor to 65–180 days, show one clear Naira example, and remove contact-list permission claims.",
+    cleanRewrite:
+      "Flexible credit lines from 65 to 180 days. Example: ₦100,000 over 90 days costs ₦11,835 in total interest and fees. Zero contact-list access. FCCPC-registered. Terms apply.",
+    ruleCited: "Google Play Loan Policy · FCCPC DEON · NDPA §24",
   },
   {
-    id: "appstore",
-    tabLabel: "App Store Policy",
-    channelBadge: "GOOGLE PLAY + FCCPC DEON AUDIT",
-    campaignTitle: "Mobile Lending Store Listing",
-    productMatched: "NanoLoan Micro-Credit",
-    submittedTitle: "Submitted Play Store Description",
-    submittedCopy:
-      "Repay in 14 to 30 days with fast approval. App requires contact list permission for instant credit scoring and recovery reminders.",
-    flaggedPhrase: "requires contact list permission",
-    initialVerdict: "BLOCK",
-    riskScore: 94,
-    resolvedRiskScore: 5,
-    locks: {
-      lock1: { label: "Lock 1 · Prohibited Terms", initial: "FAIL" },
-      lock2: { label: "Lock 2 · Tenor Policy (<60d)", initial: "FAIL" },
-      lock3: { label: "Lock 3 · NDPA & Representative Ex.", initial: "FAIL" },
-    },
-    blindSpot:
-      "14–30 day tenor violates Google Play Personal Loan Policy (60-day minimum) while contact-list scraping violates FCCPC DEON Regulations and NDPA 2023.",
-    consequence:
-      "Immediate Google Play Store app removal, FCCPC delisting from approved digital lender registry, and NIBSS/payment gateway disconnection.",
-    statutes: ["FCCPC DEON Reg. 2025", "NDPA 2023 §24", "Play Policy"],
-    compliantRewrite:
-      "Flexible credit lines with repayment tenors from 65 to 180 days (Maximum Effective APR: 48.0% p.a.). Representative example: ₦100,000 over 90 days; Total Repayable ₦111,835. Zero contact-list access. Licensed & FCCPC-registered. Terms and Conditions apply.",
-    rewriteHighlights: [
-      "65 to 180 days",
-      "Representative example:",
-      "Zero contact-list access.",
-      "Terms and Conditions apply.",
-    ],
+    id: "card-flexipage",
+    code: "CMP-187",
+    title: "Personal Loan Pricing Webpage",
+    lane: "review",
+    channel: "Landing Page",
+    regulatorTag: "CBN · Live Monitor",
+    updatedAt: "2h ago",
+    ownerInitials: "CE",
+    ownerRole: "Legal Counsel",
+    statusLabel: "Under Legal Review",
+    checksDone: 4,
+    checksTotal: 5,
+    originalCopy:
+      "Borrow up to ₦2,000,000 in minutes. Representative rate table and complaints email removed in latest page update.",
+    flaggedIssue:
+      "Yesterday's website update accidentally hid the Key Facts link and 24-hour complaints email required before sign-up.",
+    plainFix:
+      "Restore the representative rate summary and customer support contact before publishing the page update.",
+    cleanRewrite:
+      "Borrow up to ₦2,000,000 subject to credit assessment. 90–180 day tenors. See Key Facts before applying. Support: help@institution.ng. Licensed by the CBN.",
+    ruleCited: "CBN Pre-Contract Transparency · FCCPC Reg. 32",
+  },
+  {
+    id: "card-deposit",
+    code: "CMP-168",
+    title: "Fixed Deposit Social Campaign",
+    lane: "review",
+    channel: "Social Ad",
+    regulatorTag: "NDIC · CBN MFB",
+    updatedAt: "Yesterday",
+    ownerInitials: "TN",
+    ownerRole: "Brand Lead",
+    statusLabel: "Waiting CCO Sign-Off",
+    checksDone: 4,
+    checksTotal: 5,
+    originalCopy:
+      "Open a fixed deposit account across all 36 states today — NDIC insures 100% of every deposit at 18% guaranteed returns!",
+    flaggedIssue:
+      "NDIC insurance covers deposits up to statutory limits (₦2M for MFBs / ₦5M for banks), not 100% unlimited coverage.",
+    plainFix:
+      "Specify the exact NDIC coverage limit for your license type and frame returns as indicative rates.",
+    cleanRewrite:
+      "Grow your savings with Fixed Deposit, insured by the NDIC up to statutory limits (₦2,000,000 for MFBs / ₦5,000,000 for banks). Indicative rates apply. Licensed by the CBN.",
+    ruleCited: "NDIC Deposit Caps · BOFIA 2020 · ARCON Pre-Vetting",
+  },
+  {
+    id: "card-sme",
+    code: "CMP-134",
+    title: "SME Working Capital Banner",
+    lane: "cleared",
+    channel: "Loan Flyer",
+    regulatorTag: "Signed & Archived",
+    updatedAt: "Approved",
+    ownerInitials: "GO",
+    ownerRole: "Chief Compliance Officer",
+    statusLabel: "Ready to Publish",
+    checksDone: 5,
+    checksTotal: 5,
+    originalCopy:
+      "Scale your business inventory with ₦500k–₦5M working capital over 6–12 months. Indicative rates from 3.5%/mo plus 1% fee. Subject to appraisal. Licensed by the CBN.",
+    flaggedIssue:
+      "All rate figures, fee disclosures, license wording, and T&Cs match your approved company rate card.",
+    plainFix: "No fixes needed — signed by CCO and saved for regulatory inspection.",
+    cleanRewrite:
+      "Scale your business inventory with ₦500k–₦5M working capital over 6–12 months. Indicative rates from 3.5%/mo plus 1% fee. Subject to credit appraisal. Licensed by the CBN. Terms apply.",
+    ruleCited: "All Checks Passed · CCO Approved",
+  },
+  {
+    id: "card-yield",
+    code: "CMP-145",
+    title: "Treasury Cash Account Launch",
+    lane: "cleared",
+    channel: "Landing Page",
+    regulatorTag: "SEC · NDPC",
+    updatedAt: "Approved",
+    ownerInitials: "GO",
+    ownerRole: "Chief Compliance Officer",
+    statusLabel: "Monitored 24/7",
+    checksDone: 5,
+    checksTotal: 5,
+    originalCopy:
+      "Put idle treasury funds to work in SEC-regulated money market notes. Returns fluctuate with market rates; capital is not guaranteed.",
+    flaggedIssue:
+      "Variable yield warnings, opt-in privacy notice, and operator license line are all present and accurate.",
+    plainFix: "Live URL watcher checks this page daily so nothing changes silently.",
+    cleanRewrite:
+      "Put idle treasury funds to work in SEC-regulated money market notes. Variable yields; past returns do not guarantee future results. Regulated by the SEC Nigeria.",
+    ruleCited: "All Checks Passed · Live Page Monitored",
+  },
+];
+
+export interface BoardHotspot {
+  number: number;
+  title: string;
+  description: string;
+  targetCardId?: string;
+}
+
+export const BOARD_HOTSPOTS: BoardHotspot[] = [
+  {
+    number: 1,
+    title: "One calm workspace",
+    description: "Every product line, rate card, and live page monitor sits a click away.",
+  },
+  {
+    number: 2,
+    title: "Filter by channel fast",
+    description: "Jump straight to flyers, app store pages, or website updates without digging.",
+  },
+  {
+    number: 3,
+    title: "Clear status lanes",
+    description: "See every draft move cleanly from Submitted to Under Review to Cleared.",
+  },
+  {
+    number: 4,
+    title: "Instant rule flags",
+    description: "Plain-English tags tell growth and legal teams why a line needs attention.",
+    targetCardId: "card-quickcash",
+  },
+  {
+    number: 5,
+    title: "Checklists & owners",
+    description: "Track who reviewed what, how many checks passed, and who holds sign-off.",
+    targetCardId: "card-deposit",
+  },
+  {
+    number: 6,
+    title: "One-click campaign check",
+    description: "Upload a flyer, paste copy, or drop a URL to get feedback in seconds.",
+    targetCardId: "card-playstore",
+  },
+];
+
+export interface StoryStakeItem {
+  level: string;
+  title: string;
+  detail: string;
+}
+
+export const STORY_STAKES: StoryStakeItem[] = [
+  {
+    level: "THE DAILY TRAP",
+    title: "One missed line can pull an entire campaign",
+    detail:
+      "Unvetted ads, hidden fee phrasing, or missing license wording across CBN, FCCPC, ARCON, NDPC, and Google Play expose teams to sudden takedowns and seven-figure fines.",
+  },
+  {
+    level: "THE TEAM FRICTION",
+    title: "Marketing stalls while Compliance worries",
+    detail:
+      "Growth teams wait days in email threads for legal feedback, while Compliance Officers lie awake wondering what slipped live without review.",
+  },
+  {
+    level: "WHAT WE BELIEVE",
+    title: "Great financial brands shouldn't fear launching",
+    detail:
+      "You deserve to move fast on campaigns while knowing every rate, disclosure, and live webpage has already been double-checked before customers see it.",
+  },
+];
+
+export interface PlanStep {
+  step: string;
+  title: string;
+  description: string;
+  outcome: string;
+}
+
+export const PLAN_STEPS: PlanStep[] = [
+  {
+    step: "01",
+    title: "Save your real rates & rules once",
+    description:
+      "Enter your approved loan rates, fees, deposit caps, and brand guidelines in one shared place—so ads never contradict what you actually charge.",
+    outcome: "Takes 5 minutes during setup",
+  },
+  {
+    step: "02",
+    title: "Drop in a flyer, copy, or link",
+    description:
+      "Before you publish, Cogent checks every word and number against Nigerian regulators and writes clear, compliant fixes your marketing team can use right away.",
+    outcome: "Feedback in seconds, not days",
+  },
+  {
+    step: "03",
+    title: "Sign off and launch with proof",
+    description:
+      "Legal or Compliance approves in one click. Every version, timestamp, and approved text is saved cleanly—and live pages are watched automatically after launch.",
+    outcome: "Audit-ready for every inspection",
   },
 ];
 
 export interface RegulatorMetric {
   acronym: "CBN" | "FCCPC" | "ARCON" | "NDPC" | "SEC";
   name: string;
-  sourceCount: number;
-  domain: string;
   focus: string;
 }
 
@@ -152,37 +275,27 @@ export const REGULATOR_METRICS: RegulatorMetric[] = [
   {
     acronym: "CBN",
     name: "Central Bank of Nigeria",
-    sourceCount: 94,
-    domain: "cbn.gov.ng",
-    focus: "Consumer Protection Framework, Key Facts Statements, MFB/PSB/MMO & Digital Credit rules",
+    focus: "Rate transparency, license boundaries, MFB & PSB advertising standards",
   },
   {
     acronym: "FCCPC",
     name: "Federal Competition & Consumer Protection Commission",
-    sourceCount: 17,
-    domain: "fccpc.gov.ng",
-    focus: "DEON Digital Lending Regs, FCCPA §115 drip-pricing prohibitions & 2-year Reg. 32 retention",
-  },
-  {
-    acronym: "SEC",
-    name: "Securities & Exchange Commission",
-    sourceCount: 15,
-    domain: "sec.gov.ng",
-    focus: "ISA 2025 capital markets, VASP/digital assets, robo-advisory & yield claim restrictions",
+    focus: "Honest pricing rules, digital lending safeguards & customer disclosures",
   },
   {
     acronym: "ARCON",
     name: "Advertising Regulatory Council of Nigeria",
-    sourceCount: 11,
-    domain: "arcon.gov.ng",
-    focus: "ASP pre-vetting clearances, Nigerian Code of Advertising Practice & influencer directives",
+    focus: "Pre-publication ad vetting rules, clear caveats & promotional standards",
   },
   {
     acronym: "NDPC",
     name: "Nigeria Data Protection Commission",
-    sourceCount: 4,
-    domain: "ndpc.gov.ng",
-    focus: "NDPA 2023 & GAID direct marketing opt-in consent, privacy notices & anti-scraping rules",
+    focus: "Direct marketing consent, opt-out wording & app permission limits",
+  },
+  {
+    acronym: "SEC",
+    name: "Securities & Exchange Commission",
+    focus: "Investment risk disclosures, yield wording & capital market guidelines",
   },
 ];
 
@@ -198,7 +311,7 @@ export interface LicenseVertical {
     label: string;
     riskFlag: string;
     statute: string;
-    resolution: string;
+    cleanFix: string;
   };
 }
 
@@ -206,260 +319,205 @@ export const LICENSE_VERTICALS: LicenseVertical[] = [
   {
     id: "lenders",
     label: "Digital Lenders",
-    licenseTiers: "FCCPC Digital Lenders · Consumer Credit Platforms",
-    regulators: ["FCCPC", "CBN", "ARCON", "NDPC"],
-    headline: "Eliminate drip-pricing traps and Play Store delistings before launch.",
+    licenseTiers: "FCCPC Registered Lenders & Credit Apps",
+    regulators: ["FCCPC", "CBN", "NDPC", "ARCON"],
+    headline: "Stop losing apps to Play Store rejections and lending delistings",
     description:
-      "Cogent cross-checks every flyer, SMS blast, and Google Play listing against your exact interest rate, upfront fees, tenor floor, and recovery disclosures.",
+      "Check loan flyers, Instagram promos, and app store descriptions for true repayment costs, minimum 60-day tenors, and respectful collection wording before anything goes live.",
     blindSpotsCaught: [
-      "Flags loans under 60 days that trigger Google Play Personal Loan removal",
-      "Computes true net-disbursed APR & compounded IRR when upfront fees apply",
-      "Blocks contact-list scraping, shaming recovery copy, and '0% hidden fee' claims",
+      "Spots short 14–30 day loan ads before Google Play pulls your app listing",
+      "Calculates real total cost whenever setup or management fees reduce cash received",
+      "Flags '0% hidden charges' or contact-list permission phrasing automatically",
     ],
     sampleCase: {
-      label: "Drip-Pricing Detection",
-      riskFlag: "5% advertised monthly rate masks 182.4% effective APR with ₦2,500 upfront fee on 15-day loan.",
-      statute: "FCCPA §115 · FCCPC DEON Reg. 18",
-      resolution: "Auto-generates CBN Key Facts Statement & 65-day compliant channel copy.",
+      label: "Promo Banner Draft",
+      riskFlag: "Says '0% hidden fees' while product charges 1.5% upfront fee",
+      statute: "FCCPC Pricing Rules · Google Play Policy",
+      cleanFix: "Shows exact fee, real monthly cost, and 65-day+ repayment window clearly.",
     },
   },
   {
     id: "banking",
-    label: "MFBs & Commercial Banks",
-    licenseTiers: "Tier-1/2 Commercial Banks · National, State & Unit MFBs",
-    regulators: ["CBN", "ARCON", "FCCPC", "NDPC"],
-    headline: "Unify high-volume branch, influencer, and product marketing clearance.",
+    label: "MFBs & Banks",
+    licenseTiers: "Commercial Banks · National, State & Unit MFBs",
+    regulators: ["CBN", "ARCON", "FCCPC"],
+    headline: "Clear branch flyers and national campaigns twice as fast",
     description:
-      "Enforce dual-control separation of duties across Marketing, Compliance Analysts, Legal Counsel, and your CCO—producing 2-year and 7-year BOFIA-aligned audit dossiers.",
+      "Keep marketing teams inside your exact license perimeter—checking NDIC coverage limits, readable fine print, and clear legal sign-off on every campaign.",
     blindSpotsCaught: [
-      "Enforces NDIC deposit insurance qualifiers (₦5M DMB / ₦2M MFB caps) on savings ads",
-      "Checks flyer disclaimer-to-headline font height ratio (<12% buried fine print)",
-      "Requires explicit ARCON ASP pre-vetting certificate IDs before sign-off",
+      "Verifies correct NDIC insurance wording (₦2M for MFBs vs. ₦5M for banks)",
+      "Prevents State or Unit MFB ads from promising nationwide coverage",
+      "Catches tiny unreadable fine print and missing ad approval IDs on flyers",
     ],
     sampleCase: {
-      label: "Visual Forensics & NDIC Check",
-      riskFlag: "Deposit flyer omits 'NDIC Insured up to ₦2,000,000' and buries T&Cs at 6% headline ratio.",
-      statute: "CBN CPF §3.2.3 · ARCON Code §4.2",
-      resolution: "Flags exact bounding-box coordinates and locks approval until revised.",
+      label: "Fixed Deposit Social Ad",
+      riskFlag: "Claims '100% NDIC protection' without mentioning statutory limits",
+      statute: "NDIC Coverage Rules · BOFIA · ARCON",
+      cleanFix: "States statutory deposit limit and indicative rate note cleanly.",
     },
   },
   {
     id: "payments",
-    label: "PSBs & Mobile Money",
-    licenseTiers: "Payment Service Banks · MMOs · PSSPs & Switching Gateways",
-    regulators: ["CBN", "NDPC", "ARCON", "FCCPC"],
-    headline: "Enforce strict CBN license-scope boundaries across merchant & consumer ads.",
+    label: "PSBs & Payments",
+    licenseTiers: "Payment Service Banks · MMOs · PSSPs",
+    regulators: ["CBN", "NDPC", "FCCPC"],
+    headline: "Promote partner products without crossing license lines",
     description:
-      "Prevent cross-license marketing violations automatically. Cogent verifies that promoted credit, FX, or wallet yields stay strictly within your CBN license permissions.",
+      "Ensure wallet, transfer, and co-branded credit ads clearly name licensed underwriting partners and watch live pricing pages every day for unintended edits.",
     blindSpotsCaught: [
-      "Blocks PSBs and MMOs from advertising unbacked direct credit under BOFIA §2",
-      "Flags pre-ticked NDPA GAID marketing consent boxes on onboarding landing pages",
-      "Monitors live fee & T&C pages every 6–24 hours for unauthorized web-team drift",
+      "Reminds teams to name the CBN-licensed bank partner on credit promos",
+      "Protects payment platforms from deposit-taking wording outside their license",
+      "Alerts compliance automatically if a live webpage changes after sign-off",
     ],
     sampleCase: {
-      label: "License-Scope Boundary Lock",
-      riskFlag: "PSB campaign copy advertises 'Direct Instant Credit Facility' outside CBN PSB permissible activities.",
-      statute: "BOFIA 2020 §2 · CBN PSB Guidelines",
-      resolution: "Redirects copy to permissible partner-bank co-branded credit disclosure.",
+      label: "In-App Credit Banner",
+      riskFlag: "Advertises direct loans from wallet without naming underwriting bank",
+      statute: "CBN Payment & Lending Boundaries",
+      cleanFix: "Credits the licensed bank partner clearly in one plain sentence.",
     },
   },
   {
     id: "wealthtech",
-    label: "WealthTech & VASPs",
-    licenseTiers: "SEC Capital Market Operators · Robo-Advisors · Digital Asset Platforms",
-    regulators: ["SEC", "NDPC", "ARCON", "CBN"],
-    headline: "Stop prohibited yield guarantees and unapproved asset promotions.",
+    label: "WealthTech & SEC",
+    licenseTiers: "SEC Capital Market Operators · Investment Apps",
+    regulators: ["SEC", "ARCON", "NDPC"],
+    headline: "Market yield products responsibly without triggering SEC warnings",
     description:
-      "Screen investment returns, fixed-income ads, and digital asset promotions against SEC ISA rules and historical past-performance disclosure mandates.",
+      "Catch prohibited 'guaranteed return' language early across emails, influencer scripts, and landing pages while keeping risk notes visible and clear.",
     blindSpotsCaught: [
-      "Immediately blocks '100% risk-free', 'guaranteed returns', and 'zero loss' phrasing",
-      "Requires clear capital-at-risk and past-performance non-guarantee disclaimers",
-      "Cross-references breaking SEC & CBN VASP circulars via .gov.ng Ripple Alerts",
+      "Flags '100% risk-free' and 'guaranteed ROI' wording instantly",
+      "Ensures variable-return ads carry clear capital-at-risk reminders",
+      "Checks creator scripts and newsletters before they reach customers",
     ],
     sampleCase: {
-      label: "Prohibited Yield Claim",
-      riskFlag: "Email campaign promises 'Guaranteed 24% annual return with zero capital risk'.",
-      statute: "SEC ISA 2025 · Rule 102",
-      resolution: "Rewrites to projected historical yield with mandatory capital-risk disclosure.",
+      label: "Dollar Yield Newsletter",
+      riskFlag: "Promises 'guaranteed 24% annual return — zero capital risk'",
+      statute: "SEC Marketing Rules · ARCON",
+      cleanFix: "Frames yield as historical/indicative with standard investment risk wording.",
     },
   },
 ];
 
-export interface WalkthroughStep {
+export interface ComplianceFaqItem {
   id: string;
-  stepNumber: string;
-  title: string;
-  subtitle: string;
-  detail: string;
-  previewBadge: string;
-  previewTitle: string;
-  metrics: Array<{ label: string; value: string; tone?: "neutral" | "critical" | "verified" }>;
-  snippetLabel: string;
-  snippetBody: string;
+  category: "Workflow" | "Accuracy" | "Security" | "Billing";
+  question: string;
+  answer: string;
 }
 
-export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
+export const COMPLIANCE_FAQS: ComplianceFaqItem[] = [
   {
-    id: "hydrate",
-    stepNumber: "01",
-    title: "Zero-click product truth hydration",
-    subtitle: "Matches ad claims to your internal rate card automatically",
-    detail:
-      "Drop a flyer, paste social copy, or submit a URL. Cogent detects the promoted product, loads your approved interest rates and fees, and runs deterministic Lock 1–3 checks before reasoning begins.",
-    previewBadge: "LOCK 2 · RATE CARD MATCH",
-    previewTitle: "QuickCash Loan Schedule vs. Submitted Flyer",
-    metrics: [
-      { label: "Matched Product", value: "QuickCash Facility", tone: "neutral" },
-      { label: "Flyer Claims", value: "0% hidden fees", tone: "critical" },
-      { label: "Approved Schedule", value: "4.5%/mo + 1.5% upfront fee", tone: "verified" },
-    ],
-    snippetLabel: "Deterministic Discrepancy Output",
-    snippetBody:
-      "Effective net-disbursed APR computed at 79.8% p.a. (₦49,250 net disbursed on ₦50,000 gross). Omitting the 1.5% processing fee breaches FCCPA §115.",
+    id: "what-cogent-checks",
+    category: "Workflow",
+    question: "What types of marketing can we check with Cogent?",
+    answer:
+      "You can check promotional flyers (PNG, JPG, PDF), social captions, ad headlines, Google Play and App Store descriptions, email newsletters, and live webpage links before or after they go live.",
   },
   {
-    id: "forensics",
-    stepNumber: "02",
-    title: "Visual flyer OCR & Play Store forensics",
-    subtitle: "Inspects fine-print pixel ratios and ARCON ASP IDs",
-    detail:
-      "Gemini Vision extracts every text bounding box from PNG, JPEG, WEBP, and PDF flyers. Cogent measures headline-to-disclaimer height ratios, verifies ARCON ASP certificate numbers, and audits Google Play loan policies.",
-    previewBadge: "VISUAL FORENSICS · BOUNDING BOX",
-    previewTitle: "Flyer Geometry & Pre-Vetting Audit",
-    metrics: [
-      { label: "Disclaimer Ratio", value: "0.07 (Below 0.12 min)", tone: "critical" },
-      { label: "ARCON ASP ID", value: "Missing on asset", tone: "critical" },
-      { label: "NDIC Qualifier", value: "Present (MFB ₦2M)", tone: "verified" },
-    ],
-    snippetLabel: "Detected Fine-Print Segment [box: 880, 120, 965, 880]",
-    snippetBody:
-      "Footer disclaimer renders at 7% of primary headline height—flagged as illegible fine print under ARCON Code & CBN CPF clarity standards.",
+    id: "how-rewrites-work",
+    category: "Workflow",
+    question: "Does Cogent rewrite flagged ads so marketing can fix them fast?",
+    answer:
+      "Yes. Instead of only flagging problems, Cogent drafts clear, ready-to-use compliant alternatives that keep your marketing hook sharp while meeting regulatory requirements.",
   },
   {
-    id: "remediate",
-    stepNumber: "03",
-    title: "Self-corrected rewrites & CBN Key Facts Statement",
-    subtitle: "Layer-6 validation prevents AI from breaking your rates",
-    detail:
-      "Proposed rewrites are automatically re-run through Deterministic Locks 1–3 before you ever see them. Generate compliant 160-character SMS copy, social copy, ARCON ASP memos, and Annex 1 KFS tables in one click.",
-    previewBadge: "LAYER 6 · LOCK-VERIFIED REWRITE",
-    previewTitle: "Validated Revision #2 + CBN KFS Table",
-    metrics: [
-      { label: "Lock 1–3 Re-Check", value: "3 / 3 PASSED", tone: "verified" },
-      { label: "Net Disbursed", value: "₦49,250.00", tone: "neutral" },
-      { label: "Total Cost of Credit", value: "₦3,000.00", tone: "neutral" },
-    ],
-    snippetLabel: "Ready-to-Publish Compliant Revision",
-    snippetBody:
-      "Apply for up to ₦50,000 QuickCash credit, subject to KYC & credit assessment. Effective APR: 79.8% p.a. Licensed by the CBN. [ARCON/ASP/2026/0419] Terms and Conditions apply.",
+    id: "accuracy-guarantees",
+    category: "Accuracy",
+    question: "How does Cogent avoid made-up legal advice?",
+    answer:
+      "Every check ties back to verified Nigerian regulations (CBN, FCCPC, ARCON, NDPC, and SEC) alongside the real product rates and fees you save in your workspace. We never guess or invent interest math.",
   },
   {
-    id: "seal",
-    stepNumber: "04",
-    title: "Dual-control CCO sign-off & 2-year SHA-256 dossier",
-    subtitle: "Immutable evidence chain + continuous URL drift sentinel",
-    detail:
-      "Marketing cannot self-approve. Legal Counsel or the Chief Compliance Officer executes formal sign-off tied to an immutable revision ID, exporting a tamper-evident PDF dossier for FCCPC Reg. 32 and ARCON ASP filing.",
-    previewBadge: "FCCPC REG. 32 · SHA-256 SEALED",
-    previewTitle: "Statutory Compliance Dossier #COG-2026-084",
-    metrics: [
-      { label: "Approver Role", value: "Chief Compliance Officer", tone: "verified" },
-      { label: "Audit Hash", value: "8f4c...e91a (Chained)", tone: "neutral" },
-      { label: "URL Sentinel", value: "Active (6h monitor)", tone: "verified" },
-    ],
-    snippetLabel: "Cryptographic Preservation Record",
-    snippetBody:
-      "Dossier archived in private object storage with verbatim statutory citations, OCR snapshots, and hash-chained approval event for 2-year / 7-year regulatory inspection.",
+    id: "who-approves",
+    category: "Security",
+    question: "Can Marketing approve their own campaigns?",
+    answer:
+      "No. Cogent separates roles cleanly: Marketing and Growth teams submit drafts and review fixes, while final publication sign-off is locked strictly to your Legal Counsel or Chief Compliance Officer.",
+  },
+  {
+    id: "live-url-monitoring",
+    category: "Workflow",
+    question: "What happens if someone edits our pricing page after approval?",
+    answer:
+      "Live page monitors compare your published webpages against the approved version automatically and alert your team right away if an important disclaimer, fee, or link goes missing.",
+  },
+  {
+    id: "pricing-billing-inside",
+    category: "Billing",
+    question: "How does onboarding and workspace billing work in Nigeria?",
+    answer:
+      "Every organization starts with a 7-day evaluation account—no card needed. When your team is ready for unlimited reviews, team seats, and live page monitoring, you can upgrade right inside Workspace Settings with smooth Naira settlement via Paystack.",
   },
 ];
 
-export interface ComparisonRow {
-  criterion: string;
-  manualCounsel: { status: "warn" | "no" | "yes"; text: string };
-  genericAi: { status: "warn" | "no" | "yes"; text: string };
-  cogent: { status: "yes"; text: string };
+export interface CoFounderProfile {
+  id: string;
+  initials: string;
+  shortLabel: string;
+  name: string;
+  roleBadge: string;
+  discipline: string;
+  bio: string;
+  quote: string;
+  imagePath: string;
+  mandates: Array<{
+    title: string;
+    description: string;
+    icon: "shield" | "compass" | "sparkles" | "lock";
+  }>;
 }
 
-export const COMPARISON_ROWS: ComparisonRow[] = [
+export const CO_FOUNDERS: CoFounderProfile[] = [
   {
-    criterion: "Verified Nigerian Statutory Citations (CBN, FCCPC, ARCON, NDPC, SEC)",
-    manualCounsel: { status: "yes", text: "Manual lookup across circulars" },
-    genericAi: { status: "no", text: "Hallucinates sections & outdated rules" },
-    cogent: { status: "yes", text: "141 official PDFs + verbatim SHA-256 clauses" },
+    id: "odion-alex",
+    initials: "OA",
+    shortLabel: "Odion O. Alex · CEO",
+    name: "Odion O. Alex",
+    roleBadge: "CO-FOUNDER & CEO",
+    discipline: "Product & Execution · Stem Systems",
+    bio: "Odion O. Alex leads product architecture and execution at Stem Systems—focused on turning complex Nigerian financial regulations into fast, everyday tools that both growth teams and Chief Compliance Officers genuinely trust.",
+    quote:
+      "Financial teams shouldn't have to choose between moving fast on campaigns and staying safe with regulators. Cogent exists to give them both.",
+    imagePath: "/images/odion-alex.jpg",
+    mandates: [
+      {
+        title: "Calm Usability First",
+        description:
+          "Software only protects an institution when teams actually use it before every launch—never as an afterthought.",
+        icon: "sparkles",
+      },
+      {
+        title: "Built for Real Proof",
+        description:
+          "Every check, rate verification, and sign-off leaves behind clear, inspectable evidence leaders can stand behind.",
+        icon: "shield",
+      },
+    ],
   },
   {
-    criterion: "Internal Product Rate Card & Drip-Pricing APR Math",
-    manualCounsel: { status: "warn", text: "Manual spreadsheet checks" },
-    genericAi: { status: "no", text: "No product truth; estimates math poorly" },
-    cogent: { status: "yes", text: "Deterministic IRR/APR & Lock 2 rate matching" },
-  },
-  {
-    criterion: "Flyer OCR Fine-Print & ARCON ASP Pre-Vetting Checks",
-    manualCounsel: { status: "warn", text: "Visual inspection by email" },
-    genericAi: { status: "no", text: "No bounding-box ratio or ASP checks" },
-    cogent: { status: "yes", text: "Pixel height ratio + ARCON ASP & NDIC audit" },
-  },
-  {
-    criterion: "Turnaround Time per Campaign Review",
-    manualCounsel: { status: "no", text: "5–10 business days" },
-    genericAi: { status: "yes", text: "Seconds (unverified text)" },
-    cogent: { status: "yes", text: "Under 30 seconds (Lock-verified)" },
-  },
-  {
-    criterion: "Dual-Control RBAC & Anti-Self-Approval Sign-Off",
-    manualCounsel: { status: "warn", text: "Scattered email/PDF threads" },
-    genericAi: { status: "no", text: "Single-user chat window" },
-    cogent: { status: "yes", text: "5-role RBAC + immutable campaign revisions" },
-  },
-  {
-    criterion: "FCCPC Reg. 32 (2-Yr) & BOFIA (7-Yr) PDF Audit Dossiers",
-    manualCounsel: { status: "warn", text: "Compiled manually for inspections" },
-    genericAi: { status: "no", text: "None" },
-    cogent: { status: "yes", text: "One-click SHA-256 hash-chained PDF bundle" },
-  },
-  {
-    criterion: "Post-Publication Live URL & App Store Drift Monitoring",
-    manualCounsel: { status: "no", text: "Not monitored after approval" },
-    genericAi: { status: "no", text: "None" },
-    cogent: { status: "yes", text: "Continuous Sentinel + instant CCO incident alerts" },
-  },
-];
-
-export const COMPLIANCE_FAQS = [
-  {
-    category: "Statutory Grounding",
-    question: "How does Cogent prevent hallucinated Nigerian legal citations?",
-    answer:
-      "Every statutory reference is retrieved via Hybrid RRF search from Cogent's verified Golden 50 Nigerian Statutory Vault (141 source PDFs across CBN, FCCPC, ARCON, NDPC, and SEC) and enforced by a 7-layer backend guardrail pipeline. Superseded instruments are filtered out unless explicitly requested, and every citation opens the exact verbatim clause text and SHA-256 document hash.",
-  },
-  {
-    category: "Statutory Grounding",
-    question: "Does Cogent grant autonomous legal or ARCON regulatory approval?",
-    answer:
-      "No. Cogent is an institutional decision-support, deterministic verification, and workflow-enforcement operating system. It flags breaches, computes true APR, validates rewrites, and compiles ARCON ASP / FCCPC audit dossiers, while formal internal clearance requires human sign-off by your Legal Counsel or Chief Compliance Officer.",
-  },
-  {
-    category: "Deterministic Engines",
-    question: "How does Cogent catch 'drip pricing' and Google Play Store loan policy violations?",
-    answer:
-      "Cogent's deterministic TypeScript APR/IRR engine computes net cash disbursed after upfront processing, management, or insurance deductions and calculates true annualized APR and compounded IRR—never delegating financial math to an LLM. Our App Store Auditor also flags loan tenors under 60 days, missing representative examples, and prohibited contact-list scraping cues.",
-  },
-  {
-    category: "Governance & Security",
-    question: "Can Marketing approve their own campaigns in Cogent?",
-    answer:
-      "No. Cogent enforces a strict 5-role, 22-permission RBAC matrix backed by PostgreSQL Row Level Security (RLS). Marketing/Growth users can create campaigns, accept validated rewrites, and submit revisions for review, but only authorized Legal Counsel or Chief Compliance Officer roles hold the `approval.decide` permission.",
-  },
-  {
-    category: "Governance & Security",
-    question: "Is our internal playbook or product rate card shared across tenants or used to train models?",
-    answer:
-      "Never. Every playbook, product schedule, campaign asset, and audit log is strictly isolated by `tenant_id` with composite foreign keys and RLS policies at the PostgreSQL layer, paired with private per-tenant Cloudflare R2 storage keys.",
-  },
-  {
-    category: "Pricing & Paystack Billing",
-    question: "Why are plans displayed in USD while settled via Paystack in Naira?",
-    answer:
-      "Plans are benchmarked in USD ($149 / $449 / $1,499 monthly, with 20% off annual billing) and converted dynamically at checkout using the live platform FX rate (e.g. ₦1,550/$1) so Nigerian institutions can pay seamlessly via local Naira cards, bank transfers, or Paystack multi-currency cards.",
+    id: "gift-nduka",
+    initials: "GN",
+    shortLabel: "Gift Chinedu Nduka · CSO",
+    name: "Gift Chinedu Nduka",
+    roleBadge: "CO-FOUNDER & CSO",
+    discipline: "Strategy & Positioning · Stem Systems",
+    bio: "Gift Chinedu Nduka is the Co-founder and Chief Strategy Officer (CSO) at Stem Systems, a decision intelligence platform built to help fintech companies navigate market shifts with clarity and confidence. Sitting at the intersection of market intelligence, brand positioning, and execution, she translates complex market signals into actionable growth strategies. Drawing on her background as a brand strategist and designer, Gift ensures that Stem Systems builds lasting market credibility, challenges costly assumptions early, and scales through evidence-backed decision.",
+    quote:
+      "When your message is clear and your product is credible, trust stops being a bottleneck—it becomes your fastest growth engine.",
+    imagePath: "/images/gift-nduka.jpg",
+    mandates: [
+      {
+        title: "Market Intelligence & Clarity",
+        description:
+          "Translates shifting Nigerian fintech and regulatory market signals into decisive product and go-to-market positioning.",
+        icon: "compass",
+      },
+      {
+        title: "Evidence-Backed Credibility",
+        description:
+          "Challenges costly assumptions early so financial brands scale on durable trust rather than guesswork.",
+        icon: "lock",
+      },
+    ],
   },
 ];

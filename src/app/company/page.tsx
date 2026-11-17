@@ -7,18 +7,19 @@ import { FounderSpotlight } from "@/components/marketing/FounderSpotlight";
 import { SectionHeader } from "@/components/marketing/SectionHeader";
 import { ExecutiveCtaBanner } from "@/components/marketing/ExecutiveCtaBanner";
 import { MarketingFooter } from "@/components/marketing/MarketingFooter";
+import { RevealOnScroll } from "@/components/marketing/RevealOnScroll";
 
 export const metadata: Metadata = {
-  title: "Company & Leadership",
+  title: "Company & Co-Founders | Stem Systems",
   description:
-    "Meet the leadership and trust architecture behind Stem-Cogent and Cogent Marketing Shield—built for Nigerian regulated financial institutions.",
+    "Meet Odion O. Alex (CEO) and Gift Chinedu Nduka (CSO), Co-Founders of Stem Systems—building decision intelligence and regulatory confidence for Nigerian financial institutions.",
   alternates: {
     canonical: "/company",
   },
   openGraph: {
-    title: "Company & Leadership | Cogent",
+    title: "Company & Co-Founders | Stem Systems & Cogent",
     description:
-      "Institutional mission, leadership spotlight, and multi-tenant security architecture of Cogent Marketing Shield.",
+      "Meet the Co-Founders of Stem Systems and explore how we protect customer rates, data privacy, and governance.",
     url: "/company",
   },
 };
@@ -26,102 +27,101 @@ export const metadata: Metadata = {
 const TRUST_PILLARS = [
   {
     icon: Lock,
-    title: "PostgreSQL Row-Level Security",
+    title: "Private per Organization",
     description:
-      "Every rate schedule, internal compliance playbook, campaign revision, and evidence dossier is strictly scoped by tenant_id with composite foreign keys and RLS isolation.",
+      "Your rate schedules, draft ads, and compliance dossiers live inside an isolated workspace restricted strictly to your team.",
   },
   {
     icon: Users,
-    title: "Dual-Control 5-Role RBAC",
+    title: "Role Separation Built In",
     description:
-      "Separates Marketing/Growth creation from Legal Counsel and Chief Compliance Officer decision authority (`approval.decide`), eliminating self-approval risk.",
+      "Growth and Marketing teams draft quickly while Legal Counsel and your Chief Compliance Officer hold final publication approval.",
   },
   {
     icon: Database,
-    title: "Private Object Storage & SHA-256 Chain",
+    title: "Permanent Audit Trail",
     description:
-      "Uploaded campaign creatives and generated PDF compliance dossiers are isolated per tenant in private object storage with tamper-evident SHA-256 audit hashing.",
+      "Every approved campaign stores its exact wording, time, approver name, and verification record so inspections are effortless.",
   },
   {
     icon: ShieldCheck,
-    title: "Zero Cross-Tenant Model Training",
+    title: "Your Data Stays Yours",
     description:
-      "Your internal pricing schedules, fees, and draft campaigns are never pooled across financial institutions or used to train external foundation models.",
+      "Your internal pricing schedules and unreleased promotional campaigns are never pooled with other institutions or sold.",
   },
 ];
 
 export default function CompanyPage() {
   return (
-    <div className="min-h-screen bg-white text-zinc-950 flex flex-col">
-      <MarketingHeader />
+    <div className="min-h-screen bg-white text-slate-950 flex flex-col">
+      <div className="relative overflow-hidden cogent-hero-wash border-b border-slate-200/75">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 cogent-arch-grid"
+        />
+        <MarketingHeader />
 
-      <main className="flex-1">
-        {/* Leadership Spotlight Hero (ref/w4.png layout discipline) */}
-        <section className="marketing-cobalt-wash border-b border-zinc-200 pt-14 pb-20 sm:pt-20 lg:pb-24">
-          <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
+        {/* Leadership Spotlight Hero (ref/w4.png layout with Odion O. Alex & Gift Chinedu Nduka) */}
+        <section className="relative z-10 pt-10 pb-20 sm:pt-14 lg:pb-24">
+          <div className="mx-auto max-w-[1160px] px-5 sm:px-8">
             <div className="mx-auto max-w-2xl text-center mb-12">
-              <p className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-zinc-500">
-                Leadership &amp; Institutional Mission
-              </p>
-              <h1 className="mt-3 text-[36px] sm:text-[50px] font-semibold leading-[1.08] tracking-[-0.03em] text-zinc-950">
-                Built for Nigerian{" "}
-                <span className="font-serif italic font-normal text-zinc-800">
-                  regulatory authority.
-                </span>
+              <span className="inline-flex items-center rounded-full bg-[#1D63ED] px-3.5 py-1 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-white">
+                STEM SYSTEMS LEADERSHIP
+              </span>
+              <h1 className="mt-4 text-[36px] sm:text-[50px] font-semibold leading-[1.06] tracking-[-0.03em] text-slate-950">
+                Built to give Nigerian teams{" "}
+                <span className="text-[#1D63ED]">clarity before launch.</span>
               </h1>
-              <p className="mt-4 text-[15.5px] sm:text-[17px] leading-[1.6] text-zinc-600">
-                Stem-Cogent builds supervisory compliance infrastructure so high-growth financial teams and Chief Compliance Officers ship campaigns with deterministic proof.
+              <p className="mt-4 text-[16px] sm:text-[17px] leading-[1.6] text-slate-600">
+                Stem Systems builds Cogent so ambitious fintechs, lenders, and banks navigate shifting rules with confidence rather than guesswork.
               </p>
             </div>
 
             <FounderSpotlight />
           </div>
         </section>
+      </div>
 
-        {/* Enterprise Trust & Security Governance */}
+      <main className="flex-1">
+        {/* Trust & Security Pillars */}
         <section className="bg-white py-20 lg:py-24">
-          <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-              <SectionHeader
-                eyebrow="Trust & Tenancy Governance"
-                title={
-                  <>
-                    Engineered for bank, MFB, and{" "}
-                    <span className="font-serif italic font-normal text-zinc-700">
-                      CCO scrutiny
-                    </span>
-                  </>
-                }
-                description="Institutional buyers evaluate security and auditability first. Cogent enforces isolation at the database, storage, and permission layers."
-              />
+          <div className="mx-auto max-w-[1160px] px-5 sm:px-8">
+            <RevealOnScroll>
+              <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+                <SectionHeader
+                  badge="SECURITY & GOVERNANCE"
+                  titleLeading="Engineered for bank and"
+                  titleAccent="compliance team scrutiny"
+                  description="Institutions trust us with unreleased launches and private rate cards—so strict data boundaries sit at the core of our product."
+                />
 
-              <Link
-                href="/platform#governance"
-                className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-zinc-950 hover:text-[#2A4BFF] transition-colors shrink-0"
-              >
-                <span>Inspect 7-Layer Guardrails</span>
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </div>
+                <Link
+                  href="/platform#signoff"
+                  className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-[#1D63ED] hover:underline shrink-0"
+                >
+                  <span>See how team approvals work</span>
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
+            </RevealOnScroll>
 
             <div className="mt-12 grid grid-cols-1 gap-5 md:grid-cols-2">
-              {TRUST_PILLARS.map((pillar) => {
+              {TRUST_PILLARS.map((pillar, idx) => {
                 const Icon = pillar.icon;
                 return (
-                  <div
-                    key={pillar.title}
-                    className="rounded-2xl border border-zinc-200 bg-zinc-50/60 p-6 sm:p-7"
-                  >
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-zinc-200 bg-white text-zinc-800">
-                      <Icon className="h-4 w-4" strokeWidth={1.7} />
+                  <RevealOnScroll key={pillar.title} delayMs={idx * 80}>
+                    <div className="h-full rounded-2xl cogent-glass-card p-6 sm:p-7 hover:border-blue-200 transition-colors">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-[#1D63ED]">
+                        <Icon className="h-5 w-5" strokeWidth={1.8} />
+                      </div>
+                      <h2 className="mt-4 text-[18px] font-semibold text-slate-950">
+                        {pillar.title}
+                      </h2>
+                      <p className="mt-2 text-[14px] leading-relaxed text-slate-600">
+                        {pillar.description}
+                      </p>
                     </div>
-                    <h2 className="mt-4 text-[18px] font-semibold text-zinc-950">
-                      {pillar.title}
-                    </h2>
-                    <p className="mt-2 text-[14px] leading-relaxed text-zinc-600">
-                      {pillar.description}
-                    </p>
-                  </div>
+                  </RevealOnScroll>
                 );
               })}
             </div>

@@ -12,7 +12,7 @@ export interface CogentLogoProps {
 
 /**
  * Bespoke Cogent geometric brand mark.
- * Interlocking precision architectural corners forming a verified ledger square.
+ * Interlocking precision architectural corners forming a verified shield frame.
  */
 export function CogentMark({
   className = "h-4 w-4",
@@ -50,7 +50,7 @@ export function CogentMark({
 }
 
 export function CogentLogo({
-  variant = "dark",
+  variant = "blue",
   size = "md",
   showMark = true,
   showWordmark = true,
@@ -63,17 +63,17 @@ export function CogentLogo({
       ? "h-10 w-10 rounded-xl"
       : size === "sm"
         ? "h-6 w-6 rounded-md"
-        : "h-7 w-7 rounded-lg";
+        : "h-8 w-8 rounded-xl";
 
   const markSize =
     size === "lg" ? "h-5 w-5" : size === "sm" ? "h-3.5 w-3.5" : "h-4 w-4";
 
   const boxStyle =
     variant === "blue"
-      ? "bg-[#2A4BFF] text-white shadow-sm"
+      ? "bg-[#1D63ED] text-white shadow-sm shadow-blue-600/25"
       : variant === "light"
-        ? "bg-white text-zinc-950 border border-zinc-200"
-        : "bg-zinc-900 text-white";
+        ? "bg-white text-slate-950 border border-slate-200"
+        : "bg-slate-900 text-white";
 
   const wordmarkTextStyle =
     wordmarkColor === "blue" ? "text-[#2A4BFF]" : "text-zinc-950";
@@ -94,12 +94,12 @@ export function CogentLogo({
       {showWordmark && (
         <div className="leading-none">
           <span
-            className={`block text-[15px] font-semibold tracking-tight ${wordmarkTextStyle}`}
+            className={`block text-[15.5px] font-semibold tracking-tight ${wordmarkTextStyle}`}
           >
             Cogent
           </span>
           {subtitle && (
-            <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-[0.12em] text-zinc-400">
+            <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
               {subtitle}
             </span>
           )}

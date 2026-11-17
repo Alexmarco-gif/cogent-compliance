@@ -7,48 +7,52 @@ import { MarketingFooter } from "@/components/marketing/MarketingFooter";
 import { COMPLIANCE_FAQS } from "@/data/marketing-scenarios";
 
 export const metadata: Metadata = {
-  title: "Compliance & Product FAQ",
+  title: "FAQ | Common Questions",
   description:
-    "Answers to institutional questions on Nigerian statutory grounding, deterministic APR calculations, dual-control RBAC governance, and Paystack billing.",
+    "Plain-English answers about campaign reviews, compliant rewrites, team sign-off roles, live webpage monitoring, and Paystack billing.",
   alternates: {
     canonical: "/resources/faq",
   },
   openGraph: {
-    title: "Compliance & Product FAQ | Cogent",
+    title: "FAQ | Cogent",
     description:
-      "How Cogent prevents hallucinated legal citations, computes effective APR, and settles in Naira via Paystack.",
+      "Answers to common questions from Nigerian financial marketing, legal, and compliance leaders.",
     url: "/resources/faq",
   },
 };
 
 export default function FaqPage() {
   return (
-    <div className="min-h-screen bg-zinc-50 text-zinc-950 flex flex-col">
-      <MarketingHeader />
+    <div className="min-h-screen bg-white text-slate-950 flex flex-col">
+      <div className="relative overflow-hidden cogent-hero-wash border-b border-slate-200/75">
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0 cogent-arch-grid"
+        />
+        <MarketingHeader />
 
-      <main className="flex-1">
-        <section className="marketing-cobalt-wash border-b border-zinc-200 py-14 sm:py-20">
-          <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
+        <section className="relative z-10 py-14 sm:py-20">
+          <div className="mx-auto max-w-[1160px] px-5 sm:px-8">
             <div className="max-w-2xl">
-              <p className="font-mono text-[11px] font-medium uppercase tracking-[0.11em] text-zinc-500">
-                Institutional Knowledge &amp; Governance
-              </p>
-              <h1 className="mt-3 text-[34px] sm:text-[46px] font-semibold leading-[1.08] tracking-[-0.03em] text-zinc-950">
-                Frequently asked{" "}
-                <span className="font-serif italic font-normal text-zinc-800">
-                  compliance questions
-                </span>
+              <span className="inline-flex items-center rounded-full bg-[#1D63ED] px-3.5 py-1 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-white">
+                ANSWERS &amp; CLARITY
+              </span>
+              <h1 className="mt-4 text-[36px] sm:text-[48px] font-semibold leading-[1.06] tracking-[-0.03em] text-slate-950">
+                Common questions,{" "}
+                <span className="text-[#1D63ED]">answered simply.</span>
               </h1>
-              <p className="mt-4 text-[16px] leading-[1.6] text-zinc-600">
-                Clear documentation on statutory grounding, deterministic enforcement locks, tenant isolation, and Naira Paystack settlement.
+              <p className="mt-4 text-[16px] leading-[1.6] text-slate-600">
+                Straightforward explanations of how Cogent fits into your marketing, legal, and compliance workflow before and after every launch.
               </p>
             </div>
           </div>
         </section>
+      </div>
 
-        <section className="py-12 sm:py-16">
-          <div className="mx-auto max-w-4xl px-5 sm:px-8">
-            <FaqExplorer items={COMPLIANCE_FAQS} />
+      <main className="flex-1">
+        <section className="py-16 sm:py-20">
+          <div className="mx-auto max-w-[1160px] px-5 sm:px-8">
+            <FaqExplorer items={COMPLIANCE_FAQS} showHeader={false} showFilter={true} />
           </div>
         </section>
 

@@ -8,9 +8,13 @@
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background-color: #FFFFFF;
-  color: #09090B;
+  color: #0F172A;
   font-family: var(--font-inter);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -27,22 +31,156 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #E4E4E7;
+  background: #CBD5E1;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #D4D4D8;
+  background: #94A3B8;
+}
+
+/* Luminous Sky-to-Lavender Atmospheric Canvas (Reference Design System) */
+.cogent-hero-wash {
+  background-color: #FFFFFF;
+  background-image:
+    radial-gradient(62% 58% at 14% 12%, rgba(29, 99, 237, 0.14) 0%, rgba(29, 99, 237, 0.04) 48%, transparent 78%),
+    radial-gradient(54% 52% at 88% 18%, rgba(139, 92, 246, 0.11) 0%, rgba(139, 92, 246, 0.03) 50%, transparent 78%),
+    radial-gradient(60% 45% at 50% 85%, rgba(219, 234, 254, 0.45) 0%, transparent 70%);
+}
+
+/* Subtle Architectural Grid Overlay with Intersection Dots */
+.cogent-arch-grid {
+  background-image:
+    linear-gradient(to right, rgba(29, 99, 237, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(29, 99, 237, 0.055) 1px, transparent 1px);
+  background-size: 96px 96px;
+  mask-image: radial-gradient(ellipse 85% 75% at 50% 40%, #000 50%, transparent 100%);
+}
+
+/* Frosted Ice-Blue Tray Surface for Feature Bentos & Accordions */
+.cogent-glass-tray {
+  background: linear-gradient(160deg, rgba(239, 246, 255, 0.85) 0%, rgba(244, 247, 254, 0.92) 55%, rgba(245, 243, 255, 0.75) 100%);
+  border: 1px solid rgba(29, 99, 237, 0.09);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 20px 50px -24px rgba(15, 23, 42, 0.08);
+}
+
+/* Crisp Glass Card Surface */
+.cogent-glass-card {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 18px 40px -20px rgba(29, 99, 237, 0.12);
+}
+
+/* Elevated Product Browser Window Frame */
+.cogent-browser-shadow {
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.07),
+    0 12px 32px -12px rgba(15, 23, 42, 0.08),
+    0 36px 80px -24px rgba(29, 99, 237, 0.18);
+}
+
+/* Signature Spark-to-Cobalt Gradient (Used for Company Leadership Spotlight) */
+.cogent-cobalt-stage {
+  background: linear-gradient(145deg, #1D63ED 0%, #1E40AF 58%, #172554 100%);
 }
 
 .marketing-cobalt-wash {
-  background: linear-gradient(155deg, #FAFBFF 0%, #EEF2FF 42%, #E0E7FF 100%);
+  background-color: #FFFFFF;
+  background-image:
+    radial-gradient(60% 55% at 15% 10%, rgba(29, 99, 237, 0.13) 0%, transparent 72%),
+    radial-gradient(50% 50% at 85% 20%, rgba(139, 92, 246, 0.1) 0%, transparent 72%);
 }
 
 .marketing-frame-shadow {
   box-shadow:
-    0 1px 2px rgba(9, 9, 11, 0.04),
-    0 16px 40px -16px rgba(9, 9, 11, 0.12);
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 20px 44px -18px rgba(29, 99, 237, 0.14);
+}
+
+/* Purposeful Motion Keyframes */
+@keyframes cogentFadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cogentFloat {
+  0%, 100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes cogentFloatSlow {
+  0%, 100% {
+    transform: translateY(0px) translateX(0px);
+  }
+  50% {
+    transform: translateY(5px) translateX(3px);
+  }
+}
+
+@keyframes cogentScan {
+  0% {
+    transform: translateY(-100%);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(340%);
+    opacity: 0;
+  }
+}
+
+@keyframes cogentPulseRing {
+  0% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(29, 99, 237, 0.35);
+  }
+  70% {
+    transform: scale(1);
+    box-shadow: 0 0 0 10px rgba(29, 99, 237, 0);
+  }
+  100% {
+    transform: scale(0.95);
+    box-shadow: 0 0 0 0 rgba(29, 99, 237, 0);
+  }
+}
+
+.animate-cogent-enter {
+  animation: cogentFadeUp 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-cogent-float {
+  animation: cogentFloat 6s ease-in-out infinite;
+}
+
+.animate-cogent-float-slow {
+  animation: cogentFloatSlow 7.5s ease-in-out infinite;
+}
+
+.animate-cogent-scan {
+  animation: cogentScan 4.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.animate-cogent-pulse-ring {
+  animation: cogentPulseRing 2.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -55,6 +193,9 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
   *,
   *::before,
   *::after {

@@ -8,27 +8,26 @@ const siteUrl = getPublicSiteUrl();
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Cogent | Nigerian Regulatory Compliance Operating System",
+    default: "Cogent | Ship Financial Campaigns Without Compliance Surprises",
     template: "%s | Cogent",
   },
   description:
-    "Verify financial promotional copy, loan flyers, effective APR math, and live URLs against CBN, FCCPC, ARCON, NDPC, and SEC rules before publication.",
-  applicationName: "Cogent Marketing Shield",
+    "Check every loan flyer, rate page, app store listing, and ad against CBN, FCCPC, ARCON, NDPC, and SEC rules before it goes live—so Nigerian financial teams launch fast and stay protected.",
+  applicationName: "Cogent",
   keywords: [
-    "Nigerian RegTech",
-    "CBN compliance",
-    "FCCPC DEON compliance",
-    "ARCON pre-vetting",
-    "NDPA 2023 compliance",
-    "SEC Nigeria marketing compliance",
-    "effective APR calculator Nigeria",
-    "financial marketing compliance",
-    "Stem-Cogent",
-    "Cogent Marketing Shield",
+    "Cogent",
+    "Stem Systems",
+    "Nigerian fintech compliance",
+    "CBN marketing compliance",
+    "FCCPC lending compliance",
+    "ARCON ad pre-vetting",
+    "NDPC marketing compliance",
+    "SEC Nigeria marketing rules",
+    "stem-cogent.com",
   ],
-  authors: [{ name: "Stem-Cogent", url: siteUrl }],
-  creator: "Stem-Cogent",
-  publisher: "Stem-Cogent",
+  authors: [{ name: "Stem Systems", url: siteUrl }],
+  creator: "Stem Systems",
+  publisher: "Stem Systems",
   alternates: {
     canonical: "/",
   },
@@ -36,16 +35,16 @@ export const metadata: Metadata = {
     type: "website",
     locale: "en_NG",
     url: siteUrl,
-    siteName: "Cogent Marketing Shield",
-    title: "Cogent | Nigerian Regulatory Compliance Operating System",
+    siteName: "Cogent by Stem Systems",
+    title: "Cogent | Ship Financial Campaigns Without Compliance Surprises",
     description:
-      "Pre-publication marketing compliance, deterministic APR verification, flyer OCR forensics, and 2-year SHA-256 dossiers across CBN, FCCPC, ARCON, NDPC, and SEC.",
+      "Review ads, flyers, app store descriptions, and live landing pages against Nigerian regulatory rules before launch.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Cogent | Nigerian Regulatory Compliance Operating System",
+    title: "Cogent | Ship Financial Campaigns Without Compliance Surprises",
     description:
-      "Verify financial promotional copy, loan flyers, effective APR math, and live URLs against CBN, FCCPC, ARCON, NDPC, and SEC rules before publication.",
+      "Review ads, flyers, app store descriptions, and live landing pages against Nigerian regulatory rules before launch.",
   },
   robots: {
     index: true,
@@ -75,7 +74,7 @@ export default function RootLayout({
             href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
           />
         </head>
-        <body className="min-h-screen bg-white text-zinc-950 antialiased">
+        <body className="min-h-screen bg-white text-slate-950 antialiased">
           {children}
         </body>
       </html>

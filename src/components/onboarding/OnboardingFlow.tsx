@@ -1064,10 +1064,10 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
               </button>
               <button
                 type="button"
-                onClick={() => router.push("/pricing")}
+                onClick={() => router.push("/settings/billing")}
                 className="w-full py-2 rounded-md border border-zinc-200 hover:bg-zinc-50 text-zinc-700 font-medium text-xs transition-colors cursor-pointer"
               >
-                Compare Plans
+                Manage Billing &amp; Plans
               </button>
             </div>
           </div>

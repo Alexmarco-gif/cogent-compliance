@@ -3,7 +3,7 @@ import { ImageResponse } from "next/og";
 export const runtime = "edge";
 
 export const alt =
-  "Cogent Marketing Shield — Nigerian Regulatory Compliance Operating System";
+  "Cogent by Stem Systems — Ship financial campaigns fast without compliance surprises";
 export const size = {
   width: 1200,
   height: 630,
@@ -20,11 +20,11 @@ export default function OpenGraphImage() {
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          backgroundColor: "#09090B",
+          backgroundColor: "#F8FAFF",
           backgroundImage:
-            "radial-gradient(circle at 85% 20%, rgba(42, 75, 255, 0.28), transparent 55%)",
+            "radial-gradient(circle at 12% 14%, rgba(29, 99, 237, 0.22), transparent 52%), radial-gradient(circle at 90% 18%, rgba(139, 92, 246, 0.16), transparent 50%)",
           padding: "64px 72px",
-          color: "#FFFFFF",
+          color: "#0F172A",
           fontFamily: "sans-serif",
         }}
       >
@@ -38,30 +38,33 @@ export default function OpenGraphImage() {
           <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
             <div
               style={{
-                width: "40px",
-                height: "40px",
-                borderRadius: "10px",
-                backgroundColor: "#2A4BFF",
+                width: "44px",
+                height: "44px",
+                borderRadius: "12px",
+                backgroundColor: "#1D63ED",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 fontWeight: 700,
-                fontSize: "20px",
+                fontSize: "22px",
+                color: "#FFFFFF",
               }}
             >
               C
             </div>
             <div style={{ display: "flex", flexDirection: "column" }}>
-              <span style={{ fontSize: "22px", fontWeight: 700 }}>Cogent</span>
+              <span style={{ fontSize: "24px", fontWeight: 700, color: "#0F172A" }}>
+                Cogent
+              </span>
               <span
                 style={{
                   fontSize: "12px",
                   letterSpacing: "0.14em",
-                  color: "#A1A1AA",
+                  color: "#475569",
                   textTransform: "uppercase",
                 }}
               >
-                Marketing Shield · stem-cogent.com
+                by Stem Systems · stem-cogent.com
               </span>
             </div>
           </div>
@@ -69,46 +72,51 @@ export default function OpenGraphImage() {
           <div
             style={{
               display: "flex",
-              gap: "10px",
-              fontSize: "14px",
-              color: "#D4D4D8",
+              padding: "8px 16px",
+              borderRadius: "9999px",
+              backgroundColor: "#1D63ED",
+              color: "#FFFFFF",
+              fontSize: "13px",
+              fontWeight: 600,
+              letterSpacing: "0.06em",
             }}
           >
-            <span>CBN · FCCPC · ARCON · NDPC · SEC</span>
+            CBN · FCCPC · ARCON · NDPC · SEC
           </div>
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", maxWidth: "920px" }}>
-          <span
-            style={{
-              fontSize: "15px",
-              letterSpacing: "0.12em",
-              color: "#6B82FF",
-              textTransform: "uppercase",
-              marginBottom: "18px",
-            }}
-          >
-            Supervisory Compliance Operating System
-          </span>
+        <div style={{ display: "flex", flexDirection: "column", maxWidth: "940px" }}>
           <div
             style={{
-              fontSize: "58px",
+              fontSize: "62px",
+              fontWeight: 700,
+              lineHeight: 1.06,
+              letterSpacing: "-0.03em",
+              color: "#0F172A",
+            }}
+          >
+            Launch campaigns fast.
+          </div>
+          <div
+            style={{
+              fontSize: "62px",
               fontWeight: 700,
               lineHeight: 1.08,
               letterSpacing: "-0.03em",
+              color: "#1D63ED",
             }}
           >
-            Regulatory certainty for every campaign before it ships.
+            Without the compliance fear.
           </div>
           <div
             style={{
               marginTop: "24px",
               fontSize: "24px",
               lineHeight: 1.45,
-              color: "#A1A1AA",
+              color: "#475569",
             }}
           >
-            141 verified statutory PDFs · Deterministic APR &amp; Lock 1–3 audits · 2-year SHA-256 dossiers
+            Catch risky claims, wrong rates, and missing disclosures across flyers, app stores, and landing pages before regulators do.
           </div>
         </div>
 
@@ -117,15 +125,15 @@ export default function OpenGraphImage() {
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
-            borderTop: "1px solid #27272A",
+            borderTop: "1px solid rgba(15, 23, 42, 0.1)",
             paddingTop: "24px",
-            fontSize: "16px",
-            color: "#A1A1AA",
+            fontSize: "17px",
+            color: "#475569",
           }}
         >
           <span>Built for Nigerian Digital Lenders, MFBs, Banks, PSBs &amp; WealthTech</span>
-          <span style={{ color: "#10B981", fontWeight: 600 }}>
-            Pre-Flight Gate Enforced
+          <span style={{ color: "#1D63ED", fontWeight: 700 }}>
+            Check your first campaign free →
           </span>
         </div>
       </div>
