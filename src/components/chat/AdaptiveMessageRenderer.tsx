@@ -19,8 +19,6 @@ import {
   AlertTriangle,
   FileCheck2,
   Lock,
-  Loader2,
-  CheckCircle2,
 } from "lucide-react";
 import Link from "next/link";
 import type {
@@ -30,7 +28,10 @@ import type {
   ExecutionPlanStep,
   StructuredComplianceReport,
 } from "@/contracts/conversation.contracts";
-import { AgentExecutionPlanCard } from "@/components/chat/AutonomousAnalystWorkbench";
+import {
+  ThinkingTraceHeader,
+  type SearchTraceItem,
+} from "@/components/chat/ThinkingTraceHeader";
 
 export interface MessageAttachmentChip {
   assetId?: string;
@@ -67,6 +68,9 @@ export interface AdaptiveMessageRendererProps {
   structuredReport?: StructuredComplianceReport;
   attachments?: MessageAttachmentChip[];
   searchTracks?: SearchTrackPill[];
+  searchTraces?: SearchTraceItem[];
+  thinkingStartedAt?: number;
+  thinkingDurationMs?: number;
   entitlementBlocked?: EntitlementBlockedBanner;
   workProductRef?: WorkProductBannerRef;
   wideRail?: boolean;
@@ -296,6 +300,9 @@ export function AdaptiveMessageRenderer({
   structuredReport,
   attachments = [],
   searchTracks = [],
+  searchTraces = [],
+  thinkingStartedAt,
+  thinkingDurationMs,
   entitlementBlocked,
   workProductRef,
   onInspectEvidence,
@@ -356,39 +363,16 @@ export function AdaptiveMessageRenderer({
 
   return (
     <div className="max-w-3xl w-full mx-auto my-6 space-y-4 min-w-0">
-      {/* 1. Collapsed Reasoning / Tool Trace Pill */}
-      {planSteps.length > 0 && (
-        <AgentExecutionPlanCard
-          steps={planSteps}
-          citationCount={dedupedCitations.length}
-          matchedProductName={matchedProductName}
-        />
-      )}
-
-      {/* 1b. Parallel Live Regulatory Search Track Pills */}
-      {searchTracks.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5">
-          {searchTracks.map((tr) => (
-            <span
-              key={tr.track}
-              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-mono text-zinc-700"
-            >
-              {tr.status === "RUNNING" ? (
-                <Loader2 className="h-3 w-3 animate-spin text-zinc-700 shrink-0" />
-              ) : (
-                <CheckCircle2 className="h-3 w-3 text-emerald-600 shrink-0" />
-              )}
-              <span>{tr.label}</span>
-              {typeof tr.resultCount === "number" && tr.status === "COMPLETED" && (
-                <span className="text-zinc-500">
-                  ({tr.resultCount}
-                  {tr.cacheHit ? " cached" : ""})
-                </span>
-              )}
-            </span>
-          ))}
-        </div>
-      )}
+      {/* 1. Unified THINKING / VERIFIED Badge + Live Elapsed Timer + Collapsible Search Traces */}
+      <ThinkingTraceHeader
+        isStreaming={isStreaming}
+        startedAt={thinkingStartedAt}
+        durationMs={thinkingDurationMs}
+        traces={searchTraces}
+        planSteps={planSteps}
+        searchTracks={searchTracks}
+        citationCount={dedupedCitations.length}
+      />
 
       {/* 1c. Server-Enforced Entitlement Blocked Banner (with Vault fallback active) */}
       {entitlementBlocked && (

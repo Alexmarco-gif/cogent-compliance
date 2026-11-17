@@ -30,6 +30,12 @@ export const AI_MODELS = {
    * 768-dimensional semantic embedding model (pgvector column match)
    */
   EMBEDDING: env.GEMINI_EMBEDDING_MODEL || "gemini-embedding-001",
+
+  /**
+   * High-capacity GA fallback models if preview model hits 503 high-demand spikes
+   */
+  FALLBACK_FLASH: "gemini-2.5-flash",
+  FALLBACK_FLASH_LITE: "gemini-2.5-flash-lite",
 } as const;
 
 export const EMBEDDING_DIMENSION = 768;

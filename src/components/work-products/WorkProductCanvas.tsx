@@ -369,7 +369,7 @@ export function WorkProductCanvas({
                     const ver = Number(e.target.value);
                     setPreviewVersion(ver === workProduct.version_number ? null : ver);
                   }}
-                  className="bg-transparent focus:outline-hidden cursor-pointer"
+                  className="bg-transparent outline-none focus:outline-none focus-visible:outline-none cursor-pointer"
                 >
                   {revisions.map((rev) => (
                     <option key={rev.id} value={rev.version_number}>
@@ -391,7 +391,7 @@ export function WorkProductCanvas({
                   change_summary: `Status changed to ${e.target.value}`,
                 })
               }
-              className={`font-mono text-[10.5px] font-semibold px-2 py-1 rounded-md border cursor-pointer focus:outline-hidden ${
+              className={`font-mono text-[10.5px] font-semibold px-2 py-1 rounded-md border cursor-pointer outline-none focus:outline-none focus-visible:outline-none ${
                 STATUS_STYLE[workProduct.status]
               }`}
             >
@@ -410,7 +410,7 @@ export function WorkProductCanvas({
               aria-label="Document title"
               value={draftTitle}
               onChange={(e) => setDraftTitle(e.target.value)}
-              className="flex-1 min-w-[200px] rounded-lg border border-transparent hover:border-zinc-200 focus:border-zinc-300 bg-transparent focus:bg-white px-2 py-1 -ml-2 text-[15px] font-semibold text-zinc-950 focus:outline-hidden transition-colors"
+              className="flex-1 min-w-[200px] rounded-lg border border-transparent hover:border-zinc-200 focus:border-zinc-300 bg-transparent focus:bg-white px-2 py-1 -ml-2 text-[15px] font-semibold text-zinc-950 outline-none focus:outline-none focus-visible:outline-none transition-colors"
             />
           ) : (
             <h3 className="text-[15px] font-semibold text-zinc-950 truncate flex-1">

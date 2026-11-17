@@ -139,7 +139,7 @@ export function RuleActivationTable() {
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
-            className="text-xs px-2 py-1 bg-white border border-zinc-300 rounded focus:outline-hidden focus:border-zinc-900"
+            className="text-xs px-2 py-1 bg-white border border-zinc-300 rounded outline-none focus:outline-none focus-visible:outline-none focus:border-zinc-900"
           >
             <option value="ALL">All Statuses</option>
             <option value="DRAFT">Draft</option>
@@ -149,7 +149,7 @@ export function RuleActivationTable() {
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="text-xs px-2 py-1 bg-white border border-zinc-300 rounded focus:outline-hidden focus:border-zinc-900"
+            className="text-xs px-2 py-1 bg-white border border-zinc-300 rounded outline-none focus:outline-none focus-visible:outline-none focus:border-zinc-900"
           >
             <option value="ALL">All Rule Types</option>
             <option value="PROHIBITED">Prohibited Term</option>

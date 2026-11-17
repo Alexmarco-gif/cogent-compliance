@@ -14,6 +14,7 @@
 import { FunctionCallingConfigMode, GoogleGenAI } from "@google/genai";
 import { env } from "@/lib/env";
 import { AI_MODELS } from "@/lib/ai/config";
+import { geminiKeyPool } from "@/lib/ai/gemini-key-pool";
 import { logger } from "@/lib/logger";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import {
@@ -93,14 +94,18 @@ export interface StreamCopilotOptions {
 }
 
 /** Max time for a single Gemini generate call (including full stream consumption). */
-const LLM_CALL_TIMEOUT_MS = 90_000;
+const LLM_CALL_TIMEOUT_MS = 48_000;
+/** Max wait before first chunk/response on a single key/model before automatic failover. */
+const LLM_FIRST_TOKEN_TIMEOUT_MS = 18_000;
 /** Max time for a single tool execution inside the agent loop. */
-const TOOL_CALL_TIMEOUT_MS = 25_000;
+const TOOL_CALL_TIMEOUT_MS = 20_000;
 
 export class CopilotOrchestrator {
   private ai: GoogleGenAI;
+  private hasCustomClient: boolean;
 
   constructor(customClient?: GoogleGenAI) {
+    this.hasCustomClient = Boolean(customClient);
     this.ai = customClient || new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
   }
 
@@ -171,6 +176,205 @@ CRITICAL OPERATIONAL RULES:
           );
       },
     });
+  }
+
+  /**
+   * Executes a single Gemini generation pass (streaming or non-streaming) with:
+   * - Fast first-token abort guard (18s) so stalled requests rotate instead of hanging 90s
+   * - Automatic KEY_1 -> KEY_2 -> KEY_3 failover when zero chunks have streamed yet
+   * - Automatic GA model fallback (e.g. gemini-2.5-flash) if preview model hits 503 high demand
+   */
+  private async *executeGeminiRoundWithFailover(params: {
+    contents: Array<{ role: string; parts: Array<Record<string, unknown>> }>;
+    config: Record<string, unknown>;
+    conversationId: string;
+    operationName: string;
+  }): AsyncGenerator<
+    | { kind: "delta"; textDelta: string; part: Record<string, unknown> }
+    | { kind: "part"; part: Record<string, unknown> }
+    | { kind: "done"; contentParts: Array<Record<string, unknown>>; streamedText: boolean }
+  > {
+    const supportsStreaming = typeof this.ai.models.generateContentStream === "function";
+
+    if (this.hasCustomClient) {
+      let contentParts: Array<Record<string, unknown>> = [];
+      let streamedText = false;
+      const roundAbort = new AbortController();
+      const roundTimer = setTimeout(() => roundAbort.abort(), LLM_CALL_TIMEOUT_MS);
+      try {
+        if (supportsStreaming) {
+          const stream = await this.ai.models.generateContentStream({
+            model: AI_MODELS.PRO,
+            contents: [...params.contents],
+            config: {
+              ...params.config,
+              abortSignal: roundAbort.signal,
+            },
+          });
+          for await (const chunk of stream) {
+            const chunkParts = (chunk.candidates?.[0]?.content?.parts || []) as Array<
+              Record<string, unknown>
+            >;
+            for (const p of chunkParts) {
+              contentParts.push(p);
+              if (
+                "text" in p &&
+                p.text &&
+                !("thought" in p && Boolean((p as { thought?: boolean }).thought))
+              ) {
+                streamedText = true;
+                yield { kind: "delta", textDelta: String(p.text), part: p };
+              } else {
+                yield { kind: "part", part: p };
+              }
+            }
+          }
+        } else {
+          const response = await this.ai.models.generateContent({
+            model: AI_MODELS.PRO,
+            contents: [...params.contents],
+            config: {
+              ...params.config,
+              abortSignal: roundAbort.signal,
+            },
+          });
+          const candidate = response.candidates?.[0];
+          contentParts = (candidate?.content?.parts || []) as Array<Record<string, unknown>>;
+          if (
+            contentParts.length === 0 &&
+            typeof (response as { text?: string }).text === "string" &&
+            (response as { text?: string }).text
+          ) {
+            contentParts = [{ text: (response as { text: string }).text }];
+          }
+        }
+        yield { kind: "done", contentParts, streamedText };
+        return;
+      } catch (err) {
+        if (roundAbort.signal.aborted && streamedText) {
+          yield { kind: "done", contentParts, streamedText };
+          return;
+        }
+        throw err;
+      } finally {
+        clearTimeout(roundTimer);
+      }
+    }
+
+    const models = geminiKeyPool.getModelFallbackChain(AI_MODELS.PRO, true);
+    let lastError: unknown = null;
+
+    for (let mIdx = 0; mIdx < models.length; mIdx++) {
+      const model = models[mIdx]!;
+      const slots = geminiKeyPool.getPrioritizedKeySlots();
+
+      for (let kIdx = 0; kIdx < slots.length; kIdx++) {
+        const slot = slots[kIdx]!;
+        const client = new GoogleGenAI({ apiKey: slot.apiKey });
+        const contentParts: Array<Record<string, unknown>> = [];
+        let streamedText = false;
+        let receivedMeaningfulPart = false;
+
+        const attemptAbort = new AbortController();
+        const totalTimer = setTimeout(() => attemptAbort.abort("total_timeout"), LLM_CALL_TIMEOUT_MS);
+        const firstTokenTimer = setTimeout(() => {
+          if (!receivedMeaningfulPart) {
+            attemptAbort.abort("first_token_timeout");
+          }
+        }, LLM_FIRST_TOKEN_TIMEOUT_MS);
+
+        try {
+          const stream = await client.models.generateContentStream({
+            model,
+            contents: [...params.contents],
+            config: {
+              ...params.config,
+              abortSignal: attemptAbort.signal,
+            },
+          });
+
+          for await (const chunk of stream) {
+            const chunkParts = (chunk.candidates?.[0]?.content?.parts || []) as Array<
+              Record<string, unknown>
+            >;
+            for (const p of chunkParts) {
+              contentParts.push(p);
+              if ("functionCall" in p && p.functionCall != null) {
+                receivedMeaningfulPart = true;
+                clearTimeout(firstTokenTimer);
+                yield { kind: "part", part: p };
+              } else if (
+                "text" in p &&
+                p.text &&
+                !("thought" in p && Boolean((p as { thought?: boolean }).thought))
+              ) {
+                receivedMeaningfulPart = true;
+                clearTimeout(firstTokenTimer);
+                streamedText = true;
+                yield { kind: "delta", textDelta: String(p.text), part: p };
+              } else {
+                yield { kind: "part", part: p };
+              }
+            }
+          }
+
+          yield { kind: "done", contentParts, streamedText };
+          return;
+        } catch (attemptErr) {
+          clearTimeout(firstTokenTimer);
+          lastError = attemptErr;
+
+          // If text already streamed mid-answer and hit total timeout, finalize gracefully
+          if (streamedText) {
+            logger.warn("Gemini stream interrupted after partial text; keeping partial answer", {
+              conversationId: params.conversationId,
+              model,
+              slot: slot.slotName,
+            });
+            yield { kind: "done", contentParts, streamedText };
+            return;
+          }
+
+          const rawErr =
+            attemptAbort.signal.aborted && attemptAbort.signal.reason === "first_token_timeout"
+              ? new Error(`Gemini first-token timeout after ${LLM_FIRST_TOKEN_TIMEOUT_MS / 1000}s`)
+              : attemptErr;
+
+          lastError = rawErr;
+          const kind = geminiKeyPool.classifyError(rawErr);
+
+          if (kind === "NON_RETRYABLE") {
+            throw rawErr;
+          }
+
+          if (kind !== "MODEL_NOT_FOUND" && kind !== "MODEL_UNAVAILABLE") {
+            geminiKeyPool.markCooldown(slot.apiKey, kind);
+          }
+
+          logger.warn("Gemini stream attempt failed before first token; failing over", {
+            operationName: params.operationName,
+            conversationId: params.conversationId,
+            model,
+            failedSlot: slot.slotName,
+            failureKind: kind,
+            hasNextKey: kIdx < slots.length - 1,
+            hasNextModel: mIdx < models.length - 1,
+            error: (rawErr instanceof Error ? rawErr.message : String(rawErr)).slice(0, 220),
+          });
+
+          if (kind === "MODEL_NOT_FOUND") {
+            break;
+          }
+        } finally {
+          clearTimeout(totalTimer);
+          clearTimeout(firstTokenTimer);
+        }
+      }
+    }
+
+    throw lastError instanceof Error
+      ? lastError
+      : new Error(String(lastError || "All Gemini API keys failed."));
   }
 
   public buildDualSearchQueries(
@@ -1383,14 +1587,14 @@ CRITICAL OPERATIONAL RULES:
         typeof statutoryToolExecutor.searchRegulatoryEvidence === "function"
           ? this.withTimeout(
               statutoryToolExecutor.searchRegulatoryEvidence({ query: vaultQuery, limit: 8 }, ctx),
-              6000,
+              4000,
               { success: false, results: [] }
             )
           : Promise.resolve({ results: [] }),
         typeof statutoryToolExecutor.searchInstitutionalKnowledge === "function"
           ? this.withTimeout(
               statutoryToolExecutor.searchInstitutionalKnowledge({ query: vaultQuery, limit: 6 }, ctx),
-              4000,
+              2500,
               { chunks: [], rules: [] }
             ).catch(() => ({ chunks: [], rules: [] }))
           : Promise.resolve({ chunks: [], rules: [] }),
@@ -1405,7 +1609,7 @@ CRITICAL OPERATIONAL RULES:
                 },
                 { ...ctx, quotaPreConsumed: true }
               ),
-              15000,
+              8500,
               { results: [], web_summary: "", status: "timeout" }
             )
           : Promise.resolve(null),
@@ -1522,7 +1726,7 @@ CRITICAL OPERATIONAL RULES:
                   2
                 )}\n</untrusted_live_web_evidence>`
               : ""
-          }\nExecute workflow intent '${turnIntent}' thoroughly, citing verified provisions accurately, obeying strict URL & DDQ honesty guardrails, and persist the final deliverable by calling \`upsert_work_product_artifact\`.`,
+          }\nExecute workflow intent '${turnIntent}' directly now using the hydrated statutory vault, institutional records, and live evidence above. Do NOT repeat redundant search tool calls unless a critical gap remains; write the complete citation-backed deliverable directly (the Work Product Studio automatically saves your output).`,
         });
       }
     } else if (turnIntent === "REGULATORY_LOOKUP") {
@@ -1811,9 +2015,8 @@ CRITICAL OPERATIONAL RULES:
       turnIntent === "CROSS_BORDER_COMPARISON";
     let fullResponseText = "";
     let toolRounds = 0;
-    const maxToolRounds = isWorkflowIntent ? 6 : 3;
+    const maxToolRounds = 3;
     const seenToolSignatures = new Set<string>();
-    const supportsStreaming = typeof this.ai.models.generateContentStream === "function";
 
     try {
       while (toolRounds < maxToolRounds) {
@@ -1822,84 +2025,29 @@ CRITICAL OPERATIONAL RULES:
         let contentParts: Array<Record<string, unknown>> = [];
         let streamedTextThisTurn = false;
 
-        const roundAbort = new AbortController();
-        const roundTimer = setTimeout(() => roundAbort.abort(), LLM_CALL_TIMEOUT_MS);
-        try {
-          if (supportsStreaming) {
-            const stream = await this.ai.models.generateContentStream({
-              model: AI_MODELS.PRO,
-              contents: [...contents],
-              config: {
-                systemInstruction: this.buildSystemInstruction(),
-                temperature: 0.2,
-                tools: [{ functionDeclarations: STATUTORY_TOOL_DECLARATIONS }],
-                abortSignal: roundAbort.signal,
+        for await (const ev of this.executeGeminiRoundWithFailover({
+          contents,
+          config: {
+            systemInstruction: this.buildSystemInstruction(),
+            temperature: 0.2,
+            tools: [{ functionDeclarations: STATUTORY_TOOL_DECLARATIONS }],
+          },
+          conversationId: options.conversationId,
+          operationName: `orchestrator_round_${toolRounds}`,
+        })) {
+          if (ev.kind === "delta") {
+            fullResponseText += ev.textDelta;
+            streamedTextThisTurn = true;
+            yield {
+              type: "assistant.delta",
+              data: {
+                text_delta: ev.textDelta,
               },
-            });
-
-            for await (const chunk of stream) {
-              const chunkParts = (chunk.candidates?.[0]?.content?.parts || []) as Array<
-                Record<string, unknown>
-              >;
-              for (const p of chunkParts) {
-                contentParts.push(p);
-                if (
-                  "text" in p &&
-                  p.text &&
-                  !("thought" in p && Boolean((p as { thought?: boolean }).thought))
-                ) {
-                  const delta = String(p.text);
-                  fullResponseText += delta;
-                  streamedTextThisTurn = true;
-                  yield {
-                    type: "assistant.delta",
-                    data: {
-                      text_delta: delta,
-                    },
-                  };
-                }
-              }
-            }
-          } else {
-            // Non-streaming fallback (e.g. unit test mocks)
-            const response = await this.ai.models.generateContent({
-              model: AI_MODELS.PRO,
-              contents: [...contents],
-              config: {
-                systemInstruction: this.buildSystemInstruction(),
-                temperature: 0.2,
-                tools: [{ functionDeclarations: STATUTORY_TOOL_DECLARATIONS }],
-                abortSignal: roundAbort.signal,
-              },
-            });
-
-            const candidate = response.candidates?.[0];
-            contentParts = (candidate?.content?.parts || []) as Array<Record<string, unknown>>;
-            if (
-              contentParts.length === 0 &&
-              typeof (response as { text?: string }).text === "string" &&
-              (response as { text?: string }).text
-            ) {
-              contentParts = [{ text: (response as { text: string }).text }];
-            }
+            };
+          } else if (ev.kind === "done") {
+            contentParts = ev.contentParts;
+            streamedTextThisTurn = ev.streamedText;
           }
-        } catch (roundErr) {
-          if (roundAbort.signal.aborted) {
-            if (fullResponseText.trim().length > 0) {
-              // Partial answer already streamed — keep it and stop gracefully.
-              logger.warn("Gemini round timed out after partial text; finalizing", {
-                conversationId: options.conversationId,
-                toolRounds,
-              });
-              break;
-            }
-            throw new Error(
-              `Gemini did not respond within ${LLM_CALL_TIMEOUT_MS / 1000}s. Please retry.`
-            );
-          }
-          throw roundErr;
-        } finally {
-          clearTimeout(roundTimer);
         }
 
         const functionCalls = contentParts.filter(
@@ -2467,10 +2615,7 @@ CRITICAL OPERATIONAL RULES:
 
       // If maxToolRounds was reached with tool calls only, force a final tool-free synthesis pass
       if (fullResponseText.trim().length === 0) {
-        const synthAbort = new AbortController();
-        const synthTimer = setTimeout(() => synthAbort.abort(), LLM_CALL_TIMEOUT_MS);
         const synthesisConfig = {
-          abortSignal: synthAbort.signal,
           systemInstruction:
             this.buildSystemInstruction() +
             "\n\nYou have finished retrieving evidence. Synthesize your final compliance response now using only the evidence already gathered above.",
@@ -2484,65 +2629,45 @@ CRITICAL OPERATIONAL RULES:
         };
 
         try {
-          if (supportsStreaming) {
-            const synthStream = await this.ai.models.generateContentStream({
-              model: AI_MODELS.PRO,
-              contents: [...contents],
-              config: synthesisConfig,
-            });
-            for await (const chunk of synthStream) {
-              const parts = (chunk.candidates?.[0]?.content?.parts || []) as Array<
-                Record<string, unknown>
-              >;
-              for (const p of parts) {
-                if (
-                  "text" in p &&
-                  p.text &&
-                  !("thought" in p && Boolean((p as { thought?: boolean }).thought))
-                ) {
-                  const delta = String(p.text);
-                  fullResponseText += delta;
-                  yield {
-                    type: "assistant.delta",
-                    data: {
-                      text_delta: delta,
-                    },
-                  };
-                }
-              }
-            }
-          } else {
-            const synthesisResponse = await this.ai.models.generateContent({
-              model: AI_MODELS.PRO,
-              contents: [...contents],
-              config: synthesisConfig,
-            });
-            const synthParts = synthesisResponse.candidates?.[0]?.content?.parts || [];
-            const synthTextParts = synthParts.filter(
-              (p) =>
-                "text" in p &&
-                p.text &&
-                !("thought" in p && Boolean((p as { thought?: boolean }).thought))
-            );
-            for (const tp of synthTextParts) {
-              const delta = (tp as { text: string }).text || "";
-              fullResponseText += delta;
+          for await (const ev of this.executeGeminiRoundWithFailover({
+            contents,
+            config: synthesisConfig,
+            conversationId: options.conversationId,
+            operationName: "orchestrator_synthesis",
+          })) {
+            if (ev.kind === "delta") {
+              fullResponseText += ev.textDelta;
               yield {
                 type: "assistant.delta",
                 data: {
-                  text_delta: delta,
+                  text_delta: ev.textDelta,
                 },
               };
+            } else if (ev.kind === "done" && !ev.streamedText) {
+              const synthTextParts = ev.contentParts.filter(
+                (p) =>
+                  "text" in p &&
+                  p.text &&
+                  !("thought" in p && Boolean((p as { thought?: boolean }).thought))
+              );
+              for (const tp of synthTextParts) {
+                const delta = (tp as { text: string }).text || "";
+                fullResponseText += delta;
+                yield {
+                  type: "assistant.delta",
+                  data: {
+                    text_delta: delta,
+                  },
+                };
+              }
             }
           }
         } catch (synthErr) {
-          // On synthesis timeout fall through to the deterministic fallback summary below.
-          if (!synthAbort.signal.aborted) throw synthErr;
-          logger.warn("Gemini synthesis pass timed out; using fallback summary", {
+          const failureKind = geminiKeyPool.classifyError(synthErr);
+          if (failureKind !== "TIMEOUT") throw synthErr;
+          logger.warn("Gemini synthesis pass timed out; using deterministic summary fallback", {
             conversationId: options.conversationId,
           });
-        } finally {
-          clearTimeout(synthTimer);
         }
       }
 
@@ -2766,10 +2891,7 @@ CRITICAL OPERATIONAL RULES:
       };
     } catch (streamError) {
       const rawErrMsg = (streamError as Error).message || "Stream error";
-      const errMsg =
-        rawErrMsg.includes("RESOURCE_EXHAUSTED") || rawErrMsg.includes("429")
-          ? "Gemini API daily free-tier request quota exceeded. Upgrade the GEMINI_API_KEY to pay-as-you-go billing or retry after the quota window resets."
-          : rawErrMsg;
+      const errMsg = geminiKeyPool.formatUserFacingError(streamError);
       logger.error("Copilot stream failed", {
         error: rawErrMsg,
         conversationId: options.conversationId,

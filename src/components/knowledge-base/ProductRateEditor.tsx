@@ -375,7 +375,7 @@ export function ProductRateEditor() {
                   placeholder="e.g. QuickCash Salary Advance"
                   value={productName}
                   onChange={(e) => setProductName(e.target.value)}
-                  className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden"
+                  className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none"
                 />
               </div>
 
@@ -385,7 +385,7 @@ export function ProductRateEditor() {
                   <select
                     value={productType}
                     onChange={(e) => setProductType(e.target.value)}
-                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden"
+                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none"
                   >
                     <option value="DIGITAL_LENDING">Digital Lending</option>
                     <option value="SAVINGS">Savings & Deposit</option>
@@ -399,7 +399,7 @@ export function ProductRateEditor() {
                   <select
                     value={rateType}
                     onChange={(e) => setRateType(e.target.value as "APR" | "MONTHLY" | "FLAT")}
-                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden"
+                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none"
                   >
                     <option value="MONTHLY">Monthly Interest (%)</option>
                     <option value="APR">Annual Percentage Rate (APR %)</option>
@@ -416,7 +416,7 @@ export function ProductRateEditor() {
                     step="0.01"
                     value={interestMin}
                     onChange={(e) => setInterestMin(e.target.value === "" ? "" : Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden"
+                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none"
                   />
                 </div>
                 <div>
@@ -426,7 +426,7 @@ export function ProductRateEditor() {
                     step="0.01"
                     value={interestMax}
                     onChange={(e) => setInterestMax(e.target.value === "" ? "" : Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden"
+                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none"
                   />
                 </div>
               </div>
@@ -439,7 +439,7 @@ export function ProductRateEditor() {
                     step="0.01"
                     value={processingFee}
                     onChange={(e) => setProcessingFee(e.target.value === "" ? "" : Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden"
+                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none"
                   />
                 </div>
                 <div>
@@ -448,7 +448,7 @@ export function ProductRateEditor() {
                     type="number"
                     value={tenorMaxDays}
                     onChange={(e) => setTenorMaxDays(e.target.value === "" ? "" : Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden"
+                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none"
                   />
                 </div>
               </div>
@@ -462,7 +462,7 @@ export function ProductRateEditor() {
                   value={disclaimers}
                   onChange={(e) => setDisclaimers(e.target.value)}
                   placeholder="e.g. Terms & conditions apply&#10;Licensed by CBN"
-                  className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden font-mono text-[11px]"
+                  className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none font-mono text-[11px]"
                 />
               </div>
 

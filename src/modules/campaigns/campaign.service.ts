@@ -523,7 +523,8 @@ export class CampaignService {
     let clauses: Array<{ id: string; clause_reference?: string; clause_text?: string }> = [];
     try {
       let queryEmbedding: number[] | null = null;
-      if (process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.startsWith("mock_")) {
+      const { geminiKeyPool } = await import("@/lib/ai/gemini-key-pool");
+      if (geminiKeyPool.hasActiveRealKey()) {
         queryEmbedding = await Promise.race([
           geminiService
             .generateEmbedding(statutoryQuery, {

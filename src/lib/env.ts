@@ -26,8 +26,10 @@ export const serverEnvSchema = z.object({
   R2_BUCKET_NAME: z.string().min(1, "R2_BUCKET_NAME is required for Cloudflare R2"),
   R2_PUBLIC_URL_PREFIX: z.string().url().optional(),
 
-  // Google Gemini API (@google/genai SDK)
+  // Google Gemini API (@google/genai SDK) — Primary + Key 2 / Key 3 Failover
   GEMINI_API_KEY: z.string().min(1, "GEMINI_API_KEY is required for AI reasoning and embeddings"),
+  GEMINI_API_KEY_2: z.string().optional(),
+  GEMINI_API_KEY_3: z.string().optional(),
   GEMINI_PRO_MODEL: z.string().optional(),
   GEMINI_FLASH_MODEL: z.string().optional(),
   GEMINI_FLASH_LITE_MODEL: z.string().optional(),
@@ -99,6 +101,10 @@ export function validateEnv(customEnv?: Record<string, string | undefined>): Env
   const sourceEnv = customEnv || process.env;
   const rawEnv: Record<string, string | undefined> = {
     ...sourceEnv,
+    GEMINI_API_KEY_2:
+      sourceEnv.GEMINI_API_KEY_2 || sourceEnv.GEMINI_KEY_2 || sourceEnv.KEY_2,
+    GEMINI_API_KEY_3:
+      sourceEnv.GEMINI_API_KEY_3 || sourceEnv.GEMINI_KEY_3 || sourceEnv.KEY_3,
     SUPABASE_SERVICE_ROLE_KEY:
       sourceEnv.SUPABASE_SERVICE_ROLE_KEY || sourceEnv.SUPABASE_SECRET_KEY,
     NEXT_PUBLIC_SUPABASE_URL:
@@ -129,6 +135,8 @@ export function validateEnv(customEnv?: Record<string, string | undefined>): Env
       R2_BUCKET_NAME: rawEnv.R2_BUCKET_NAME || "cogent-compliance-r2",
       R2_PUBLIC_URL_PREFIX: rawEnv.R2_PUBLIC_URL_PREFIX,
       GEMINI_API_KEY: rawEnv.GEMINI_API_KEY || "mock_gemini_api_key",
+      GEMINI_API_KEY_2: rawEnv.GEMINI_API_KEY_2,
+      GEMINI_API_KEY_3: rawEnv.GEMINI_API_KEY_3,
       GEMINI_PRO_MODEL: rawEnv.GEMINI_PRO_MODEL || "gemini-3.5-flash",
       GEMINI_FLASH_MODEL: rawEnv.GEMINI_FLASH_MODEL || "gemini-3.5-flash",
       GEMINI_FLASH_LITE_MODEL: rawEnv.GEMINI_FLASH_LITE_MODEL || "gemini-3.1-flash-lite",

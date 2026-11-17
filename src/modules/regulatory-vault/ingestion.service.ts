@@ -12,6 +12,7 @@ import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { AI_MODELS } from "@/lib/ai/config";
+import { geminiKeyPool } from "@/lib/ai/gemini-key-pool";
 
 export interface DocumentMetadata {
   regulatorAcronym: "CBN" | "FCCPC" | "ARCON" | "NDPC" | "SEC";
@@ -42,9 +43,11 @@ export interface IngestedDocumentResult {
 
 export class StatutoryVaultIngestionService {
   private client: GoogleGenAI;
+  private hasCustomClient: boolean;
   private embeddingModel: string;
 
   constructor(customClient?: GoogleGenAI) {
+    this.hasCustomClient = Boolean(customClient);
     this.client = customClient || new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
     this.embeddingModel = AI_MODELS.EMBEDDING;
   }
@@ -289,12 +292,19 @@ export class StatutoryVaultIngestionService {
       while (!success && attempts < 10) {
         attempts++;
         try {
-          const res = await this.client.models.embedContent({
-            model: this.embeddingModel,
-            contents: batch,
-            config: {
-              outputDimensionality: 768,
-            },
+          const { result: res } = await geminiKeyPool.execute({
+            primaryModel: this.embeddingModel,
+            customClient: this.hasCustomClient ? this.client : undefined,
+            enableModelFallback: false,
+            operationName: "vault_ingestion_embed",
+            run: (client, model) =>
+              client.models.embedContent({
+                model,
+                contents: batch,
+                config: {
+                  outputDimensionality: 768,
+                },
+              }),
           });
 
           const embeddings = res.embeddings?.map((e) => e.values) || [];

@@ -271,7 +271,7 @@ export function PlaybookUploader() {
                   placeholder="e.g. Digital Lending Fair Practice Playbook"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden"
+                  className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none"
                 />
               </div>
 
@@ -281,7 +281,7 @@ export function PlaybookUploader() {
                   <select
                     value={documentType}
                     onChange={(e) => setDocumentType(e.target.value as KnowledgeDocumentType)}
-                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden"
+                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none"
                   >
                     <option value="MARKETING_POLICY">Marketing Policy</option>
                     <option value="BRAND_GUIDELINE">Brand Guideline</option>
@@ -296,7 +296,7 @@ export function PlaybookUploader() {
                     type="date"
                     value={effectiveDate}
                     onChange={(e) => setEffectiveDate(e.target.value)}
-                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden"
+                    className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none"
                   />
                 </div>
               </div>
@@ -308,7 +308,7 @@ export function PlaybookUploader() {
                   placeholder="Brief summary of policy coverage and applicability..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden"
+                  className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none"
                 />
               </div>
 
@@ -322,7 +322,7 @@ export function PlaybookUploader() {
                   placeholder="Paste internal policy clauses, marketing rules, mandatory disclosures, and prohibited statements here..."
                   value={content}
                   onChange={(e) => setContent(e.target.value)}
-                  className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 focus:outline-hidden font-mono text-[11px]"
+                  className="w-full px-2.5 py-1.5 border border-zinc-300 rounded focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none font-mono text-[11px]"
                 />
               </div>
 

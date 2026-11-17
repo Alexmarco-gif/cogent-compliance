@@ -149,7 +149,7 @@ export function WordStyleEditor({
             aria-label="Document typography style"
             value={fontStyle}
             onChange={(e) => setFontStyle(e.target.value as "sans" | "serif")}
-            className="h-7 rounded-md border border-zinc-200 bg-zinc-50 px-2 text-[12px] font-medium text-zinc-800 focus:outline-hidden cursor-pointer"
+            className="h-7 rounded-md border border-zinc-200 bg-zinc-50 px-2 text-[12px] font-medium text-zinc-800 outline-none focus:outline-none focus-visible:outline-none cursor-pointer"
           >
             <option value="sans">Inter Sans</option>
             <option value="serif">Editorial Serif</option>
@@ -160,7 +160,7 @@ export function WordStyleEditor({
             aria-label="Paragraph and heading style"
             value={currentBlockValue}
             onChange={(e) => handleBlockStyleChange(e.target.value)}
-            className="h-7 rounded-md border border-zinc-200 bg-zinc-50 px-2 text-[12px] font-medium text-zinc-800 focus:outline-hidden cursor-pointer"
+            className="h-7 rounded-md border border-zinc-200 bg-zinc-50 px-2 text-[12px] font-medium text-zinc-800 outline-none focus:outline-none focus-visible:outline-none cursor-pointer"
           >
             <option value="paragraph">Normal text</option>
             <option value="h1">Heading 1</option>
@@ -378,7 +378,7 @@ export function WordStyleEditor({
                   value={linkUrlInput}
                   onChange={(e) => setLinkUrlInput(e.target.value)}
                   placeholder="https://cbn.gov.ng/..."
-                  className="flex-1 min-w-0 rounded border border-zinc-200 px-2 py-1 text-[12px] text-zinc-900 focus:outline-hidden focus:border-zinc-900"
+                  className="flex-1 min-w-0 rounded border border-zinc-200 px-2 py-1 text-[12px] text-zinc-900 outline-none focus:outline-none focus-visible:outline-none focus:border-zinc-900"
                   autoFocus
                 />
                 <button

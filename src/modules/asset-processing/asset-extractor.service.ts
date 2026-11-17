@@ -434,7 +434,12 @@ Return pure JSON only without markdown formatting.`;
         };
       }
 
-      if (process.env.NODE_ENV !== "test" && process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.includes("mock")) {
+      const hasRealKey = [
+        process.env.GEMINI_API_KEY,
+        process.env.GEMINI_API_KEY_2,
+        process.env.GEMINI_API_KEY_3,
+      ].some((k) => Boolean(k && !k.includes("mock")));
+      if (process.env.NODE_ENV !== "test" && hasRealKey) {
         throw new Error(`Image OCR extraction failed: ${(err as Error).message}`);
       }
 

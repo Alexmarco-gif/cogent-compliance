@@ -200,7 +200,7 @@ export const CreateMonitorModal: React.FC<CreateMonitorModalProps> = ({
               <select
                 value={selectedCampaignId}
                 onChange={(e) => setSelectedCampaignId(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-md text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-900"
+                className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-md text-xs text-zinc-900 outline-none focus:outline-none focus-visible:outline-none focus:border-zinc-900"
               >
                 {campaigns.length === 0 ? (
                   <option value="">No campaigns yet — switch to New URL Baseline</option>
@@ -224,7 +224,7 @@ export const CreateMonitorModal: React.FC<CreateMonitorModalProps> = ({
                   placeholder="e.g. StemGrid Salary Advance Landing Page"
                   value={campaignName}
                   onChange={(e) => setCampaignName(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-md text-xs text-zinc-900 placeholder-zinc-400 focus:outline-hidden focus:border-zinc-900"
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-md text-xs text-zinc-900 placeholder-zinc-400 outline-none focus:outline-none focus-visible:outline-none focus:border-zinc-900"
                 />
               </div>
 
@@ -236,7 +236,7 @@ export const CreateMonitorModal: React.FC<CreateMonitorModalProps> = ({
                   <select
                     value={selectedProductId}
                     onChange={(e) => setSelectedProductId(e.target.value)}
-                    className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-md text-xs text-zinc-900 focus:outline-hidden focus:border-zinc-900"
+                    className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-md text-xs text-zinc-900 outline-none focus:outline-none focus-visible:outline-none focus:border-zinc-900"
                   >
                     <option value="">Auto-match or statutory-only check</option>
                     {products.map((p) => (
@@ -257,7 +257,7 @@ export const CreateMonitorModal: React.FC<CreateMonitorModalProps> = ({
                   placeholder="Paste approved promotional copy to diff against, or leave blank to audit live page copy directly against Nigerian statutory locks & Product Truth."
                   value={baselineCopy}
                   onChange={(e) => setBaselineCopy(e.target.value)}
-                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-md text-xs text-zinc-900 placeholder-zinc-400 focus:outline-hidden focus:border-zinc-900 resize-y"
+                  className="w-full px-3 py-2 bg-white border border-zinc-300 rounded-md text-xs text-zinc-900 placeholder-zinc-400 outline-none focus:outline-none focus-visible:outline-none focus:border-zinc-900 resize-y"
                 />
               </div>
             </div>
@@ -275,7 +275,7 @@ export const CreateMonitorModal: React.FC<CreateMonitorModalProps> = ({
                 placeholder="https://thestemgrid.com/"
                 value={publishedUrl}
                 onChange={(e) => setPublishedUrl(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-white border border-zinc-300 rounded-md text-xs text-zinc-900 placeholder-zinc-400 font-mono focus:outline-hidden focus:border-zinc-900"
+                className="w-full pl-9 pr-3 py-2 bg-white border border-zinc-300 rounded-md text-xs text-zinc-900 placeholder-zinc-400 font-mono outline-none focus:outline-none focus-visible:outline-none focus:border-zinc-900"
               />
             </div>
             <p className="text-[11px] text-zinc-500 mt-1">

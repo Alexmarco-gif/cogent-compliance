@@ -573,7 +573,7 @@ export function ChatComposer({
       {/* Harvey-Style Silicon Valley Composer Dock */}
       <form
         onSubmit={handleSubmit}
-        className="rounded-2xl border border-zinc-200 bg-white shadow-[0_2px_14px_-4px_rgba(9,9,11,0.07)] focus-within:border-zinc-400 focus-within:shadow-[0_6px_24px_-8px_rgba(9,9,11,0.12)] transition-all p-3.5"
+        className="rounded-2xl border border-zinc-200 bg-white shadow-[0_2px_14px_-4px_rgba(9,9,11,0.07)] focus-within:border-zinc-300 focus-within:shadow-[0_6px_24px_-8px_rgba(9,9,11,0.10)] transition-all p-3.5"
       >
         {/* Top Context Chips Strip (Attachments + Web search + Policy/Rate Card) */}
         {hasActiveTopContext && (
@@ -702,7 +702,7 @@ export function ChatComposer({
           }
           disabled={disabled}
           rows={isZeroState ? 3 : 2}
-          className="w-full resize-none bg-transparent px-1 py-1 text-[14px] text-zinc-950 placeholder:text-zinc-400 focus:outline-hidden min-h-[48px] max-h-[180px] leading-relaxed"
+          className="w-full resize-none border-0 bg-transparent px-1 py-1 text-[14px] text-zinc-950 placeholder:text-zinc-400 outline-none focus:outline-none focus-visible:outline-none focus:ring-0 min-h-[48px] max-h-[180px] leading-relaxed"
         />
 
         <input

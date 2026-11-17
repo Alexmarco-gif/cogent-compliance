@@ -5,6 +5,8 @@
 
 import { GoogleGenAI } from "@google/genai";
 import { env } from "@/lib/env";
+import { AI_MODELS } from "@/lib/ai/config";
+import { geminiKeyPool } from "@/lib/ai/gemini-key-pool";
 import { logger } from "@/lib/logger";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import type { AiTaskType, AiModelRun } from "@/contracts/ai.contracts";
@@ -56,19 +58,21 @@ const TOKEN_PRICING: Record<string, { inputRate: number; outputRate: number }> =
   "gemini-3.5-flash": { inputRate: 0.075, outputRate: 0.3 },
   "gemini-3.8-flash": { inputRate: 0.075, outputRate: 0.3 },
   "gemini-3.1-flash-lite": { inputRate: 0.0375, outputRate: 0.15 },
+  "gemini-2.5-flash": { inputRate: 0.075, outputRate: 0.3 },
+  "gemini-2.5-flash-lite": { inputRate: 0.0375, outputRate: 0.15 },
   "gemini-2.5-pro": { inputRate: 1.25, outputRate: 5.0 },
   "gemini-embedding-001": { inputRate: 0.02, outputRate: 0.0 },
 };
 
-import { AI_MODELS } from "@/lib/ai/config";
-
 export class GeminiService {
   private client: GoogleGenAI;
+  private hasCustomClient: boolean;
   private defaultReasoningModel: string;
   private defaultFastModel: string;
   private defaultEmbeddingModel: string;
 
   constructor(customClient?: GoogleGenAI) {
+    this.hasCustomClient = Boolean(customClient);
     this.client = customClient || new GoogleGenAI({ apiKey: env.GEMINI_API_KEY });
     this.defaultReasoningModel = AI_MODELS.PRO;
     this.defaultFastModel = AI_MODELS.FLASH;
@@ -136,13 +140,127 @@ export class GeminiService {
   }
 
   /**
-   * Central text & reasoning generation wrapper.
+   * Central text & reasoning generation wrapper with 3-key + GA model failover.
    */
   public async generateText(options: GenerateTextOptions): Promise<GenerateTextResult> {
-    const model = options.model || this.defaultReasoningModel;
+    const primaryModel = options.model || this.defaultReasoningModel;
     const taskType = options.context?.taskType || "CHAT_RESPONSE";
     const startTime = Date.now();
 
+    const config: Record<string, unknown> = {};
+    if (options.systemInstruction) {
+      config.systemInstruction = options.systemInstruction;
+    }
+    if (typeof options.temperature === "number") {
+      config.temperature = options.temperature;
+    }
+    if (options.maxOutputTokens) {
+      config.maxOutputTokens = options.maxOutputTokens;
+    }
+    if (options.tools && options.tools.length > 0) {
+      config.tools = options.tools;
+    }
+
+    const contents:
+      | string
+      | Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> =
+      options.imageInlineData
+        ? [
+            {
+              inlineData: {
+                mimeType: options.imageInlineData.mimeType,
+                data: options.imageInlineData.data,
+              },
+            },
+            { text: options.prompt },
+          ]
+        : options.prompt;
+
+    if (!this.hasCustomClient) {
+      try {
+        const { result: response, model: usedModel, slotName } = await geminiKeyPool.execute({
+          primaryModel,
+          enableModelFallback: true,
+          operationName: `generateText:${taskType}`,
+          run: async (client, model) =>
+            client.models.generateContent({
+              model,
+              contents,
+              config,
+            }),
+        });
+
+        const latencyMs = Date.now() - startTime;
+        const text = response.text || "";
+        const inputTokens =
+          response.usageMetadata?.promptTokenCount || Math.ceil(options.prompt.length / 4);
+        const outputTokens =
+          response.usageMetadata?.candidatesTokenCount || Math.ceil(text.length / 4);
+        const estimatedCost = this.calculateCost(usedModel, inputTokens, outputTokens);
+
+        const candidate = response.candidates?.[0];
+        const groundingMetadata =
+          (candidate?.groundingMetadata as Record<string, unknown>) || undefined;
+
+        const modelRunId = await this.recordModelRun({
+          tenantId: options.context?.tenantId,
+          conversationId: options.context?.conversationId,
+          messageId: options.context?.messageId,
+          campaignId: options.context?.campaignId,
+          assessmentId: options.context?.assessmentId,
+          provider: "GOOGLE_GEMINI",
+          modelName: usedModel,
+          modelVersion: "1.0",
+          taskType,
+          status: "COMPLETED",
+          inputTokens,
+          outputTokens,
+          estimatedCost,
+          latencyMs,
+          metadata: {
+            ...options.context?.metadata,
+            hasGrounding: !!groundingMetadata,
+            keySlot: slotName,
+          },
+        });
+
+        return {
+          text,
+          model: usedModel,
+          inputTokens,
+          outputTokens,
+          latencyMs,
+          modelRunId: modelRunId || undefined,
+          groundingMetadata,
+        };
+      } catch (err) {
+        const latencyMs = Date.now() - startTime;
+        const errMsg = geminiKeyPool.formatUserFacingError(err);
+        await this.recordModelRun({
+          tenantId: options.context?.tenantId,
+          conversationId: options.context?.conversationId,
+          messageId: options.context?.messageId,
+          campaignId: options.context?.campaignId,
+          assessmentId: options.context?.assessmentId,
+          provider: "GOOGLE_GEMINI",
+          modelName: primaryModel,
+          modelVersion: "1.0",
+          taskType,
+          status: "FAILED",
+          inputTokens: 0,
+          outputTokens: 0,
+          estimatedCost: 0,
+          latencyMs,
+          errorCode: "GEMINI_EXECUTION_FAILED",
+          errorMessage: errMsg,
+          metadata: options.context?.metadata || {},
+        });
+        throw new Error(errMsg);
+      }
+    }
+
+    // Custom client path (e.g., deterministic unit test mocks)
+    const model = primaryModel;
     let attempts = 0;
     const maxAttempts = 3;
     let lastError: Error | null = null;
@@ -150,35 +268,6 @@ export class GeminiService {
     while (attempts < maxAttempts) {
       attempts++;
       try {
-        const config: Record<string, unknown> = {};
-        if (options.systemInstruction) {
-          config.systemInstruction = options.systemInstruction;
-        }
-        if (typeof options.temperature === "number") {
-          config.temperature = options.temperature;
-        }
-        if (options.maxOutputTokens) {
-          config.maxOutputTokens = options.maxOutputTokens;
-        }
-        if (options.tools && options.tools.length > 0) {
-          config.tools = options.tools;
-        }
-
-        const contents:
-          | string
-          | Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> =
-          options.imageInlineData
-            ? [
-                {
-                  inlineData: {
-                    mimeType: options.imageInlineData.mimeType,
-                    data: options.imageInlineData.data,
-                  },
-                },
-                { text: options.prompt },
-              ]
-            : options.prompt;
-
         const response = await this.client.models.generateContent({
           model,
           contents,
@@ -187,12 +276,15 @@ export class GeminiService {
 
         const latencyMs = Date.now() - startTime;
         const text = response.text || "";
-        const inputTokens = response.usageMetadata?.promptTokenCount || Math.ceil(options.prompt.length / 4);
-        const outputTokens = response.usageMetadata?.candidatesTokenCount || Math.ceil(text.length / 4);
+        const inputTokens =
+          response.usageMetadata?.promptTokenCount || Math.ceil(options.prompt.length / 4);
+        const outputTokens =
+          response.usageMetadata?.candidatesTokenCount || Math.ceil(text.length / 4);
         const estimatedCost = this.calculateCost(model, inputTokens, outputTokens);
 
         const candidate = response.candidates?.[0];
-        const groundingMetadata = (candidate?.groundingMetadata as Record<string, unknown>) || undefined;
+        const groundingMetadata =
+          (candidate?.groundingMetadata as Record<string, unknown>) || undefined;
 
         const modelRunId = await this.recordModelRun({
           tenantId: options.context?.tenantId,
@@ -227,7 +319,6 @@ export class GeminiService {
       } catch (err: unknown) {
         lastError = err as Error;
         const errMsg = lastError.message || "";
-        // Check for rate limits or temporary service unavailabilities
         const isRetryable =
           errMsg.includes("429") ||
           errMsg.includes("RESOURCE_EXHAUSTED") ||
@@ -236,7 +327,9 @@ export class GeminiService {
 
         if (isRetryable && attempts < maxAttempts) {
           const backoffMs = attempts * 1500;
-          logger.warn(`Gemini rate limited (${errMsg}), backing off ${backoffMs}ms (attempt ${attempts}/${maxAttempts})`);
+          logger.warn(
+            `Gemini rate limited (${errMsg}), backing off ${backoffMs}ms (attempt ${attempts}/${maxAttempts})`,
+          );
           await this.delay(backoffMs);
           continue;
         }
@@ -273,15 +366,75 @@ export class GeminiService {
    */
   public async generateEmbedding(
     text: string,
-    options?: EmbeddingOptions
+    options?: EmbeddingOptions,
   ): Promise<number[]> {
     const model = options?.model || this.defaultEmbeddingModel;
     const taskType = options?.context?.taskType || "EMBEDDING_GENERATION";
     const startTime = Date.now();
     let attempts = 0;
     const maxAttempts = options?.fastInteractive ? 1 : 5;
-    const timeoutMs = options?.timeoutMs ?? (options?.fastInteractive ? 3500 : 0);
+    const timeoutMs = options?.timeoutMs ?? (options?.fastInteractive ? 2200 : 0);
     let lastError: Error | null = null;
+
+    if (!this.hasCustomClient) {
+      const { result: embeddingValues } = await geminiKeyPool.execute({
+        primaryModel: model,
+        enableModelFallback: false,
+        operationName: "generateEmbedding",
+        run: async (client, embModel) => {
+          const embedPromise = client.models.embedContent({
+            model: embModel,
+            contents: text.slice(0, 1000),
+            config: {
+              outputDimensionality: 768,
+            },
+          });
+
+          const response =
+            timeoutMs > 0
+              ? await Promise.race([
+                  embedPromise,
+                  new Promise<never>((_, reject) => {
+                    setTimeout(
+                      () => reject(new Error(`Embedding request timed out after ${timeoutMs}ms`)),
+                      timeoutMs,
+                    );
+                  }),
+                ])
+              : await embedPromise;
+
+          const values = response.embeddings?.[0]?.values;
+          if (!values || values.length !== 768) {
+            throw new Error(
+              `Invalid embedding dimensionality: expected 768, received ${values?.length ?? 0}`,
+            );
+          }
+          return values;
+        },
+      });
+
+      const latencyMs = Date.now() - startTime;
+      const inputTokens = Math.ceil(text.length / 4);
+      const estimatedCost = this.calculateCost(model, inputTokens, 0);
+      await this.recordModelRun({
+        tenantId: options?.context?.tenantId,
+        provider: "GOOGLE_GEMINI",
+        modelName: model,
+        modelVersion: "1.0",
+        taskType,
+        status: "COMPLETED",
+        inputTokens,
+        outputTokens: 0,
+        estimatedCost,
+        latencyMs,
+        metadata: {
+          ...options?.context?.metadata,
+          textLength: text.length,
+          dimensions: 768,
+        },
+      });
+      return embeddingValues;
+    }
 
     while (attempts < maxAttempts) {
       attempts++;

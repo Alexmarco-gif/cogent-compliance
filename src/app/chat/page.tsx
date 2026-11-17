@@ -19,7 +19,7 @@ import {
   type PendingAttachment,
   type ProductOption,
 } from "@/components/chat/ChatComposer";
-import { ToolActivityPill, type ToolActivityProps } from "@/components/chat/ToolActivityPill";
+import { type SearchTraceItem } from "@/components/chat/ThinkingTraceHeader";
 import { EvidenceDrawer } from "@/components/chat/EvidenceDrawer";
 import { ArtifactCanvasDrawer } from "@/components/chat/ArtifactCanvasDrawer";
 import { TypewriterHeadline } from "@/components/chat/TypewriterHeadline";
@@ -39,6 +39,7 @@ import type {
 import type { SearchJurisdiction, SearchQuotaSnapshot } from "@/contracts/search.contracts";
 import type { WorkflowType } from "@/contracts/work-product.contracts";
 import { extractApiError, extractSseDataFromBlock, unwrapApiList } from "@/lib/api-client";
+import { formatCleanAiError } from "@/lib/ai/error-formatter";
 import { PanelRight, AlertTriangle, LogIn, X, Plus, Sparkles } from "lucide-react";
 
 interface DisplayMessage {
@@ -50,6 +51,9 @@ interface DisplayMessage {
   structuredReport?: StructuredComplianceReport;
   attachments?: MessageAttachmentChip[];
   searchTracks?: SearchTrackPill[];
+  searchTraces?: SearchTraceItem[];
+  thinkingStartedAt?: number;
+  thinkingDurationMs?: number;
   entitlementBlocked?: EntitlementBlockedBanner;
   workProductRef?: WorkProductBannerRef;
   isStreaming?: boolean;
@@ -95,7 +99,8 @@ function describeStoredMessageContent(m: MessageRecord): string {
   const status = m.status;
   const meta = (m.metadata || {}) as Record<string, unknown>;
   if (status === "FAILED") {
-    const reason = typeof meta.error === "string" ? meta.error : "The reply could not be completed.";
+    const rawReason = typeof meta.error === "string" ? meta.error : "The reply could not be completed.";
+    const reason = formatCleanAiError(rawReason);
     return m.content
       ? `${m.content}\n\n*Compliance review interrupted: ${reason}*`
       : `*Compliance review interrupted: ${reason} Please resend your message.*`;
@@ -124,7 +129,6 @@ function ChatWorkspaceContent() {
   const [loadingConversations, setLoadingConversations] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [activeTool, setActiveTool] = useState<ToolActivityProps | null>(null);
   const [inspectClauseId, setInspectClauseId] = useState<string | null>(null);
   const [authIssue, setAuthIssue] = useState<"UNAUTHENTICATED" | "NO_ORG" | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
@@ -231,21 +235,22 @@ function ChatWorkspaceContent() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, activeTool]);
+  }, [messages]);
 
   const applyApiFailure = useCallback((status: number, body: unknown, fallback: string) => {
     const parsed = extractApiError(status, body, fallback);
+    const cleanMsg = formatCleanAiError(parsed.message);
     if (status === 401 || parsed.code === "UNAUTHENTICATED") {
       setAuthIssue("UNAUTHENTICATED");
       setChatError("Your session is signed out. Sign in to start or resume a compliance review.");
     } else if (status === 403 && parsed.code === "TENANT_CONTEXT_INVALID") {
       setAuthIssue("NO_ORG");
-      setChatError(parsed.message);
+      setChatError(cleanMsg);
     } else {
       setAuthIssue(null);
-      setChatError(parsed.message);
+      setChatError(cleanMsg);
     }
-    return parsed;
+    return { ...parsed, message: cleanMsg };
   }, []);
 
   const loadConversations = useCallback(async () => {
@@ -870,7 +875,8 @@ function ChatWorkspaceContent() {
       isStreaming: false,
     };
 
-    const tempAssistantMsgId = `assistant_${Date.now()}`;
+    const streamStartTime = Date.now();
+    const tempAssistantMsgId = `assistant_${streamStartTime}`;
     const assistantMsg: DisplayMessage = {
       id: tempAssistantMsgId,
       role: "ASSISTANT",
@@ -878,12 +884,13 @@ function ChatWorkspaceContent() {
       citations: [],
       planSteps: [],
       searchTracks: [],
+      searchTraces: [],
+      thinkingStartedAt: streamStartTime,
       isStreaming: true,
     };
 
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setIsStreaming(true);
-    setActiveTool(null);
 
     const extractedUrls = Array.from(
       new Set(text.match(/https?:\/\/[^\s<>"{}|\\^`[\]]+/gi) || []),
@@ -1058,18 +1065,52 @@ function ChatWorkspaceContent() {
               ),
             );
           } else if (event.type === "tool.started") {
-            setActiveTool({
-              toolName: event.data.tool_name,
-              displayLabel: event.data.display_label,
-              status: "RUNNING",
-            });
+            const traceId = `tool:${event.data.tool_call_id || event.data.tool_name}`;
+            const traceLabel = (event.data.display_label || event.data.tool_name).replace(/\.{3}$/, "");
+            setMessages((prev) =>
+              prev.map((m) => {
+                if (m.id !== tempAssistantMsgId) return m;
+                const existing = m.searchTraces || [];
+                const idx = existing.findIndex((t) => t.id === traceId);
+                const nextTrace: SearchTraceItem = {
+                  id: traceId,
+                  label: traceLabel,
+                  status: "RUNNING",
+                };
+                return {
+                  ...m,
+                  searchTraces:
+                    idx >= 0
+                      ? existing.map((t, i) => (i === idx ? nextTrace : t))
+                      : [...existing, nextTrace],
+                };
+              }),
+            );
           } else if (event.type === "tool.completed") {
-            setActiveTool({
-              toolName: event.data.tool_name,
-              displayLabel: event.data.tool_name,
-              status: event.data.status,
-              summary: event.data.summary,
-            });
+            const traceId = `tool:${event.data.tool_call_id || event.data.tool_name}`;
+            setMessages((prev) =>
+              prev.map((m) => {
+                if (m.id !== tempAssistantMsgId) return m;
+                const existing = m.searchTraces || [];
+                const idx = existing.findIndex((t) => t.id === traceId);
+                const fallbackLabel =
+                  idx >= 0 ? existing[idx]!.label : event.data.summary || event.data.tool_name;
+                const nextStatus = event.data.status === "FAILED" ? "FAILED" : "COMPLETED";
+                const updated: SearchTraceItem = {
+                  id: traceId,
+                  label: fallbackLabel,
+                  status: nextStatus,
+                  detail: event.data.summary && event.data.summary !== fallbackLabel ? undefined : undefined,
+                };
+                return {
+                  ...m,
+                  searchTraces:
+                    idx >= 0
+                      ? existing.map((t, i) => (i === idx ? updated : t))
+                      : [...existing, updated],
+                };
+              }),
+            );
           } else if (event.type === "campaign.created") {
             loadCampaignData(event.data.campaign_id);
           } else if (event.type === "assessment.completed") {
@@ -1083,6 +1124,7 @@ function ChatWorkspaceContent() {
             );
           } else if (event.type === "message.completed") {
             receivedTerminalEvent = true;
+            const totalDurationMs = Date.now() - streamStartTime;
             if (event.data.structured_report) {
               setCanvasReport(event.data.structured_report);
             }
@@ -1095,6 +1137,10 @@ function ChatWorkspaceContent() {
                       citations: event.data.citations || m.citations,
                       structuredReport:
                         event.data.structured_report || m.structuredReport,
+                      searchTraces: (m.searchTraces || []).map((t) =>
+                        t.status === "RUNNING" ? { ...t, status: "COMPLETED" } : t,
+                      ),
+                      thinkingDurationMs: totalDurationMs,
                       isStreaming: false,
                     }
                   : m,
@@ -1108,7 +1154,10 @@ function ChatWorkspaceContent() {
             }
           } else if (event.type === "message.failed") {
             receivedTerminalEvent = true;
-            const failMsg = event.data.message || "Compliance review failed.";
+            const totalDurationMs = Date.now() - streamStartTime;
+            const failMsg = formatCleanAiError(
+              event.data.message || "Compliance review failed.",
+            );
             setChatError(failMsg);
             setMessages((prev) =>
               prev.map((m) =>
@@ -1118,6 +1167,10 @@ function ChatWorkspaceContent() {
                       content: m.content
                         ? `${m.content}\n\n*Compliance review interrupted: ${failMsg}*`
                         : `*Compliance review interrupted: ${failMsg}*`,
+                      searchTraces: (m.searchTraces || []).map((t) =>
+                        t.status === "RUNNING" ? { ...t, status: "FAILED" } : t,
+                      ),
+                      thinkingDurationMs: totalDurationMs,
                       isStreaming: false,
                     }
                   : m,
@@ -1154,26 +1207,38 @@ function ChatWorkspaceContent() {
         );
       }
 
+      const finalDurationMs = Date.now() - streamStartTime;
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === tempAssistantMsgId && m.isStreaming ? { ...m, isStreaming: false } : m,
+          m.id === tempAssistantMsgId && m.isStreaming
+            ? {
+                ...m,
+                thinkingDurationMs: m.thinkingDurationMs ?? finalDurationMs,
+                isStreaming: false,
+              }
+            : m,
         ),
       );
       return true;
     } catch (err) {
       console.error("Streaming error", err);
+      const totalDurationMs = Date.now() - streamStartTime;
       const errMsg = streamAbort.signal.aborted
         ? "No response from the server for over a minute. Please resend your message."
-        : err instanceof Error
-          ? err.message
-          : "Connection interrupted.";
+        : formatCleanAiError(err);
       setChatError(errMsg);
       setMessages((prev) =>
         prev.map((m) =>
           m.id === tempAssistantMsgId
             ? {
                 ...m,
-                content: m.content + `\n\n*Review interrupted: ${errMsg}*`,
+                content: m.content
+                  ? `${m.content}\n\n*Review interrupted: ${errMsg}*`
+                  : `*Review interrupted: ${errMsg}*`,
+                searchTraces: (m.searchTraces || []).map((t) =>
+                  t.status === "RUNNING" ? { ...t, status: "FAILED" } : t,
+                ),
+                thinkingDurationMs: m.thinkingDurationMs ?? totalDurationMs,
                 isStreaming: false,
               }
             : m,
@@ -1183,7 +1248,6 @@ function ChatWorkspaceContent() {
     } finally {
       if (watchdog) clearTimeout(watchdog);
       setIsStreaming(false);
-      setActiveTool(null);
       if (useLiveWebSearch) {
         void refreshLiveSearchQuota();
         if (typeof window !== "undefined") {
@@ -1415,6 +1479,9 @@ function ChatWorkspaceContent() {
                   structuredReport={msg.structuredReport}
                   attachments={msg.attachments}
                   searchTracks={msg.searchTracks}
+                  searchTraces={msg.searchTraces}
+                  thinkingStartedAt={msg.thinkingStartedAt}
+                  thinkingDurationMs={msg.thinkingDurationMs}
                   entitlementBlocked={msg.entitlementBlocked}
                   workProductRef={msg.workProductRef}
                   isStreaming={msg.isStreaming}
@@ -1425,18 +1492,6 @@ function ChatWorkspaceContent() {
                   onApproveAndSealDossier={handleApproveAndSealDossier}
                 />
               ))}
-
-              {activeTool && (
-                <div className="my-2">
-                  <ToolActivityPill
-                    toolName={activeTool.toolName}
-                    displayLabel={activeTool.displayLabel}
-                    status={activeTool.status}
-                    summary={activeTool.summary}
-                    wideRail={false}
-                  />
-                </div>
-              )}
 
               <div ref={messagesEndRef} />
             </div>

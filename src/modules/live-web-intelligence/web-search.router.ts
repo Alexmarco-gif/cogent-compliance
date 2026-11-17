@@ -677,43 +677,69 @@ export class WebSearchRouter {
 
     try {
       let response: Awaited<ReturnType<typeof this.client.models.generateContent>> | null = null;
-      let lastModelError: unknown = null;
 
-      for (let idx = 0; idx < candidateModels.length; idx++) {
-        const model = candidateModels[idx]!;
-        try {
-          const searchPromise = this.client.models.generateContent({
-            model,
-            contents: prompt,
-            config: {
-              tools: [{ googleSearch: {} }],
-            },
-          });
-
-          response = await Promise.race([
-            searchPromise,
-            new Promise<never>((_, reject) => {
-              setTimeout(() => reject(new Error("Live web search timed out after 12000ms")), 12000);
-            }),
-          ]);
-          break;
-        } catch (modelErr) {
-          lastModelError = modelErr;
-          const hasNextModel = idx < candidateModels.length - 1;
-          if (hasNextModel && this.isModelFallbackEligibleError(modelErr)) {
-            logger.warn("Live web search model unavailable; falling back to next candidate model", {
-              failedModel: model,
-              nextModel: candidateModels[idx + 1],
-              error: (modelErr as Error).message,
+      if (!this.hasCustomGeminiClient) {
+        const { geminiKeyPool } = await import("@/lib/ai/gemini-key-pool");
+        const { result } = await geminiKeyPool.execute({
+          primaryModel: this.searchModel,
+          enableModelFallback: true,
+          operationName: "webSearchRouterFallback",
+          run: async (client, model) => {
+            const searchPromise = client.models.generateContent({
+              model,
+              contents: prompt,
+              config: {
+                tools: [{ googleSearch: {} }],
+              },
             });
-            continue;
-          }
-          throw modelErr;
-        }
-      }
+            return Promise.race([
+              searchPromise,
+              new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error("Live web search timed out after 10000ms")), 10000);
+              }),
+            ]);
+          },
+        });
+        response = result;
+      } else {
+        let lastModelError: unknown = null;
 
-      if (!response) {
-        throw lastModelError || new Error("Live web search produced no response");
+        for (let idx = 0; idx < candidateModels.length; idx++) {
+          const model = candidateModels[idx]!;
+          try {
+            const searchPromise = this.client.models.generateContent({
+              model,
+              contents: prompt,
+              config: {
+                tools: [{ googleSearch: {} }],
+              },
+            });
+
+            response = await Promise.race([
+              searchPromise,
+              new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error("Live web search timed out after 12000ms")), 12000);
+              }),
+            ]);
+            break;
+          } catch (modelErr) {
+            lastModelError = modelErr;
+            const hasNextModel = idx < candidateModels.length - 1;
+            if (hasNextModel && this.isModelFallbackEligibleError(modelErr)) {
+              logger.warn("Live web search model unavailable; falling back to next candidate model", {
+                failedModel: model,
+                nextModel: candidateModels[idx + 1],
+                error: (modelErr as Error).message,
+              });
+              continue;
+            }
+            throw modelErr;
+          }
+        }
+
+        if (!response) {
+          throw lastModelError || new Error("Live web search produced no response");
+        }
       }
 
       const candidate = response.candidates?.[0];

@@ -451,7 +451,7 @@ export default function DriftMonitorsPage() {
                     placeholder="Search URL or campaign..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 pr-3 py-1.5 bg-white border border-zinc-300 rounded-md text-xs text-zinc-900 placeholder-zinc-400 focus:outline-hidden focus:border-zinc-900"
+                    className="pl-8 pr-3 py-1.5 bg-white border border-zinc-300 rounded-md text-xs text-zinc-900 placeholder-zinc-400 outline-none focus:outline-none focus-visible:outline-none focus:border-zinc-900"
                   />
                 </div>
                 <button

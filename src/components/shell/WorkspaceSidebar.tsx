@@ -492,7 +492,7 @@ export function WorkspaceSidebar({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Filter threads..."
-              className="w-full h-8 pl-8 pr-11 bg-white border border-zinc-200 rounded-md text-[12.5px] text-zinc-900 placeholder:text-zinc-400 focus:outline-hidden focus:border-zinc-400 transition-colors"
+              className="w-full h-8 pl-8 pr-11 bg-white border border-zinc-200 rounded-md text-[12.5px] text-zinc-900 placeholder:text-zinc-400 outline-none focus:outline-none focus-visible:outline-none focus:border-zinc-400 transition-colors"
             />
             <button
               type="button"
@@ -649,7 +649,7 @@ export function WorkspaceSidebar({
                             }}
                             onClick={(e) => e.stopPropagation()}
                             autoFocus
-                            className="w-full bg-white border border-zinc-400 rounded px-1.5 py-0.5 text-[12px] text-zinc-950 focus:outline-hidden"
+                            className="w-full bg-white border border-zinc-400 rounded px-1.5 py-0.5 text-[12px] text-zinc-950 outline-none focus:outline-none focus-visible:outline-none"
                           />
                         ) : (
                           <span className="truncate">{conv.title}</span>
@@ -1030,7 +1030,7 @@ export function WorkspaceSidebar({
                 value={commandQuery}
                 onChange={(e) => setCommandQuery(e.target.value)}
                 placeholder="Search conversations, work products, playbooks & statutory clauses..."
-                className="flex-1 bg-transparent text-[13.5px] text-zinc-950 placeholder:text-zinc-400 focus:outline-hidden"
+                className="flex-1 bg-transparent text-[13.5px] text-zinc-950 placeholder:text-zinc-400 outline-none focus:outline-none focus-visible:outline-none"
               />
               {commandLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-500 shrink-0" />}
               <button

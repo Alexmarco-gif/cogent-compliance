@@ -188,9 +188,10 @@ export class UnifiedSearchService {
   ): Promise<VaultSearchClauseHit[]> {
     try {
       let queryEmbedding: number[] | null = null;
-      if (process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.startsWith("mock_")) {
+      const { geminiKeyPool } = await import("@/lib/ai/gemini-key-pool");
+      if (geminiKeyPool.hasActiveRealKey()) {
         try {
-          const embPromise = geminiService.generateEmbedding(query);
+          const embPromise = geminiService.generateEmbedding(query, { fastInteractive: true });
           queryEmbedding = await Promise.race([
             embPromise,
             new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),

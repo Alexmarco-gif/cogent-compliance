@@ -255,7 +255,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
                 setActiveFinding(found || null);
                 setSuggestion(null);
               }}
-              className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-[13px] text-zinc-900 focus:border-zinc-900 focus:outline-hidden"
+              className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-[13px] text-zinc-900 focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none"
             >
               {findings.map((f) => (
                 <option key={f.id} value={f.id}>
@@ -304,7 +304,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
                 value={customInstructions}
                 onChange={(e) => setCustomInstructions(e.target.value)}
                 placeholder="e.g. Keep under 160 characters for SMS with CBN license line"
-                className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-[13px] text-zinc-900 focus:border-zinc-900 focus:outline-hidden"
+                className="w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-[13px] text-zinc-900 focus:border-zinc-900 outline-none focus:outline-none focus-visible:outline-none"
               />
             </div>
 
@@ -402,7 +402,7 @@ export const Tab4RemediationDiff: React.FC<Tab4Props> = ({
                     value={manualText}
                     onChange={(e) => setManualText(e.target.value)}
                     rows={4}
-                    className="mt-1.5 w-full rounded border border-emerald-300 bg-white p-2 text-[13px] font-mono text-zinc-900 focus:outline-hidden"
+                    className="mt-1.5 w-full rounded border border-emerald-300 bg-white p-2 text-[13px] font-mono text-zinc-900 outline-none focus:outline-none focus-visible:outline-none"
                   />
                 ) : (
                   <p className="mt-1.5 text-[13px] font-mono text-emerald-950 leading-relaxed">
