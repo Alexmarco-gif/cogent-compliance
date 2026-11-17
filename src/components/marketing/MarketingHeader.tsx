@@ -9,11 +9,6 @@ import {
   Menu,
   X,
   ArrowRight,
-  FileText,
-  Scale,
-  ClipboardCheck,
-  Globe,
-  ShieldCheck,
   Smartphone,
   Landmark,
   Wallet,
@@ -21,40 +16,7 @@ import {
 } from "lucide-react";
 import { CogentLogo } from "@/components/brand/CogentLogo";
 
-type MenuKey = "platform" | "solutions" | null;
-
-const PLATFORM_LINKS = [
-  {
-    href: "/platform#structuring",
-    title: "Product & Regulatory Research",
-    description: "CBN, NDPC & FCCPC structuring memos in minutes.",
-    icon: FileText,
-  },
-  {
-    href: "/platform#policy-updates",
-    title: "AML & SOP Policy Drafting",
-    description: "Compare new circulars directly against your internal manuals.",
-    icon: Scale,
-  },
-  {
-    href: "/platform#audit-responses",
-    title: "Regulator & Sponsor-Bank Replies",
-    description: "Answer 40-question audit queries with verified citations.",
-    icon: ClipboardCheck,
-  },
-  {
-    href: "/platform#dual-search",
-    title: "NG & Africa Live Web Search",
-    description: "Real-time .gov.ng PDF circulars & pan-African central banks.",
-    icon: Globe,
-  },
-  {
-    href: "/platform#launch-clearance",
-    title: "Marketing & Webpage Clearance",
-    description: "Check loan flyers, rate cards & live pages pre-launch.",
-    icon: ShieldCheck,
-  },
-];
+type MenuKey = "solutions" | null;
 
 const SOLUTIONS_LINKS = [
   {
@@ -164,77 +126,17 @@ export function MarketingHeader() {
 
         {/* Clean Institutional Navigation */}
         <nav className="hidden lg:flex items-center gap-1" aria-label="Main navigation">
-          {/* Platform Dropdown */}
-          <div
-            className="relative"
-            onMouseEnter={() => handleTriggerHover("platform")}
-            onMouseLeave={scheduleClose}
+          {/* Home Nav Link */}
+          <Link
+            href="/"
+            className={`rounded-md px-3.5 py-2 text-[13.5px] font-medium transition-colors ${
+              pathname === "/"
+                ? "bg-slate-100 text-[#0B1220]"
+                : "text-slate-600 hover:bg-slate-50 hover:text-[#0B1220]"
+            }`}
           >
-            <button
-              type="button"
-              onClick={() => setOpenMenu((prev) => (prev === "platform" ? null : "platform"))}
-              aria-expanded={openMenu === "platform"}
-              className={`inline-flex items-center gap-1 rounded-md px-3.5 py-2 text-[13.5px] font-medium transition-colors cursor-pointer ${
-                pathname.startsWith("/platform") || openMenu === "platform"
-                  ? "bg-slate-100 text-[#0B1220]"
-                  : "text-slate-600 hover:bg-slate-50 hover:text-[#0B1220]"
-              }`}
-            >
-              <span>Platform</span>
-              <ChevronDown
-                className={`h-3.5 w-3.5 transition-transform duration-150 ${
-                  openMenu === "platform" ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-
-            {openMenu === "platform" && (
-              <div
-                className="absolute left-0 top-full pt-2 w-[540px]"
-                onMouseEnter={cancelClose}
-                onMouseLeave={scheduleClose}
-              >
-                <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xl shadow-slate-950/8">
-                  <div className="grid grid-cols-1 gap-1">
-                    {PLATFORM_LINKS.map((item) => {
-                      const Icon = item.icon;
-                      return (
-                        <Link
-                          key={item.href}
-                          href={item.href}
-                          className="group flex items-start gap-3 rounded-lg p-2.5 hover:bg-slate-50 transition-colors"
-                        >
-                          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-700 group-hover:border-[#1D4ED8]/30 group-hover:text-[#1D4ED8]">
-                            <Icon className="h-4 w-4" strokeWidth={1.7} />
-                          </div>
-                          <div>
-                            <p className="text-[13px] font-semibold text-[#0B1220]">
-                              {item.title}
-                            </p>
-                            <p className="mt-0.5 text-[12px] leading-snug text-slate-500">
-                              {item.description}
-                            </p>
-                          </div>
-                        </Link>
-                      );
-                    })}
-                  </div>
-                  <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2.5 px-2">
-                    <span className="text-[11.5px] text-slate-500">
-                      5-day compliance work compressed to minutes
-                    </span>
-                    <Link
-                      href="/platform"
-                      className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#1D4ED8] hover:underline"
-                    >
-                      <span>Explore Platform</span>
-                      <ArrowRight className="h-3 w-3" />
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+            Home
+          </Link>
 
           {/* Solutions Dropdown */}
           <div
@@ -312,6 +214,19 @@ export function MarketingHeader() {
             )}
           </div>
 
+          {/* Resources */}
+          <Link
+            href="/resources"
+            className={`rounded-md px-3.5 py-2 text-[13.5px] font-medium transition-colors ${
+              pathname === "/resources"
+                ? "bg-slate-100 text-[#0B1220]"
+                : "text-slate-600 hover:bg-slate-50 hover:text-[#0B1220]"
+            }`}
+          >
+            Resources
+          </Link>
+
+          {/* Company */}
           <Link
             href="/company"
             className={`rounded-md px-3.5 py-2 text-[13.5px] font-medium transition-colors ${
@@ -323,10 +238,11 @@ export function MarketingHeader() {
             Company
           </Link>
 
+          {/* FAQ */}
           <Link
             href="/resources/faq"
             className={`rounded-md px-3.5 py-2 text-[13.5px] font-medium transition-colors ${
-              pathname.startsWith("/resources")
+              pathname.startsWith("/resources/faq")
                 ? "bg-slate-100 text-[#0B1220]"
                 : "text-slate-600 hover:bg-slate-50 hover:text-[#0B1220]"
             }`}
@@ -380,24 +296,23 @@ export function MarketingHeader() {
         <div className="border-t border-slate-200 bg-white px-5 py-5 lg:hidden max-h-[calc(100vh-4rem)] overflow-y-auto">
           <div className="space-y-4">
             <div className="space-y-1">
-              <p className="font-mono text-[10.5px] uppercase tracking-wider text-slate-400">
-                Platform
-              </p>
-              {PLATFORM_LINKS.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="block rounded-md px-2.5 py-2 text-[14px] font-medium text-slate-800 hover:bg-slate-50"
-                >
-                  {item.title}
-                </Link>
-              ))}
+              <Link
+                href="/"
+                className="block rounded-md px-2.5 py-2 text-[14px] font-medium text-slate-800 hover:bg-slate-50"
+              >
+                Home
+              </Link>
             </div>
 
             <div className="border-t border-slate-100 pt-3 space-y-1">
-              <p className="font-mono text-[10.5px] uppercase tracking-wider text-slate-400">
-                Solutions
-              </p>
+              <div className="flex items-center justify-between px-2.5 py-1">
+                <p className="font-mono text-[10.5px] uppercase tracking-wider text-slate-400">
+                  Solutions
+                </p>
+                <Link href="/solutions" className="text-[11.5px] font-semibold text-[#1D4ED8]">
+                  All Solutions &rarr;
+                </Link>
+              </div>
               {SOLUTIONS_LINKS.map((item) => (
                 <Link
                   key={item.href}
@@ -412,16 +327,22 @@ export function MarketingHeader() {
 
             <div className="border-t border-slate-100 pt-3 space-y-1">
               <Link
+                href="/resources"
+                className="block rounded-md px-2.5 py-2 text-[14px] font-medium text-slate-800 hover:bg-slate-50"
+              >
+                Resources &amp; Research
+              </Link>
+              <Link
                 href="/company"
                 className="block rounded-md px-2.5 py-2 text-[14px] font-medium text-slate-800 hover:bg-slate-50"
               >
-                Company &amp; Founders
+                Company &amp; Co-Founders
               </Link>
               <Link
                 href="/resources/faq"
                 className="block rounded-md px-2.5 py-2 text-[14px] font-medium text-slate-800 hover:bg-slate-50"
               >
-                FAQ
+                Common Questions (FAQ)
               </Link>
             </div>
 

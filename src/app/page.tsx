@@ -16,16 +16,16 @@ import { getPublicSiteUrl } from "@/lib/site-url";
 const siteUrl = getPublicSiteUrl();
 
 export const metadata: Metadata = {
-  title: "Cogent | Know Nigerian & African Financial Rules in Seconds",
+  title: "Cogent | Ask Any Compliance Question. Clear Any Campaign.",
   description:
-    "Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, regulator query responses, audit responses, and cleared launches—without the week-long wait.",
+    "Ask any compliance question. Clear any campaign. Accelerate regulatory work from days to minutes across Nigerian & African financial regulations.",
   alternates: {
     canonical: "/",
   },
   openGraph: {
-    title: "Cogent | Regulatory Intelligence & Compliance Workflow Engine",
+    title: "Cogent | Ask Any Compliance Question. Clear Any Campaign.",
     description:
-      "Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, regulator query responses, audit responses, and cleared launches.",
+      "Accelerate regulatory work from days to minutes. Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, regulator query responses, audit replies, and cleared launches.",
     url: "/",
   },
 };
@@ -80,16 +80,19 @@ export default function HomePage() {
 
             <h1
               style={{ animationDelay: "60ms" }}
-              className="animate-cogent-enter mx-auto mt-4 max-w-4xl text-[42px] sm:text-[56px] lg:text-[68px] font-semibold leading-[1.03] tracking-[-0.035em] text-[#0B1220]"
+              className="animate-cogent-enter mx-auto mt-4 max-w-4xl text-[36px] sm:text-[50px] lg:text-[62px] font-semibold leading-[1.08] tracking-[-0.035em] text-[#0B1220]"
             >
-              Know the rules <span className="text-[#1D4ED8]">in seconds.</span>
+              Ask any compliance question. Clear any campaign.{" "}
+              <span className="block text-[#1D4ED8] mt-1 sm:mt-2">
+                Accelerate regulatory work from days to minutes.
+              </span>
             </h1>
 
             <p
               style={{ animationDelay: "120ms" }}
               className="animate-cogent-enter mx-auto mt-5 max-w-3xl text-[16.5px] sm:text-[18.5px] leading-[1.6] text-slate-600"
             >
-              Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, regulator query responses, audit responses, and cleared launches—without the week-long wait.
+              Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, regulator query responses, audit replies, and cleared launches—without the week-long wait.
             </p>
 
             <div

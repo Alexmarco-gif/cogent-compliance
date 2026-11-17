@@ -33,32 +33,32 @@ export function MarketingFooter() {
           <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 md:col-span-8">
             <div>
               <p className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.1em] text-[#0B1220]">
-                Platform
+                Resources
               </p>
               <ul className="mt-3.5 space-y-2.5 text-[13.5px]">
                 <li>
-                  <Link href="/platform#structuring" className="hover:text-[#1D4ED8] transition-colors">
-                    Product Structuring Memos
+                  <Link href="/resources" className="hover:text-[#1D4ED8] transition-colors">
+                    Resources &amp; Hub
                   </Link>
                 </li>
                 <li>
-                  <Link href="/platform#policy-updates" className="hover:text-[#1D4ED8] transition-colors">
-                    AML &amp; SOP Policy Updates
+                  <Link href="/resources#articles" className="hover:text-[#1D4ED8] transition-colors">
+                    Regulatory Articles &amp; Blogs
                   </Link>
                 </li>
                 <li>
-                  <Link href="/platform#audit-responses" className="hover:text-[#1D4ED8] transition-colors">
-                    Regulator &amp; Bank Audits
+                  <Link href="/resources#briefs" className="hover:text-[#1D4ED8] transition-colors">
+                    Statutory PDF Memos
                   </Link>
                 </li>
                 <li>
-                  <Link href="/platform#dual-search" className="hover:text-[#1D4ED8] transition-colors">
-                    NG &amp; Africa Live Search
+                  <Link href="/resources#data" className="hover:text-[#1D4ED8] transition-colors">
+                    Market &amp; License Data
                   </Link>
                 </li>
                 <li>
-                  <Link href="/platform#launch-clearance" className="hover:text-[#1D4ED8] transition-colors">
-                    Marketing Clearance
+                  <Link href="/resources#videos" className="hover:text-[#1D4ED8] transition-colors">
+                    Video Walkthroughs
                   </Link>
                 </li>
               </ul>

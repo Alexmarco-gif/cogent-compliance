@@ -8,11 +8,11 @@ const siteUrl = getPublicSiteUrl();
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Cogent | Regulatory Intelligence & Compliance Workflow Engine",
+    default: "Cogent | Ask Any Compliance Question. Clear Any Campaign.",
     template: "%s | Cogent",
   },
   description:
-    "Know the rules in seconds. Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, regulator query responses, audit replies, and cleared launches.",
+    "Ask any compliance question. Clear any campaign. Accelerate regulatory work from days to minutes across Nigerian & African financial regulations.",
   applicationName: "Cogent",
   keywords: [
     "Cogent",
@@ -36,15 +36,15 @@ export const metadata: Metadata = {
     locale: "en_NG",
     url: siteUrl,
     siteName: "Cogent by Stem Systems",
-    title: "Cogent | Know the Rules in Seconds",
+    title: "Cogent | Ask Any Compliance Question. Clear Any Campaign.",
     description:
-      "Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, audit responses, and cleared launches—without the week-long wait.",
+      "Accelerate regulatory work from days to minutes. Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, audit replies, and cleared launches.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Cogent | Know the Rules in Seconds",
+    title: "Cogent | Ask Any Compliance Question. Clear Any Campaign.",
     description:
-      "Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, audit responses, and cleared launches.",
+      "Accelerate regulatory work from days to minutes across Nigerian and African financial regulations.",
   },
   robots: {
     index: true,

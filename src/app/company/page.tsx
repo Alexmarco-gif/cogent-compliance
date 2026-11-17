@@ -94,10 +94,10 @@ export default function CompanyPage() {
                 />
 
                 <Link
-                  href="/platform#launch-clearance"
+                  href="/#workflows"
                   className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-[#1D4ED8] hover:underline shrink-0"
                 >
-                  <span>Explore platform governance</span>
+                  <span>See accelerated workflows</span>
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </div>
