@@ -44,8 +44,9 @@ export const GET = createApiHandler(
     }
 
     return conversationService.listMessages(tenant.tenantId, conversationId, {
-      limit: query.limit,
+      limit: query.limit ?? 100,
       cursor: query.cursor,
+      latest: !query.cursor,
     });
   }
 );

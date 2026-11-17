@@ -249,10 +249,32 @@ export class ConversationService {
   public async listMessages(
     tenantId: string,
     conversationId: string,
-    options?: { limit?: number; cursor?: string }
+    options?: { limit?: number; cursor?: string; latest?: boolean }
   ): Promise<{ messages: MessageRecord[]; nextCursor?: string }> {
     const supabase = createAdminSupabaseClient();
     const limit = options?.limit || 50;
+
+    // "latest" mode returns the most recent `limit` messages (still in chronological order).
+    // Without it, long threads only ever returned the OLDEST messages, so the newest
+    // user prompt / assistant reply was missing from both the UI and the LLM history.
+    if (options?.latest && !options?.cursor) {
+      const { data, error } = await supabase
+        .from("marketing_messages")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("conversation_id", conversationId)
+        .order("sequence_number", { ascending: false })
+        .limit(limit);
+      if (error) {
+        logger.error("Failed to list latest messages", {
+          tenantId,
+          conversationId,
+          error: error.message,
+        });
+        throw new Error(`Failed to list messages: ${error.message}`);
+      }
+      return { messages: ((data || []) as MessageRecord[]).reverse() };
+    }
 
     let query = supabase
       .from("marketing_messages")

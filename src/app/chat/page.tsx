@@ -73,6 +73,29 @@ interface ActiveAssetState {
   [key: string]: unknown;
 }
 
+/** Max silence on the SSE stream before the client gives up (server heartbeats every 10s). */
+const STREAM_IDLE_TIMEOUT_MS = 60_000;
+
+/**
+ * Stored assistant rows can be FAILED or left STREAMING (e.g. the function was killed mid-turn).
+ * Render a visible notice instead of an empty bubble so the user knows to resend.
+ */
+function describeStoredMessageContent(m: MessageRecord): string {
+  if (m.role !== "ASSISTANT") return m.content;
+  const status = m.status;
+  const meta = (m.metadata || {}) as Record<string, unknown>;
+  if (status === "FAILED") {
+    const reason = typeof meta.error === "string" ? meta.error : "The reply could not be completed.";
+    return m.content
+      ? `${m.content}\n\n*Compliance review interrupted: ${reason}*`
+      : `*Compliance review interrupted: ${reason} Please resend your message.*`;
+  }
+  if (status === "STREAMING" && !m.content) {
+    return "*This reply is still being generated or was interrupted. Refresh in a moment, or resend your message.*";
+  }
+  return m.content;
+}
+
 function ChatWorkspaceContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -382,7 +405,7 @@ function ChatWorkspaceContent() {
         const loaded: DisplayMessage[] = (json.data.messages || []).map((m: MessageRecord) => ({
           id: m.id,
           role: m.role,
-          content: m.content,
+          content: describeStoredMessageContent(m),
           citations: (m.metadata?.citations as CitationItem[]) || [],
           structuredReport:
             (m.metadata?.structured_report as StructuredComplianceReport) || undefined,
@@ -712,11 +735,24 @@ function ChatWorkspaceContent() {
       new Set(text.match(/https?:\/\/[^\s<>"{}|\\^`[\]]+/gi) || []),
     ).slice(0, 3);
 
+    // Client-side watchdog: the server sends a heartbeat every ~10s, so prolonged silence means
+    // the connection was dropped (e.g. serverless timeout or network loss). Abort instead of
+    // leaving the user staring at an empty reply forever.
+    const streamAbort = new AbortController();
+    let watchdog: ReturnType<typeof setTimeout> | undefined;
+    const armWatchdog = () => {
+      if (watchdog) clearTimeout(watchdog);
+      watchdog = setTimeout(() => streamAbort.abort(), STREAM_IDLE_TIMEOUT_MS);
+    };
+    let receivedTerminalEvent = false;
+
     try {
+      armWatchdog();
       const response = await fetch(
         `/api/marketing-shield/v1/conversations/${currentConvId}/messages/stream`,
         {
           method: "POST",
+          signal: streamAbort.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             content: text,
@@ -807,6 +843,7 @@ function ChatWorkspaceContent() {
               ),
             );
           } else if (event.type === "message.completed") {
+            receivedTerminalEvent = true;
             if (event.data.structured_report) {
               setCanvasReport(event.data.structured_report);
             }
@@ -831,6 +868,7 @@ function ChatWorkspaceContent() {
               );
             }
           } else if (event.type === "message.failed") {
+            receivedTerminalEvent = true;
             const failMsg = event.data.message || "Compliance review failed.";
             setChatError(failMsg);
             setMessages((prev) =>
@@ -855,6 +893,7 @@ function ChatWorkspaceContent() {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
+        armWatchdog();
 
         buffer += decoder.decode(value, { stream: true });
         const blocks = buffer.split(/\r?\n\r?\n/);
@@ -869,6 +908,13 @@ function ChatWorkspaceContent() {
         processSseBlock(buffer);
       }
 
+      if (!receivedTerminalEvent) {
+        // Stream closed without completed/failed — previously this left a silent blank reply.
+        throw new Error(
+          "The connection to the compliance analyst closed before a reply was finished. Please resend your message.",
+        );
+      }
+
       setMessages((prev) =>
         prev.map((m) =>
           m.id === tempAssistantMsgId && m.isStreaming ? { ...m, isStreaming: false } : m,
@@ -877,7 +923,12 @@ function ChatWorkspaceContent() {
       return true;
     } catch (err) {
       console.error("Streaming error", err);
-      const errMsg = err instanceof Error ? err.message : "Connection interrupted.";
+      const errMsg = streamAbort.signal.aborted
+        ? "No response from the server for over a minute. Please resend your message."
+        : err instanceof Error
+          ? err.message
+          : "Connection interrupted.";
+      setChatError(errMsg);
       setMessages((prev) =>
         prev.map((m) =>
           m.id === tempAssistantMsgId
@@ -891,6 +942,7 @@ function ChatWorkspaceContent() {
       );
       return true;
     } finally {
+      if (watchdog) clearTimeout(watchdog);
       setIsStreaming(false);
       setActiveTool(null);
     }

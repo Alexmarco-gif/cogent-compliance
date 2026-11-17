@@ -71,6 +71,11 @@ export interface StreamCopilotOptions {
   referencedProductId?: string | null;
 }
 
+/** Max time for a single Gemini generate call (including full stream consumption). */
+const LLM_CALL_TIMEOUT_MS = 90_000;
+/** Max time for a single tool execution inside the agent loop. */
+const TOOL_CALL_TIMEOUT_MS = 25_000;
+
 export class CopilotOrchestrator {
   private ai: GoogleGenAI;
 
@@ -120,12 +125,41 @@ CRITICAL OPERATIONAL RULES:
   }
 
   private async withTimeout<T>(promise: Promise<T>, ms: number, fallbackValue: T): Promise<T> {
-    return Promise.race([
-      promise,
-      new Promise<T>((resolve) => {
-        setTimeout(() => resolve(fallbackValue), ms);
-      }),
-    ]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((resolve) => {
+          timer = setTimeout(() => resolve(fallbackValue), ms);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Wraps every statutory tool so a single slow upstream (web search, URL fetch, vision OCR,
+   * Supabase RPC) can never stall the whole chat turn. On timeout the model receives a
+   * structured failure and continues with the evidence it already has.
+   */
+  private timedToolExecutor(): typeof statutoryToolExecutor {
+    return new Proxy(statutoryToolExecutor, {
+      get: (target, prop, receiver) => {
+        const value = Reflect.get(target, prop, receiver);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) =>
+          this.withTimeout(
+            Promise.resolve((value as (...a: unknown[]) => unknown).apply(target, args)),
+            TOOL_CALL_TIMEOUT_MS,
+            {
+              success: false,
+              results: [],
+              error: `Tool ${String(prop)} timed out after ${TOOL_CALL_TIMEOUT_MS / 1000}s`,
+            } as unknown
+          );
+      },
+    });
   }
 
   public buildDualSearchQueries(
@@ -427,7 +461,7 @@ CRITICAL OPERATIONAL RULES:
     const historyResult = await conversationService.listMessages(
       options.tenantId,
       options.conversationId,
-      { limit: 20 }
+      { limit: 20, latest: true }
     );
     const recentMessages = historyResult.messages.filter((m) => m.id !== asstMsg.id);
 
@@ -1194,6 +1228,7 @@ CRITICAL OPERATIONAL RULES:
       }
     }
 
+    const timedTools = this.timedToolExecutor();
     let fullResponseText = "";
     let toolRounds = 0;
     const maxToolRounds = 3;
@@ -1206,61 +1241,84 @@ CRITICAL OPERATIONAL RULES:
         let contentParts: Array<Record<string, unknown>> = [];
         let streamedTextThisTurn = false;
 
-        if (supportsStreaming) {
-          const stream = await this.ai.models.generateContentStream({
-            model: AI_MODELS.PRO,
-            contents: [...contents],
-            config: {
-              systemInstruction: this.buildSystemInstruction(),
-              temperature: 0.2,
-              tools: [{ functionDeclarations: STATUTORY_TOOL_DECLARATIONS }],
-            },
-          });
+        const roundAbort = new AbortController();
+        const roundTimer = setTimeout(() => roundAbort.abort(), LLM_CALL_TIMEOUT_MS);
+        try {
+          if (supportsStreaming) {
+            const stream = await this.ai.models.generateContentStream({
+              model: AI_MODELS.PRO,
+              contents: [...contents],
+              config: {
+                systemInstruction: this.buildSystemInstruction(),
+                temperature: 0.2,
+                tools: [{ functionDeclarations: STATUTORY_TOOL_DECLARATIONS }],
+                abortSignal: roundAbort.signal,
+              },
+            });
 
-          for await (const chunk of stream) {
-            const chunkParts = (chunk.candidates?.[0]?.content?.parts || []) as Array<
-              Record<string, unknown>
-            >;
-            for (const p of chunkParts) {
-              contentParts.push(p);
-              if (
-                "text" in p &&
-                p.text &&
-                !("thought" in p && Boolean((p as { thought?: boolean }).thought))
-              ) {
-                const delta = String(p.text);
-                fullResponseText += delta;
-                streamedTextThisTurn = true;
-                yield {
-                  type: "assistant.delta",
-                  data: {
-                    text_delta: delta,
-                  },
-                };
+            for await (const chunk of stream) {
+              const chunkParts = (chunk.candidates?.[0]?.content?.parts || []) as Array<
+                Record<string, unknown>
+              >;
+              for (const p of chunkParts) {
+                contentParts.push(p);
+                if (
+                  "text" in p &&
+                  p.text &&
+                  !("thought" in p && Boolean((p as { thought?: boolean }).thought))
+                ) {
+                  const delta = String(p.text);
+                  fullResponseText += delta;
+                  streamedTextThisTurn = true;
+                  yield {
+                    type: "assistant.delta",
+                    data: {
+                      text_delta: delta,
+                    },
+                  };
+                }
               }
             }
-          }
-        } else {
-          // Non-streaming fallback (e.g. unit test mocks)
-          const response = await this.ai.models.generateContent({
-            model: AI_MODELS.PRO,
-            contents: [...contents],
-            config: {
-              systemInstruction: this.buildSystemInstruction(),
-              temperature: 0.2,
-              tools: [{ functionDeclarations: STATUTORY_TOOL_DECLARATIONS }],
-            },
-          });
+          } else {
+            // Non-streaming fallback (e.g. unit test mocks)
+            const response = await this.ai.models.generateContent({
+              model: AI_MODELS.PRO,
+              contents: [...contents],
+              config: {
+                systemInstruction: this.buildSystemInstruction(),
+                temperature: 0.2,
+                tools: [{ functionDeclarations: STATUTORY_TOOL_DECLARATIONS }],
+                abortSignal: roundAbort.signal,
+              },
+            });
 
-          const candidate = response.candidates?.[0];
-          contentParts = (candidate?.content?.parts || []) as Array<Record<string, unknown>>;
-          if (
-            contentParts.length === 0 &&
-            typeof (response as { text?: string }).text === "string" &&
-            (response as { text?: string }).text
-          ) {
-            contentParts = [{ text: (response as { text: string }).text }];
+            const candidate = response.candidates?.[0];
+            contentParts = (candidate?.content?.parts || []) as Array<Record<string, unknown>>;
+            if (
+              contentParts.length === 0 &&
+              typeof (response as { text?: string }).text === "string" &&
+              (response as { text?: string }).text
+            ) {
+              contentParts = [{ text: (response as { text: string }).text }];
+            }
           }
+        } catch (roundErr) {
+          if (roundAbort.signal.aborted) {
+            if (fullResponseText.trim().length > 0) {
+              // Partial answer already streamed — keep it and stop gracefully.
+              logger.warn("Gemini round timed out after partial text; finalizing", {
+                conversationId: options.conversationId,
+                toolRounds,
+              });
+              break;
+            }
+            throw new Error(
+              `Gemini did not respond within ${LLM_CALL_TIMEOUT_MS / 1000}s. Please retry.`
+            );
+          }
+          throw roundErr;
+        } finally {
+          clearTimeout(roundTimer);
         }
 
         const functionCalls = contentParts.filter(
@@ -1331,7 +1389,7 @@ CRITICAL OPERATIONAL RULES:
             let toolResult: Record<string, unknown> = {};
             try {
               if (toolName === "search_regulatory_evidence") {
-                toolResult = await statutoryToolExecutor.searchRegulatoryEvidence(
+                toolResult = await timedTools.searchRegulatoryEvidence(
                   toolArgs as { query: string; regulators?: string[]; limit?: number },
                   ctx
                 );
@@ -1347,7 +1405,7 @@ CRITICAL OPERATIONAL RULES:
                   });
                 }
               } else if (toolName === "get_regulatory_provision") {
-                toolResult = await statutoryToolExecutor.getRegulatoryProvision(
+                toolResult = await timedTools.getRegulatoryProvision(
                   toolArgs as { regulatory_clause_id: string },
                   ctx
                 );
@@ -1362,17 +1420,17 @@ CRITICAL OPERATIONAL RULES:
                   });
                 }
               } else if (toolName === "verify_regulatory_evidence") {
-                toolResult = await statutoryToolExecutor.verifyRegulatoryEvidence(
+                toolResult = await timedTools.verifyRegulatoryEvidence(
                   toolArgs as { regulatory_clause_ids: string[]; as_of_date?: string },
                   ctx
                 );
               } else if (toolName === "assess_regulatory_applicability") {
-                toolResult = await statutoryToolExecutor.assessRegulatoryApplicability(
+                toolResult = await timedTools.assessRegulatoryApplicability(
                   toolArgs as { regulatory_clause_ids: string[]; institution_type?: string },
                   ctx
                 );
               } else if (toolName === "search_live_web") {
-                toolResult = await statutoryToolExecutor.searchLiveWeb(
+                toolResult = await timedTools.searchLiveWeb(
                   toolArgs as { query: string; prioritize_official_regulators?: boolean },
                   ctx
                 );
@@ -1391,7 +1449,7 @@ CRITICAL OPERATIONAL RULES:
                   });
                 }
               } else if (toolName === "fetch_live_url_content") {
-                toolResult = await statutoryToolExecutor.fetchLiveUrlContent(
+                toolResult = await timedTools.fetchLiveUrlContent(
                   toolArgs as { url: string; campaign_id?: string },
                   ctx
                 );
@@ -1405,27 +1463,27 @@ CRITICAL OPERATIONAL RULES:
                   });
                 }
               } else if (toolName === "get_conversation_context") {
-                toolResult = await statutoryToolExecutor.getConversationContext(
+                toolResult = await timedTools.getConversationContext(
                   toolArgs as { conversation_id: string },
                   ctx
                 );
               } else if (toolName === "get_campaign_context") {
-                toolResult = await statutoryToolExecutor.getCampaignContext(
+                toolResult = await timedTools.getCampaignContext(
                   toolArgs as { campaign_id: string; revision_id?: string },
                   ctx
                 );
               } else if (toolName === "get_campaign_asset_content") {
-                toolResult = await statutoryToolExecutor.getCampaignAssetContent(
+                toolResult = await timedTools.getCampaignAssetContent(
                   toolArgs as { asset_id: string },
                   ctx
                 );
               } else if (toolName === "extract_campaign_claims") {
-                toolResult = await statutoryToolExecutor.extractCampaignClaims(
+                toolResult = await timedTools.extractCampaignClaims(
                   toolArgs as { campaign_id: string; revision_id: string },
                   ctx
                 );
               } else if (toolName === "run_deterministic_compliance_locks") {
-                toolResult = await statutoryToolExecutor.runDeterministicComplianceLocks(
+                toolResult = await timedTools.runDeterministicComplianceLocks(
                   toolArgs as {
                     campaign_id?: string;
                     revision_id?: string;
@@ -1435,7 +1493,7 @@ CRITICAL OPERATIONAL RULES:
                   ctx
                 );
               } else if (toolName === "assess_campaign_compliance") {
-                toolResult = await statutoryToolExecutor.assessCampaignCompliance(
+                toolResult = await timedTools.assessCampaignCompliance(
                   toolArgs as {
                     campaign_id: string;
                     revision_id: string;
@@ -1444,17 +1502,17 @@ CRITICAL OPERATIONAL RULES:
                   ctx
                 );
               } else if (toolName === "get_compliance_findings") {
-                toolResult = await statutoryToolExecutor.getComplianceFindings(
+                toolResult = await timedTools.getComplianceFindings(
                   toolArgs as { campaign_id: string; revision_id?: string },
                   ctx
                 );
               } else if (toolName === "generate_rewrite_suggestions") {
-                toolResult = await statutoryToolExecutor.generateRewriteSuggestions(
+                toolResult = await timedTools.generateRewriteSuggestions(
                   toolArgs as { finding_id: string; tone?: string; instructions?: string },
                   ctx
                 );
               } else if (toolName === "compare_campaign_revisions") {
-                toolResult = await statutoryToolExecutor.compareCampaignRevisions(
+                toolResult = await timedTools.compareCampaignRevisions(
                   toolArgs as {
                     campaign_id: string;
                     from_revision_id: string;
@@ -1463,7 +1521,7 @@ CRITICAL OPERATIONAL RULES:
                   ctx
                 );
               } else if (toolName === "search_institutional_knowledge") {
-                toolResult = await statutoryToolExecutor.searchInstitutionalKnowledge(
+                toolResult = await timedTools.searchInstitutionalKnowledge(
                   toolArgs as { query: string; document_types?: string[]; limit?: number },
                   ctx
                 );
@@ -1494,11 +1552,11 @@ CRITICAL OPERATIONAL RULES:
               } else if (toolName === "get_product_approved_terms" || toolName === "match_product_rate_card") {
                 toolResult =
                   toolName === "match_product_rate_card"
-                    ? await statutoryToolExecutor.matchProductRateCard(
+                    ? await timedTools.matchProductRateCard(
                         toolArgs as { product_id?: string; query_or_copy?: string },
                         ctx
                       )
-                    : await statutoryToolExecutor.getProductApprovedTerms(
+                    : await timedTools.getProductApprovedTerms(
                         toolArgs as { product_id?: string; product_name_query?: string },
                         ctx
                       );
@@ -1520,7 +1578,7 @@ CRITICAL OPERATIONAL RULES:
                 toolName === "calculate_effective_apr_and_drip_fees" ||
                 toolName === "calculate_cbn_apr_and_drip_pricing"
               ) {
-                toolResult = await statutoryToolExecutor.calculateEffectiveAprAndDripFees(
+                toolResult = await timedTools.calculateEffectiveAprAndDripFees(
                   toolArgs as {
                     principal_ngn?: number;
                     advertised_rate_percent: number;
@@ -1539,7 +1597,7 @@ CRITICAL OPERATIONAL RULES:
                   toolResult.computed_financials = aprAuditResult.computedFinancials;
                 }
               } else if (toolName === "search_nigerian_regulations") {
-                toolResult = await statutoryToolExecutor.searchNigerianRegulations(
+                toolResult = await timedTools.searchNigerianRegulations(
                   toolArgs as { query: string; regulators?: string[]; limit?: number },
                   ctx
                 );
@@ -1556,7 +1614,7 @@ CRITICAL OPERATIONAL RULES:
                   });
                 }
               } else if (toolName === "scan_live_url_or_creative") {
-                toolResult = await statutoryToolExecutor.scanLiveUrlOrCreative(
+                toolResult = await timedTools.scanLiveUrlOrCreative(
                   toolArgs as {
                     url?: string;
                     asset_id?: string;
@@ -1572,7 +1630,7 @@ CRITICAL OPERATIONAL RULES:
                   appStoreAuditResult = toolResult.app_store_audit as AppStoreAuditResult;
                 }
               } else if (toolName === "audit_flyer_visual_forensics") {
-                toolResult = await statutoryToolExecutor.auditFlyerVisualForensics(
+                toolResult = await timedTools.auditFlyerVisualForensics(
                   toolArgs as { asset_id?: string; flyer_text?: string },
                   ctx
                 );
@@ -1580,7 +1638,7 @@ CRITICAL OPERATIONAL RULES:
                   visualAuditResult = toolResult.visual_forensics as VisualForensicsResult;
                 }
               } else if (toolName === "audit_app_store_listing") {
-                toolResult = await statutoryToolExecutor.auditAppStoreListing(
+                toolResult = await timedTools.auditAppStoreListing(
                   toolArgs as { listing_text: string; product_id?: string },
                   ctx
                 );
@@ -1588,7 +1646,7 @@ CRITICAL OPERATIONAL RULES:
                   appStoreAuditResult = toolResult.app_store_audit as AppStoreAuditResult;
                 }
               } else if (toolName === "verify_license_scope_matrix") {
-                toolResult = await statutoryToolExecutor.verifyLicenseScopeMatrix(
+                toolResult = await timedTools.verifyLicenseScopeMatrix(
                   toolArgs as { content_text: string; license_tier?: string },
                   ctx
                 );
@@ -1599,7 +1657,7 @@ CRITICAL OPERATIONAL RULES:
                 toolName === "generate_kfs_and_channel_kit" ||
                 toolName === "create_compliance_artifact"
               ) {
-                toolResult = await statutoryToolExecutor.generateKfsAndChannelKit(
+                toolResult = await timedTools.generateKfsAndChannelKit(
                   toolArgs as {
                     product_id?: string;
                     product_name?: string;
@@ -1614,7 +1672,7 @@ CRITICAL OPERATIONAL RULES:
                   kfsKitResult = toolResult.kfs_and_channel_kit as KfsAndChannelKitResult;
                 }
               } else if (toolName === "recall_institutional_precedents") {
-                toolResult = await statutoryToolExecutor.recallInstitutionalPrecedents(
+                toolResult = await timedTools.recallInstitutionalPrecedents(
                   toolArgs as { topic_query: string },
                   ctx
                 );
@@ -1691,7 +1749,10 @@ CRITICAL OPERATIONAL RULES:
 
       // If maxToolRounds was reached with tool calls only, force a final tool-free synthesis pass
       if (fullResponseText.trim().length === 0) {
+        const synthAbort = new AbortController();
+        const synthTimer = setTimeout(() => synthAbort.abort(), LLM_CALL_TIMEOUT_MS);
         const synthesisConfig = {
+          abortSignal: synthAbort.signal,
           systemInstruction:
             this.buildSystemInstruction() +
             "\n\nYou have finished retrieving evidence. Synthesize your final compliance response now using only the evidence already gathered above.",
@@ -1704,56 +1765,66 @@ CRITICAL OPERATIONAL RULES:
           },
         };
 
-        if (supportsStreaming) {
-          const synthStream = await this.ai.models.generateContentStream({
-            model: AI_MODELS.PRO,
-            contents: [...contents],
-            config: synthesisConfig,
-          });
-          for await (const chunk of synthStream) {
-            const parts = (chunk.candidates?.[0]?.content?.parts || []) as Array<
-              Record<string, unknown>
-            >;
-            for (const p of parts) {
-              if (
+        try {
+          if (supportsStreaming) {
+            const synthStream = await this.ai.models.generateContentStream({
+              model: AI_MODELS.PRO,
+              contents: [...contents],
+              config: synthesisConfig,
+            });
+            for await (const chunk of synthStream) {
+              const parts = (chunk.candidates?.[0]?.content?.parts || []) as Array<
+                Record<string, unknown>
+              >;
+              for (const p of parts) {
+                if (
+                  "text" in p &&
+                  p.text &&
+                  !("thought" in p && Boolean((p as { thought?: boolean }).thought))
+                ) {
+                  const delta = String(p.text);
+                  fullResponseText += delta;
+                  yield {
+                    type: "assistant.delta",
+                    data: {
+                      text_delta: delta,
+                    },
+                  };
+                }
+              }
+            }
+          } else {
+            const synthesisResponse = await this.ai.models.generateContent({
+              model: AI_MODELS.PRO,
+              contents: [...contents],
+              config: synthesisConfig,
+            });
+            const synthParts = synthesisResponse.candidates?.[0]?.content?.parts || [];
+            const synthTextParts = synthParts.filter(
+              (p) =>
                 "text" in p &&
                 p.text &&
                 !("thought" in p && Boolean((p as { thought?: boolean }).thought))
-              ) {
-                const delta = String(p.text);
-                fullResponseText += delta;
-                yield {
-                  type: "assistant.delta",
-                  data: {
-                    text_delta: delta,
-                  },
-                };
-              }
+            );
+            for (const tp of synthTextParts) {
+              const delta = (tp as { text: string }).text || "";
+              fullResponseText += delta;
+              yield {
+                type: "assistant.delta",
+                data: {
+                  text_delta: delta,
+                },
+              };
             }
           }
-        } else {
-          const synthesisResponse = await this.ai.models.generateContent({
-            model: AI_MODELS.PRO,
-            contents: [...contents],
-            config: synthesisConfig,
+        } catch (synthErr) {
+          // On synthesis timeout fall through to the deterministic fallback summary below.
+          if (!synthAbort.signal.aborted) throw synthErr;
+          logger.warn("Gemini synthesis pass timed out; using fallback summary", {
+            conversationId: options.conversationId,
           });
-          const synthParts = synthesisResponse.candidates?.[0]?.content?.parts || [];
-          const synthTextParts = synthParts.filter(
-            (p) =>
-              "text" in p &&
-              p.text &&
-              !("thought" in p && Boolean((p as { thought?: boolean }).thought))
-          );
-          for (const tp of synthTextParts) {
-            const delta = (tp as { text: string }).text || "";
-            fullResponseText += delta;
-            yield {
-              type: "assistant.delta",
-              data: {
-                text_delta: delta,
-              },
-            };
-          }
+        } finally {
+          clearTimeout(synthTimer);
         }
       }
 

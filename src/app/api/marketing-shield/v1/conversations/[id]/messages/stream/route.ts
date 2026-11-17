@@ -15,7 +15,15 @@ import { entitlementsService } from "@/modules/billing/entitlements.service";
 import { logger } from "@/lib/logger";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+// Vercel hard-kills the function at maxDuration. A multi-round Gemini + tool turn can easily
+// exceed 60s, which previously truncated the SSE stream silently (user saw no reply at all).
+// 300s is the Hobby/Pro ceiling with Fluid Compute.
+export const maxDuration = 300;
+
+/** Soft deadline: finish the turn gracefully before the platform kills the function. */
+const STREAM_SOFT_DEADLINE_MS = 280_000;
+/** SSE comment heartbeat so proxies/CDNs/browsers never treat the connection as idle. */
+const HEARTBEAT_INTERVAL_MS = 10_000;
 
 export async function POST(
   req: NextRequest,
@@ -88,9 +96,11 @@ export async function POST(
     // 3. Create a ReadableStream for Server-Sent Events
     const encoder = new TextEncoder();
     let isStreamClosed = false;
+    let heartbeat: ReturnType<typeof setInterval> | null = null;
     const stream = new ReadableStream({
       cancel() {
         isStreamClosed = true;
+        if (heartbeat) clearInterval(heartbeat);
       },
       async start(controller) {
         const safeEnqueue = (chunk: Uint8Array) => {
@@ -101,35 +111,12 @@ export async function POST(
             isStreamClosed = true;
           }
         };
-
-        try {
-          for await (const sseEvent of copilotOrchestrator.streamChat({
-            tenantId: tenant.tenantId,
-            userId: tenant.userId,
-            conversationId,
-            userPrompt: validated.content,
-            attachmentAssetIds: validated.attachment_asset_ids,
-            campaignUrls: validated.campaign_urls,
-            activeCampaignId: validated.active_campaign_id,
-            referencedProductId: validated.referenced_product_id,
-          })) {
-            if (isStreamClosed) break;
-            const frame = `event: ${sseEvent.type}\ndata: ${JSON.stringify(sseEvent)}\n\n`;
-            safeEnqueue(encoder.encode(frame));
-          }
+        const sendEvent = (type: string, data: unknown) => {
+          safeEnqueue(encoder.encode(`event: ${type}\ndata: ${JSON.stringify({ type, data })}\n\n`));
+        };
+        const closeStream = () => {
+          if (heartbeat) clearInterval(heartbeat);
           if (!isStreamClosed) {
-            isStreamClosed = true;
-            controller.close();
-          }
-        } catch (streamErr) {
-          const errMsg = (streamErr as Error).message || "Streaming failed";
-          logger.error("Error in SSE controller loop", { error: errMsg, requestId });
-          if (!isStreamClosed) {
-            const errorFrame = `event: message.failed\ndata: ${JSON.stringify({
-              type: "message.failed",
-              data: { error_code: "SSE_STREAM_ERROR", message: errMsg },
-            })}\n\n`;
-            safeEnqueue(encoder.encode(errorFrame));
             isStreamClosed = true;
             try {
               controller.close();
@@ -137,6 +124,91 @@ export async function POST(
               // Controller already closed by client disconnect
             }
           }
+        };
+
+        // Flush an initial comment immediately so the client knows the connection is live,
+        // then keep pinging so idle-timeout proxies never cut the stream during long tool/LLM work.
+        safeEnqueue(encoder.encode(`: connected\n\n`));
+        heartbeat = setInterval(() => {
+          safeEnqueue(encoder.encode(`: ping ${Date.now()}\n\n`));
+        }, HEARTBEAT_INTERVAL_MS);
+
+        let assistantMessageId: string | null = null;
+        let terminalEventSent = false;
+        let partialText = "";
+        const generator = copilotOrchestrator.streamChat({
+          tenantId: tenant.tenantId,
+          userId: tenant.userId,
+          conversationId,
+          userPrompt: validated.content,
+          attachmentAssetIds: validated.attachment_asset_ids,
+          campaignUrls: validated.campaign_urls,
+          activeCampaignId: validated.active_campaign_id,
+          referencedProductId: validated.referenced_product_id,
+        });
+
+        const deadlineAt = Date.now() + STREAM_SOFT_DEADLINE_MS;
+        const DEADLINE = Symbol("deadline");
+
+        try {
+          // Keep draining even if the client disconnects so the orchestrator can still persist
+          // the final answer to the DB (the user will see it when they reopen the thread).
+          while (true) {
+            const remaining = deadlineAt - Date.now();
+            let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+            const next = await Promise.race([
+              generator.next(),
+              new Promise<typeof DEADLINE>((resolve) => {
+                deadlineTimer = setTimeout(() => resolve(DEADLINE), Math.max(0, remaining));
+              }),
+            ]);
+            if (deadlineTimer) clearTimeout(deadlineTimer);
+
+            if (next === DEADLINE) {
+              throw new Error(
+                "The compliance analyst took too long to respond. Please retry, or narrow the question."
+              );
+            }
+            if (next.done) break;
+
+            const sseEvent = next.value;
+            if (sseEvent.type === "message.started") {
+              assistantMessageId = sseEvent.data.assistant_message_id;
+            } else if (sseEvent.type === "assistant.delta") {
+              partialText += sseEvent.data.text_delta;
+            } else if (sseEvent.type === "message.completed" || sseEvent.type === "message.failed") {
+              terminalEventSent = true;
+            }
+            sendEvent(sseEvent.type, sseEvent.data);
+          }
+
+          if (!terminalEventSent) {
+            // Generator ended without a terminal event — never leave the client hanging.
+            throw new Error("The response ended unexpectedly. Please retry.");
+          }
+        } catch (streamErr) {
+          const errMsg = (streamErr as Error).message || "Streaming failed";
+          logger.error("Error in SSE controller loop", {
+            error: errMsg,
+            requestId,
+            conversationId,
+          });
+          sendEvent("message.failed", { error_code: "SSE_STREAM_ERROR", message: errMsg });
+          // Stop the orchestrator (fire-and-forget; it may be awaiting a slow upstream call).
+          void generator.return(undefined).catch(() => {});
+          if (assistantMessageId) {
+            await conversationService
+              .updateMessage({
+                tenantId: tenant.tenantId,
+                messageId: assistantMessageId,
+                content: partialText,
+                status: "FAILED",
+                metadata: { error: errMsg },
+              })
+              .catch(() => {});
+          }
+        } finally {
+          closeStream();
         }
       },
     });
