@@ -5,7 +5,7 @@ export interface CogentLogoProps {
   size?: "sm" | "md" | "lg";
   showMark?: boolean;
   showWordmark?: boolean;
-  wordmarkColor?: "dark" | "blue";
+  wordmarkColor?: "dark" | "blue" | "white";
   subtitle?: string;
   className?: string;
 }
@@ -51,7 +51,11 @@ export function CogentLogo({
     size === "lg" ? "h-9 w-9" : size === "sm" ? "h-6 w-6" : "h-7 w-7";
 
   const wordmarkTextStyle =
-    wordmarkColor === "blue" ? "text-[#1D4ED8]" : "text-[#0B1220]";
+    wordmarkColor === "white"
+      ? "text-white"
+      : wordmarkColor === "blue"
+        ? "text-[#1D4ED8]"
+        : "text-[#0B1220]";
 
   if (variant === "mark") {
     return <CogentMark className={`${markSize} ${className}`} />;

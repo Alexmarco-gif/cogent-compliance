@@ -1,14 +1,63 @@
-import React from "react";
+"use client";
+
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import {
+  ArrowRight,
+  Clock,
+  CheckCircle2,
+  AlertTriangle,
+  FileText,
+  ShieldCheck,
+  Scale,
+  ClipboardCheck,
+  Globe,
+  Sparkles,
+} from "lucide-react";
 import {
   DAILY_WORKFLOW_LEDGER,
   REGULATOR_METRICS,
+  type WorkflowCompressionRow,
 } from "@/data/marketing-scenarios";
 import { SectionHeader } from "@/components/marketing/SectionHeader";
 import { RevealOnScroll } from "@/components/marketing/RevealOnScroll";
 
+const AUTO_ADVANCE_MS = 5500;
+
+const WORKFLOW_ICONS = [FileText, Scale, ClipboardCheck, Globe, ShieldCheck];
+
 export function DailyWorkflowsSection() {
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const activeRow: WorkflowCompressionRow =
+    DAILY_WORKFLOW_LEDGER[activeIndex] ?? DAILY_WORKFLOW_LEDGER[0]!;
+  const ActiveIcon = WORKFLOW_ICONS[activeIndex] ?? FileText;
+
+  // Auto-advance loop line-to-line matching asdo.JPG reference
+  useEffect(() => {
+    if (isPaused) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      return;
+    }
+
+    timerRef.current = setInterval(() => {
+      setActiveIndex((prev) => (prev + 1) % DAILY_WORKFLOW_LEDGER.length);
+    }, AUTO_ADVANCE_MS);
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isPaused]);
+
+  const handleSelect = (idx: number) => {
+    setActiveIndex(idx);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+  };
+
   return (
     <section
       id="workflows"
@@ -20,70 +69,242 @@ export function DailyWorkflowsSection() {
             eyebrow="THE DAILY BOTTLENECK"
             titleLeading="Why compliance work takes 3 to 10 days—and"
             titleAccent="how Cogent compresses it to minutes."
-            description="Financial rules span seven overlapping agencies and hundreds of unindexed PDF circulars. Cogent turns slow manual digging into ready-to-sign deliverables."
+            description="Nigerian financial regulation spans 7 overlapping agencies and hundreds of unindexed PDF circulars. See how Cogent turns slow manual digging into finished, defensible deliverables."
           />
         </RevealOnScroll>
 
-        {/* Architectural Hairline Ledger Table (Clean Editorial, Zero Generic Cards) */}
+        {/* Split Interactive Stage Inspired by asdo.JPG */}
         <RevealOnScroll delayMs={80}>
-          <div className="mt-12 rounded-xl border border-slate-200 bg-white overflow-hidden">
-            {/* Desktop Column Header */}
-            <div className="hidden lg:grid lg:grid-cols-12 border-b border-slate-200 bg-slate-50 px-6 py-3.5 font-mono text-[10.5px] font-semibold uppercase tracking-[0.09em] text-slate-500">
-              <div className="col-span-4">Core Compliance Workflow</div>
-              <div className="col-span-4">How It Stalls Today (3–10 Days)</div>
-              <div className="col-span-4">Finished Deliverable with Cogent</div>
+          <div
+            className="mt-12 grid grid-cols-1 overflow-hidden rounded-2xl border border-slate-900/10 bg-[#0B1220] shadow-2xl lg:grid-cols-12"
+            onMouseEnter={() => setIsPaused(true)}
+            onMouseLeave={() => setIsPaused(false)}
+          >
+            {/* Left Dark Column: Progressive Animated List (asdo.JPG style) */}
+            <div className="flex flex-col justify-between border-b border-white/10 p-7 sm:p-10 lg:col-span-5 lg:border-b-0 lg:border-r">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[#38BDF8]">
+                    BENCHMARKS · WORKFLOW COMPRESSION
+                  </span>
+                  <span className="flex items-center gap-1.5 font-mono text-[10.5px] text-blue-300">
+                    <span className="relative flex h-2 w-2">
+                      {!isPaused && (
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-blue-400 opacity-75" />
+                      )}
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-[#38BDF8]" />
+                    </span>
+                    <span>{isPaused ? "Paused" : "Auto-playing"}</span>
+                  </span>
+                </div>
+
+                <h3 className="mt-4 font-serif text-[26px] sm:text-[32px] font-normal leading-tight text-white">
+                  Five daily workflows. <br />
+                  <span className="italic text-slate-400">Compressed to minutes.</span>
+                </h3>
+
+                <p className="mt-3 text-[13.5px] leading-relaxed text-slate-300">
+                  Select a workflow or watch the live line-to-line comparison of how financial teams operate today versus with Cogent.
+                </p>
+
+                {/* Animated Line-by-Line List */}
+                <div className="mt-8 space-y-2" role="tablist" aria-label="Workflows">
+                  {DAILY_WORKFLOW_LEDGER.map((row, idx) => {
+                    const isActive = idx === activeIndex;
+                    const Icon = WORKFLOW_ICONS[idx] ?? FileText;
+
+                    return (
+                      <button
+                        key={row.number}
+                        type="button"
+                        role="tab"
+                        aria-selected={isActive}
+                        onClick={() => handleSelect(idx)}
+                        className={`group relative flex w-full flex-col items-start rounded-lg p-3 text-left transition-all cursor-pointer ${
+                          isActive
+                            ? "bg-white/10 text-white shadow-inner"
+                            : "text-slate-400 hover:bg-white/5 hover:text-slate-200"
+                        }`}
+                      >
+                        {/* Left Active Indicator Line with Animated Fill */}
+                        <div
+                          className={`absolute inset-y-2 left-0 w-1 rounded-r transition-all duration-300 ${
+                            isActive ? "bg-[#38BDF8]" : "bg-transparent group-hover:bg-white/20"
+                          }`}
+                        />
+
+                        <div className="flex w-full items-center justify-between pl-2">
+                          <div className="flex items-center gap-2.5">
+                            <span
+                              className={`font-mono text-[11px] font-bold ${
+                                isActive ? "text-[#38BDF8]" : "text-slate-500"
+                              }`}
+                            >
+                              {row.number}
+                            </span>
+                            <span
+                              className={`text-[14px] font-medium leading-snug ${
+                                isActive ? "font-semibold text-white" : "text-slate-300"
+                              }`}
+                            >
+                              {row.workflow}
+                            </span>
+                          </div>
+
+                          <span
+                            className={`font-mono text-[11px] shrink-0 ${
+                              isActive ? "text-emerald-400 font-semibold" : "text-slate-500"
+                            }`}
+                          >
+                            {row.cogentSpeed}
+                          </span>
+                        </div>
+
+                        {/* Expanded details when active */}
+                        {isActive && (
+                          <div className="mt-2 pl-6 animate-cogent-enter">
+                            <span className="font-mono text-[10.5px] uppercase tracking-wider text-slate-400">
+                              {row.audience}
+                            </span>
+                            {/* Subtle line progress indicator */}
+                            {!isPaused && (
+                              <div className="mt-2 h-0.5 w-full overflow-hidden rounded bg-white/10">
+                                <div
+                                  className="h-full bg-[#38BDF8] transition-all"
+                                  style={{
+                                    animation: `cogentProgress ${AUTO_ADVANCE_MS}ms linear infinite`,
+                                  }}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-8 border-t border-white/10 pt-4 text-[12px] text-slate-400">
+                <span className="font-mono text-[11px] text-[#38BDF8]">
+                  Step 0{activeIndex + 1} of 0{DAILY_WORKFLOW_LEDGER.length}
+                </span>{" "}
+                · Click any line to inspect
+              </div>
             </div>
 
-            <div className="divide-y divide-slate-200">
-              {DAILY_WORKFLOW_LEDGER.map((row) => (
-                <div
-                  key={row.number}
-                  className="grid grid-cols-1 gap-4 px-6 py-6 lg:grid-cols-12 lg:gap-8 hover:bg-slate-50/50 transition-colors"
-                >
-                  {/* Column 1: Workflow + Audience */}
-                  <div className="lg:col-span-4">
-                    <div className="flex items-center gap-2.5">
-                      <span className="font-mono text-[11px] font-semibold text-[#1D4ED8]">
-                        {row.number}
-                      </span>
-                      <span className="font-mono text-[10.5px] text-slate-400">
-                        · {row.audience}
-                      </span>
+            {/* Right Light Column: Comparative Canvas & Work Product Preview */}
+            <div className="flex flex-col justify-between bg-white p-7 sm:p-10 lg:col-span-7">
+              <div key={activeRow.number} className="animate-cogent-enter space-y-6">
+                {/* Header of Active Workflow */}
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 pb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-[#0B1220] text-white">
+                      <ActiveIcon className="h-5 w-5" strokeWidth={1.8} />
                     </div>
-                    <h3 className="mt-1.5 text-[16.5px] font-semibold leading-snug text-[#0B1220]">
-                      {row.workflow}
-                    </h3>
-                    <span className="mt-2.5 inline-block rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-mono text-[11px] font-semibold text-emerald-800">
-                      {row.cogentSpeed}
-                    </span>
+                    <div>
+                      <p className="font-mono text-[10.5px] font-semibold uppercase tracking-wider text-slate-400">
+                        {activeRow.audience}
+                      </p>
+                      <h4 className="text-[18px] sm:text-[20px] font-semibold text-[#0B1220]">
+                        {activeRow.workflow}
+                      </h4>
+                    </div>
                   </div>
 
-                  {/* Column 2: Today Pain */}
-                  <div className="lg:col-span-4">
-                    <p className="lg:hidden font-mono text-[10px] uppercase tracking-wider text-slate-400 mb-1">
-                      Today (3–10 Days)
-                    </p>
-                    <p className="text-[13.5px] leading-relaxed text-slate-600">
-                      {row.todayPain}
-                    </p>
+                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 font-mono text-[11.5px] font-semibold text-emerald-800">
+                    Accelerated: {activeRow.cogentSpeed}
+                  </span>
+                </div>
+
+                {/* Comparative Grid: Today (Stalled) vs With Cogent */}
+                <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                  {/* How It Stalls Today */}
+                  <div className="flex flex-col justify-between rounded-xl border border-rose-200 bg-rose-50/40 p-5">
+                    <div>
+                      <div className="flex items-center gap-2 text-rose-700">
+                        <AlertTriangle className="h-4 w-4" />
+                        <span className="font-mono text-[11px] font-bold uppercase tracking-wider">
+                          How It Stalls Today (3–10 Days)
+                        </span>
+                      </div>
+                      <p className="mt-3 text-[13.5px] leading-relaxed text-slate-700">
+                        {activeRow.todayPain}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 flex items-center gap-1.5 border-t border-rose-200/60 pt-3 font-mono text-[11px] text-rose-700">
+                      <Clock className="h-3.5 w-3.5" />
+                      <span>Bottleneck: 3 to 10 days</span>
+                    </div>
                   </div>
 
-                  {/* Column 3: Finished Output */}
-                  <div className="lg:col-span-4">
-                    <p className="lg:hidden font-mono text-[10px] uppercase tracking-wider text-[#1D4ED8] mb-1">
-                      With Cogent
-                    </p>
-                    <p className="text-[13.5px] leading-relaxed font-medium text-[#0B1220]">
-                      {row.outputProduced}
-                    </p>
+                  {/* Finished Deliverable with Cogent */}
+                  <div className="flex flex-col justify-between rounded-xl border border-emerald-200 bg-emerald-50/40 p-5">
+                    <div>
+                      <div className="flex items-center gap-2 text-emerald-800">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span className="font-mono text-[11px] font-bold uppercase tracking-wider">
+                          Finished Deliverable with Cogent
+                        </span>
+                      </div>
+                      <p className="mt-3 text-[13.5px] leading-relaxed font-medium text-[#0B1220]">
+                        {activeRow.outputProduced}
+                      </p>
+                    </div>
+
+                    <div className="mt-4 flex items-center gap-1.5 border-t border-emerald-200/60 pt-3 font-mono text-[11px] font-semibold text-emerald-800">
+                      <Sparkles className="h-3.5 w-3.5 text-emerald-600" />
+                      <span>Delivered in {activeRow.cogentSpeed}</span>
+                    </div>
                   </div>
                 </div>
-              ))}
+
+                {/* Simulated Studio Output Card */}
+                <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-2.5">
+                    <span className="font-mono text-[10.5px] font-semibold uppercase text-slate-500">
+                      Ready-to-sign deliverable format
+                    </span>
+                    <span className="font-mono text-[10px] text-[#1D4ED8] font-medium">
+                      Verified Statutory Grounding
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
+                    <span className="rounded bg-white px-2 py-0.5 font-mono text-slate-700 border border-slate-200">
+                      CBN &amp; BOFIA 2020
+                    </span>
+                    <span className="rounded bg-white px-2 py-0.5 font-mono text-slate-700 border border-slate-200">
+                      NDPA 2023 §41
+                    </span>
+                    <span className="rounded bg-white px-2 py-0.5 font-mono text-slate-700 border border-slate-200">
+                      FCCPC DEON
+                    </span>
+                    <span className="rounded bg-white px-2 py-0.5 font-mono text-slate-700 border border-slate-200">
+                      WORM Audit Dossier
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Strip */}
+              <div className="mt-8 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                <span className="text-[12.5px] text-slate-500">
+                  Ready to test with your internal policies and rate cards?
+                </span>
+                <Link
+                  href="/sign-up"
+                  className="inline-flex items-center gap-2 text-[13px] font-semibold text-[#1D4ED8] hover:underline"
+                >
+                  <span>Test this workflow in 5 minutes</span>
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </div>
             </div>
           </div>
         </RevealOnScroll>
 
-        {/* Overlapping Agencies Bar */}
+        {/* Unified Statutory Scope Bar */}
         <RevealOnScroll delayMs={120}>
           <div className="mt-8 rounded-xl border border-slate-200 bg-white px-6 py-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -98,8 +319,8 @@ export function DailyWorkflowsSection() {
                     className="inline-flex items-center gap-1.5 rounded border border-slate-200 bg-slate-50 px-2.5 py-1 text-[12px] font-semibold text-[#0B1220]"
                   >
                     <span className="text-[#1D4ED8]">{reg.acronym}</span>
-                    <span className="hidden md:inline font-normal text-slate-500">
-                      · {reg.name}
+                    <span className="text-slate-400 font-normal hidden sm:inline">
+                      · {reg.name.split(" ")[0]}
                     </span>
                   </span>
                 ))}
@@ -107,11 +328,11 @@ export function DailyWorkflowsSection() {
             </div>
 
             <Link
-              href="/solutions"
+              href="/resources/faq"
               className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#1D4ED8] hover:underline shrink-0"
             >
-              <span>Explore by institution type</span>
-              <ArrowRight className="h-3.5 w-3.5" />
+              <span>See FAQ on regulatory search</span>
+              <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         </RevealOnScroll>
