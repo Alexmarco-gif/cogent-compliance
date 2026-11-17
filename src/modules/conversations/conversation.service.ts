@@ -6,13 +6,22 @@
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
 
+export type ConversationContextType =
+  | "GENERAL"
+  | "REGULATORY"
+  | "CAMPAIGN"
+  | "WORKFLOW_RESEARCH"
+  | "POLICY_REDLINE"
+  | "DDQ_RESPONSE"
+  | "CROSS_BORDER";
+
 export interface ConversationRecord {
   id: string;
   tenant_id: string;
   created_by: string;
   title: string;
   status: "ACTIVE" | "ARCHIVED" | "CLOSED";
-  context_type: "GENERAL" | "REGULATORY" | "CAMPAIGN";
+  context_type: ConversationContextType;
   active_campaign_id: string | null;
   last_message_at: string;
   metadata: Record<string, unknown>;
@@ -72,7 +81,7 @@ export class ConversationService {
     createdBy: string,
     data: {
       title?: string;
-      context_type?: "GENERAL" | "REGULATORY" | "CAMPAIGN";
+      context_type?: ConversationContextType;
       active_campaign_id?: string | null;
     }
   ): Promise<ConversationRecord> {

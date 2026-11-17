@@ -519,11 +519,52 @@ export class CampaignService {
     });
 
     // 6. Multi-Source Statutory Retrieval
-    const { data: clauses } = await supabase.rpc("match_regulatory_clauses", {
-      query_text: contentText.slice(0, 500) || "advertising consumer protection",
-      query_embedding: null,
-      match_count: 5,
-    });
+    const statutoryQuery = contentText.slice(0, 500) || "advertising consumer protection";
+    let clauses: Array<{ id: string; clause_reference?: string; clause_text?: string }> = [];
+    try {
+      let queryEmbedding: number[] | null = null;
+      if (process.env.GEMINI_API_KEY && !process.env.GEMINI_API_KEY.startsWith("mock_")) {
+        queryEmbedding = await Promise.race([
+          geminiService
+            .generateEmbedding(statutoryQuery, {
+              context: { tenantId, taskType: "EMBEDDING_GENERATION" },
+            })
+            .catch(() => null),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+        ]);
+      }
+
+      if (queryEmbedding && typeof supabase.rpc === "function") {
+        const { data: rrfClauses } = await supabase.rpc("search_regulatory_clauses_rrf", {
+          query_text: statutoryQuery,
+          query_embedding: queryEmbedding,
+          match_count: 5,
+          rrf_k: 60,
+        });
+        if (Array.isArray(rrfClauses)) {
+          clauses = rrfClauses.map((c: Record<string, unknown>) => ({
+            id: String(c.clause_id || c.id || ""),
+            clause_reference: String(c.clause_reference || ""),
+            clause_text: String(c.clause_text || ""),
+          }));
+        }
+      }
+
+      if (clauses.length === 0) {
+        const { data: ftsClauses } = await supabase
+          .from("regulatory_clauses")
+          .select("id, clause_reference, clause_text")
+          .textSearch("clause_text", statutoryQuery.split(/\s+/).slice(0, 6).join(" | "), {
+            type: "websearch",
+          })
+          .limit(5);
+        if (Array.isArray(ftsClauses)) {
+          clauses = ftsClauses as Array<{ id: string; clause_reference?: string; clause_text?: string }>;
+        }
+      }
+    } catch {
+      clauses = [];
+    }
 
     // 7. Gemini Reasoning & Synthesis
     const prompt = `You are the Lead Nigerian Regulatory Compliance Counsel for Cogent Marketing Shield.

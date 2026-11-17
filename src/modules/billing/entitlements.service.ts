@@ -47,21 +47,34 @@ export class EntitlementsService {
         .order("price_usd_cents", { ascending: true });
 
       if (!error && data && data.length > 0) {
-        return data.map((d) => ({
-          id: d.id,
-          slug: d.slug as PlanSlug,
-          name: d.name,
-          price_usd_cents: d.price_usd_cents,
-          price_usd_annual_cents: d.price_usd_annual_cents,
-          paystack_plan_code_monthly: d.paystack_plan_code_monthly,
-          paystack_plan_code_annual: d.paystack_plan_code_annual,
-          monthly_audit_limit: d.monthly_audit_limit,
-          seat_limit: d.seat_limit,
-          url_drift_monitor_limit: d.url_drift_monitor_limit,
-          retention_days: d.retention_days,
-          features: d.features,
-          is_active: d.is_active,
-        }));
+        return data.map((d) => {
+          const fallback = DEFAULT_PLANS[(d.slug as PlanSlug) || "evaluation"] || DEFAULT_PLANS.evaluation;
+          return {
+            id: d.id,
+            slug: d.slug as PlanSlug,
+            name: d.name,
+            price_usd_cents: d.price_usd_cents,
+            price_usd_annual_cents: d.price_usd_annual_cents,
+            paystack_plan_code_monthly: d.paystack_plan_code_monthly,
+            paystack_plan_code_annual: d.paystack_plan_code_annual,
+            monthly_audit_limit: d.monthly_audit_limit,
+            seat_limit: d.seat_limit,
+            url_drift_monitor_limit: d.url_drift_monitor_limit,
+            monthly_live_search_limit:
+              typeof d.monthly_live_search_limit === "number"
+                ? d.monthly_live_search_limit
+                : fallback.monthly_live_search_limit,
+            allowed_search_jurisdictions: Array.isArray(d.allowed_search_jurisdictions)
+              ? d.allowed_search_jurisdictions
+              : fallback.allowed_search_jurisdictions,
+            retention_days: d.retention_days,
+            features: {
+              ...fallback.features,
+              ...(d.features || {}),
+            },
+            is_active: d.is_active,
+          };
+        });
       }
     } catch (err) {
       logger.warn("Using default plans seed for getAvailablePlans", { err });
@@ -339,12 +352,12 @@ export class EntitlementsService {
       let currentCount = 0;
       try {
         const supabase = createAdminSupabaseClient();
-        const { count } = await supabase
-          .from("drift_monitors")
+        const { count, error: countErr } = await supabase
+          .from("campaign_drift_monitors")
           .select("id", { count: "exact", head: true })
           .eq("tenant_id", tenantId);
 
-        currentCount = count || 0;
+        currentCount = !countErr && typeof count === "number" ? count : 0;
       } catch {
         currentCount = 0;
       }
@@ -430,9 +443,264 @@ export class EntitlementsService {
       };
     }
 
+    // 6. Feature: live_web_search (Paid Exa AI + SerpAPI Nigeria & Africa)
+    if (feature === "live_web_search") {
+      const limit =
+        typeof plan.monthly_live_search_limit === "number"
+          ? plan.monthly_live_search_limit
+          : plan.features.monthly_live_search_limit ?? 0;
+      const allowedJurisdictions = plan.allowed_search_jurisdictions ?? [];
+
+      if (plan.slug === "evaluation" || !plan.features.live_web_search || limit === 0) {
+        return {
+          allowed: false,
+          feature,
+          reason:
+            "Real-time Nigerian & Pan-African Web Search (Exa AI + SerpAPI) requires a Growth ($149/mo) or Scale ($449/mo) plan. Your query will search our 141 verified Nigerian statutory documents.",
+          currentCount: 0,
+          limit: 0,
+          remaining: 0,
+          allowedJurisdictions: [],
+          planSlug: plan.slug,
+          status,
+          trialDaysRemaining,
+        };
+      }
+
+      const currentCount = await this.getCurrentMonthLiveSearchCount(tenantId);
+      if (limit !== -1 && currentCount >= limit) {
+        return {
+          allowed: false,
+          feature,
+          reason: `Monthly live regulatory web search quota reached (${currentCount}/${limit}). Upgrade to Scale or Enterprise for higher capacity.`,
+          currentCount,
+          limit,
+          remaining: 0,
+          allowedJurisdictions,
+          planSlug: plan.slug,
+          status,
+          trialDaysRemaining,
+        };
+      }
+
+      return {
+        allowed: true,
+        feature,
+        currentCount,
+        limit,
+        remaining: limit === -1 ? -1 : Math.max(0, limit - currentCount),
+        allowedJurisdictions,
+        planSlug: plan.slug,
+        status,
+        trialDaysRemaining,
+      };
+    }
+
+    // 7. Feature: cross_border_research (Pan-African GH/KE/ZA/RW/EG jurisdictions)
+    if (feature === "cross_border_research") {
+      const allowedJurisdictions = plan.allowed_search_jurisdictions ?? [];
+      if (
+        (plan.slug !== "scale" && plan.slug !== "enterprise") ||
+        !plan.features.cross_border_research
+      ) {
+        return {
+          allowed: false,
+          feature,
+          reason:
+            "Pan-African Cross-Border Regulatory Search (Kenya, Ghana, South Africa, Rwanda, Egypt) requires a Scale ($449/mo) or Enterprise plan.",
+          allowedJurisdictions,
+          planSlug: plan.slug,
+          status,
+          trialDaysRemaining,
+        };
+      }
+
+      return {
+        allowed: true,
+        feature,
+        allowedJurisdictions,
+        planSlug: plan.slug,
+        status,
+        trialDaysRemaining,
+      };
+    }
+
     return {
       allowed: true,
       feature,
+      planSlug: plan.slug,
+      status,
+      trialDaysRemaining,
+    };
+  }
+
+  public getCurrentBillingPeriod(now: Date = new Date()): string {
+    return now.toISOString().slice(0, 7); // 'YYYY-MM' UTC
+  }
+
+  public async getCurrentMonthLiveSearchCount(tenantId: string): Promise<number> {
+    const billingPeriod = this.getCurrentBillingPeriod();
+    try {
+      const supabase = createAdminSupabaseClient();
+      const { data, error } = await supabase
+        .from("live_web_search_usage")
+        .select("search_count")
+        .eq("tenant_id", tenantId)
+        .eq("billing_period", billingPeriod)
+        .maybeSingle();
+
+      if (!error && data && typeof data.search_count === "number") {
+        return data.search_count;
+      }
+    } catch {
+      // Fallback to 0 when usage ledger row does not exist yet
+    }
+    return 0;
+  }
+
+  /**
+   * Returns complete live search quota snapshot for UI pills, sidebar meter, and /search/quota endpoint.
+   */
+  public async getLiveSearchQuotaSnapshot(tenantId: string) {
+    const [liveCheck, crossBorderCheck] = await Promise.all([
+      this.checkTenantEntitlement(tenantId, "live_web_search"),
+      this.checkTenantEntitlement(tenantId, "cross_border_research"),
+    ]);
+
+    return {
+      plan_slug: liveCheck.planSlug || "evaluation",
+      live_web_allowed: liveCheck.allowed,
+      cross_border_allowed: crossBorderCheck.allowed,
+      allowed_jurisdictions: liveCheck.allowedJurisdictions || [],
+      used_this_month: liveCheck.currentCount ?? 0,
+      monthly_limit: liveCheck.limit ?? 0,
+      remaining: liveCheck.remaining ?? 0,
+      trial_locked_reason: liveCheck.allowed ? null : (liveCheck.reason ?? null),
+    };
+  }
+
+  /**
+   * Atomically authorizes live search (plan + jurisdiction scope) and consumes 1 quota credit via PostgreSQL RPC.
+   * Zero client trust; fail-closed if quota RPC fails or is exhausted.
+   */
+  public async authorizeAndConsumeLiveSearch(
+    tenantId: string,
+    requestedJurisdictions: string[] = ["NG"],
+    increment: number = 1,
+  ): Promise<EntitlementCheckResult> {
+    const subInfo = await this.getTenantSubscriptionInfo(tenantId);
+    const { plan, status, isTrial, trialDaysRemaining } = subInfo;
+
+    if (isTrial && status === "past_due") {
+      return {
+        allowed: false,
+        feature: "live_web_search",
+        reason: "Your 7-day Evaluation Pilot has expired. Upgrade to Growth or Scale to use Live Search.",
+        currentCount: 0,
+        limit: 0,
+        remaining: 0,
+        allowedJurisdictions: [],
+        planSlug: plan.slug,
+        status,
+        trialDaysRemaining: 0,
+      };
+    }
+
+    const limit =
+      typeof plan.monthly_live_search_limit === "number"
+        ? plan.monthly_live_search_limit
+        : plan.features.monthly_live_search_limit ?? 0;
+
+    if (plan.slug === "evaluation" || !plan.features.live_web_search || limit === 0) {
+      return {
+        allowed: false,
+        feature: "live_web_search",
+        reason:
+          "Live Nigerian & Pan-African Web Search (Exa AI + SerpAPI) is available on Growth and Scale plans.",
+        currentCount: 0,
+        limit: 0,
+        remaining: 0,
+        allowedJurisdictions: [],
+        planSlug: plan.slug,
+        status,
+        trialDaysRemaining,
+      };
+    }
+
+    const allowedJurisdictions = plan.allowed_search_jurisdictions ?? ["NG"];
+    const normalizedRequested =
+      requestedJurisdictions.length > 0 ? requestedJurisdictions : ["NG"];
+    const hasGlobal = allowedJurisdictions.includes("GLOBAL");
+    const disallowedJurisdictions = hasGlobal
+      ? []
+      : normalizedRequested.filter((code) => !allowedJurisdictions.includes(code));
+
+    if (disallowedJurisdictions.length > 0) {
+      return {
+        allowed: false,
+        feature: "cross_border_research",
+        reason: `Jurisdiction scope (${disallowedJurisdictions.join(", ")}) requires a Scale ($449/mo) or Enterprise plan. Your ${plan.name} plan supports: ${allowedJurisdictions.join(", ")}.`,
+        allowedJurisdictions,
+        planSlug: plan.slug,
+        status,
+        trialDaysRemaining,
+      };
+    }
+
+    const billingPeriod = this.getCurrentBillingPeriod();
+    const supabase = createAdminSupabaseClient();
+
+    const { data, error } = await supabase.rpc("consume_live_search_quota", {
+      p_tenant_id: tenantId,
+      p_billing_period: billingPeriod,
+      p_monthly_limit: limit,
+      p_increment: increment,
+    });
+
+    if (error) {
+      logger.error("consume_live_search_quota RPC failed (failing closed)", {
+        tenantId,
+        billingPeriod,
+        error,
+      });
+      return {
+        allowed: false,
+        feature: "live_web_search",
+        reason: "Unable to verify monthly live search quota at this time.",
+        allowedJurisdictions,
+        planSlug: plan.slug,
+        status,
+        trialDaysRemaining,
+      };
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+    const allowed = Boolean(row?.allowed);
+    const currentCount = typeof row?.current_count === "number" ? row.current_count : 0;
+    const remaining = typeof row?.remaining === "number" ? row.remaining : 0;
+
+    if (!allowed) {
+      return {
+        allowed: false,
+        feature: "live_web_search",
+        reason: `Monthly live regulatory web search quota reached (${currentCount}/${limit}). Upgrade your plan for additional searches.`,
+        currentCount,
+        limit,
+        remaining: 0,
+        allowedJurisdictions,
+        planSlug: plan.slug,
+        status,
+        trialDaysRemaining,
+      };
+    }
+
+    return {
+      allowed: true,
+      feature: "live_web_search",
+      currentCount,
+      limit,
+      remaining,
+      allowedJurisdictions,
       planSlug: plan.slug,
       status,
       trialDaysRemaining,

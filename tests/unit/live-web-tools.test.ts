@@ -3,15 +3,35 @@
  * Document Reference: Document 04 (Tools 9 & 10), Document 08 (Phase 11)
  */
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import {
   STATUTORY_TOOL_DECLARATIONS,
   statutoryToolExecutor,
 } from "@/modules/ai-orchestration/tools/statutory-tools";
 import { webSearchRouter } from "@/modules/live-web-intelligence/web-search.router";
+import { entitlementsService } from "@/modules/billing/entitlements.service";
+
+vi.mock("@/modules/billing/entitlements.service", () => ({
+  entitlementsService: {
+    authorizeAndConsumeLiveSearch: vi.fn().mockResolvedValue({
+      allowed: true,
+      feature: "live_web_search",
+      planSlug: "growth",
+      limit: 100,
+      remaining: 99,
+    }),
+    checkTenantEntitlement: vi.fn().mockResolvedValue({
+      allowed: true,
+      feature: "live_web_search",
+      planSlug: "growth",
+    }),
+  },
+}));
 
 vi.mock("@/modules/live-web-intelligence/web-search.router", () => ({
   webSearchRouter: {
+    isDualEngineActive: vi.fn().mockReturnValue(false),
+    searchAfricaLiveWeb: vi.fn(),
     searchLiveWeb: vi.fn().mockResolvedValue({
       source_class: "LIVE_WEB_INTELLIGENCE",
       results: [
@@ -42,6 +62,17 @@ vi.mock("@/modules/live-web-intelligence/web-search.router", () => ({
 describe("Gemini Copilot Tools 9 & 10: Live Web Intelligence & URL Fetcher", () => {
   const tenantId = "tenant_tool_test_001";
 
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(entitlementsService.authorizeAndConsumeLiveSearch).mockResolvedValue({
+      allowed: true,
+      feature: "live_web_search",
+      planSlug: "growth",
+      limit: 100,
+      remaining: 99,
+    });
+  });
+
   it("declares Tool 9 (search_live_web) and Tool 10 (fetch_live_url_content) in registry", () => {
     const tool9 = STATUTORY_TOOL_DECLARATIONS.find((t) => t.name === "search_live_web");
     const tool10 = STATUTORY_TOOL_DECLARATIONS.find((t) => t.name === "fetch_live_url_content");
@@ -53,12 +84,13 @@ describe("Gemini Copilot Tools 9 & 10: Live Web Intelligence & URL Fetcher", () 
     expect((tool10?.parameters as { required?: string[] })?.required).toContain("url");
   });
 
-  it("Tool 9: search_live_web executes Two-Step router and returns LIVE_WEB_INTELLIGENCE source class", async () => {
+  it("Tool 9: search_live_web executes router and returns LIVE_WEB_INTELLIGENCE for Growth tier", async () => {
     const result = await statutoryToolExecutor.searchLiveWeb(
       { query: "CBN digital lending fee caps", prioritize_official_regulators: true },
       { tenantId }
     );
 
+    expect(entitlementsService.authorizeAndConsumeLiveSearch).toHaveBeenCalledWith(tenantId, ["NG"]);
     expect(result.source_class).toBe("LIVE_WEB_INTELLIGENCE");
     expect(result.results).toHaveLength(1);
     expect(webSearchRouter.searchLiveWeb).toHaveBeenCalledWith(
@@ -74,12 +106,30 @@ describe("Gemini Copilot Tools 9 & 10: Live Web Intelligence & URL Fetcher", () 
     );
 
     expect(webSearchRouter.searchLiveWeb).toHaveBeenCalledWith(
-      {
+      expect.objectContaining({
         query: "TechCabal Nigerian fintech lending news",
         prioritize_official_regulators: false,
-      },
+      }),
       tenantId
     );
+  });
+
+  it("Tool 9: blocks Evaluation plan without calling live search providers", async () => {
+    vi.mocked(entitlementsService.authorizeAndConsumeLiveSearch).mockResolvedValueOnce({
+      allowed: false,
+      planSlug: "evaluation",
+      feature: "live_web_search",
+      reason: "Upgrade to Growth for live regulatory web search.",
+    });
+
+    const result = await statutoryToolExecutor.searchLiveWeb(
+      { query: "CBN FX manual", prioritize_official_regulators: true },
+      { tenantId }
+    );
+
+    expect(result.upgrade_required).toBe(true);
+    expect(result.results).toHaveLength(0);
+    expect(webSearchRouter.searchLiveWeb).not.toHaveBeenCalled();
   });
 
   it("Tool 10: fetch_live_url_content executes SSRF-safe URL fetcher and returns sanitized snapshot", async () => {

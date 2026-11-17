@@ -23,14 +23,35 @@ import { appStoreAuditorService } from "@/modules/compliance-assessment/app-stor
 import { licenseScopeService } from "@/modules/compliance-assessment/license-scope.service";
 import { kfsGeneratorService } from "@/modules/compliance-assessment/kfs-generator.service";
 import { precedentMemoryService } from "@/modules/ai-orchestration/precedent-memory.service";
+import { entitlementsService } from "@/modules/billing/entitlements.service";
+import { workProductService } from "@/modules/work-products/work-product.service";
+import {
+  AFRICA_JURISDICTION_REGISTRY,
+} from "@/modules/live-web-intelligence/africa-regulators";
 import { KnowledgeDocumentType } from "@/contracts/knowledge-product.contracts";
 import { RewriteTone } from "@/contracts/remediation.contracts";
+import {
+  SEARCH_JURISDICTIONS,
+  type SearchJurisdiction,
+} from "@/contracts/search.contracts";
+import {
+  WORKFLOW_TYPES,
+  WORK_PRODUCT_ARTIFACT_TYPES,
+  type WorkflowType,
+  type WorkProductArtifactType,
+  type WorkProductCitation,
+  type WorkProductEvidenceGap,
+  type WorkProductStatus,
+} from "@/contracts/work-product.contracts";
 import { logger } from "@/lib/logger";
 
 export interface ToolExecutionContext {
   tenantId: string;
   userId?: string;
   conversationId?: string;
+  quotaPreConsumed?: boolean;
+  allowedLiveUrls?: string[];
+  hasInternalKnowledgeRefs?: boolean;
 }
 
 /**
@@ -203,7 +224,7 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "search_live_web",
     description:
-      "Performs a general real-time open web search across the entire internet — including blogs, company websites, news portals, industry articles, forums, documentation, and official publications — for live information on any topic.",
+      "Performs paid-tier real-time web search across open web sources (news portals, legal commentary, blogs, fintech documentation, and company sites) plus Nigeria and Pan-African regulatory portals (CBN, SEC, NDPC, FCCPC, NFIU, BoG, CBK, SARB/FSCA) using dual-engine SerpAPI & Exa AI retrieval. Fail-closed on unsubscribed evaluation plans.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -211,6 +232,16 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
           type: Type.STRING,
           description:
             "General live web search query for any website, blog, article, news, company info, market update, or regulatory topic.",
+        },
+        jurisdictions: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description:
+            "Optional jurisdiction codes (NG, GH, KE, ZA, RW, EG, AFRICA_REGIONAL). Defaults to ['NG'].",
+        },
+        include_news: {
+          type: Type.BOOLEAN,
+          description: "Include live Nigerian/African regulatory enforcement news (default true).",
         },
         prioritize_official_regulators: {
           type: Type.BOOLEAN,
@@ -670,6 +701,126 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
       required: ["artifact_type"],
     },
   },
+  // 29. compare_policy_against_regulation
+  {
+    name: "compare_policy_against_regulation",
+    description:
+      "Compares an internal corporate policy/SOP document (or pasted policy text) against governing Nigerian regulations in the Statutory Vault and identifies outdated clauses requiring redlines.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        knowledge_doc_id: {
+          type: Type.STRING,
+          description: "Optional UUID of an uploaded marketing_knowledge_documents record.",
+        },
+        policy_text: {
+          type: Type.STRING,
+          description: "Optional raw policy clause excerpt to gap-analyze.",
+        },
+        regulation_query: {
+          type: Type.STRING,
+          description: "Target CBN/NDPC/FCCPC/SEC/NFIU regulatory standard or circular topic.",
+        },
+        regulators: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Optional regulator filter (e.g. ['CBN', 'NDPC', 'NFIU']).",
+        },
+      },
+      required: ["regulation_query"],
+    },
+  },
+  // 30. parse_and_answer_ddq_questions
+  {
+    name: "parse_and_answer_ddq_questions",
+    description:
+      "Parses numbered bank, NIBSS, or regulator audit/DDQ questions, retrieves matching internal playbooks + product schedules + statutory clauses, and flags unverified operational claims with [NEEDS_INTERNAL_EVIDENCE].",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        ddq_text: {
+          type: Type.STRING,
+          description: "Raw text of the supervisory audit query or bank DDQ questionnaire.",
+        },
+        asset_id: {
+          type: Type.STRING,
+          description: "Optional uploaded PDF/DOCX asset UUID containing the questionnaire.",
+        },
+        knowledge_doc_id: {
+          type: Type.STRING,
+          description: "Optional internal policy document UUID to ground operational answers.",
+        },
+      },
+    },
+  },
+  // 31. compare_african_jurisdictions
+  {
+    name: "compare_african_jurisdictions",
+    description:
+      "Cross-references Nigerian statutory requirements against other African jurisdictions (Kenya CBK, Ghana BoG, South Africa SARB/FSCA, Rwanda BNR, Egypt CBE, AfCFTA/Regional) for cross-border expansion matrices. Requires Scale or Enterprise tier for multi-country live search.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        topic: {
+          type: Type.STRING,
+          description: "Licensing, capital, settlement, AML, or data localization topic to compare.",
+        },
+        jurisdictions: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Jurisdiction codes to compare (e.g. ['NG', 'KE', 'GH']).",
+        },
+        product_type: {
+          type: Type.STRING,
+          description: "Optional fintech product category (e.g. PSSP, MMO, DIGITAL_LENDING).",
+        },
+      },
+      required: ["topic", "jurisdictions"],
+    },
+  },
+  // 32. upsert_work_product_artifact
+  {
+    name: "upsert_work_product_artifact",
+    description:
+      "Persists or updates an editable compliance work product deliverable (Statutory Structuring Memo, Policy Gap Redline, Supervisory DDQ Response, or Cross-Border Matrix) in the right-hand 50/50 Studio Canvas with SHA-256 sealing and version history.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        work_product_id: {
+          type: Type.STRING,
+          description: "Optional existing work_product_artifacts UUID to create a new revision on.",
+        },
+        workflow_type: {
+          type: Type.STRING,
+          description:
+            "One of: PRODUCT_STRUCTURING_MEMO, POLICY_GAP_REDLINE, SUPERVISORY_DDQ_RESPONSE, CROSS_BORDER_COMPARISON, CAMPAIGN_COMPLIANCE_KIT.",
+        },
+        artifact_type: {
+          type: Type.STRING,
+          description:
+            "One of: statutory_structuring_memo, policy_gap_redline, supervisory_ddq_response, cross_border_matrix, compliant_ad_rewrite, cbn_kfs_statement, arcon_vetting_memo, audit_dossier_summary.",
+        },
+        title: {
+          type: Type.STRING,
+          description: "Executive title for the Studio Canvas deliverable.",
+        },
+        jurisdiction_scope: {
+          type: Type.ARRAY,
+          items: { type: Type.STRING },
+          description: "Jurisdictions covered (e.g. ['NG'] or ['NG', 'KE']).",
+        },
+        markdown_content: {
+          type: Type.STRING,
+          description: "Full formatted Markdown body of the work product.",
+        },
+        change_summary: {
+          type: Type.STRING,
+          description: "Optional summary of changes in this revision.",
+        },
+      },
+      required: ["workflow_type", "artifact_type", "title", "markdown_content"],
+    },
+  },
 ];
 
 /**
@@ -1048,23 +1199,79 @@ export class StatutoryToolExecutor {
   ): Promise<Record<string, unknown>> {
     const supabase = createAdminSupabaseClient();
 
-    const { data: rules } = await supabase
-      .from("applicability_rules")
-      .select("*")
+    const { data: obligations } = await supabase
+      .from("regulatory_obligations")
+      .select("id, clause_id, obligation_type, applicability_description, severity")
       .in("clause_id", args.regulatory_clause_ids);
 
+    const obligationRows = (obligations || []) as Array<{
+      id: string;
+      clause_id: string;
+      obligation_type?: string | null;
+      applicability_description?: string | null;
+      severity?: string | null;
+    }>;
+
+    const obligationIds = obligationRows.map((o) => o.id).filter(Boolean);
+    let rules: Array<{
+      id: string;
+      obligation_id: string;
+      institution_type?: string | null;
+      product_type?: string | null;
+      activity_type?: string | null;
+      channel?: string | null;
+      jurisdiction?: string | null;
+      conditions?: Record<string, unknown> | null;
+    }> = [];
+
+    if (obligationIds.length > 0) {
+      const { data: ruleRows } = await supabase
+        .from("applicability_rules")
+        .select(
+          "id, obligation_id, institution_type, product_type, activity_type, channel, jurisdiction, conditions"
+        )
+        .in("obligation_id", obligationIds);
+      rules = (ruleRows || []) as typeof rules;
+    }
+
+    const reqInstitution = args.institution_type?.toLowerCase();
+    const reqProduct = args.product_type?.toLowerCase();
+    const reqChannel = args.channel?.toLowerCase();
+
     const assessments = args.regulatory_clause_ids.map((clauseId) => {
-      const clauseRules = (rules || []).filter((r) => r.clause_id === clauseId);
+      const clauseObligations = obligationRows.filter((o) => o.clause_id === clauseId);
+      const clauseObIds = new Set(clauseObligations.map((o) => o.id));
+      const clauseRules = rules.filter((r) => clauseObIds.has(r.obligation_id));
+
       let applicabilityStatus: "APPLICABLE" | "EXEMPT" | "CONDITIONALLY_APPLICABLE" = "APPLICABLE";
-      let reason = "Applicable across Nigerian regulated financial services.";
+      let reason =
+        clauseObligations[0]?.applicability_description ||
+        "Applicable across Nigerian regulated financial services.";
 
       for (const rule of clauseRules) {
-        if (rule.rule_type === "EXEMPTION") {
+        const cond = (rule.conditions || {}) as Record<string, unknown>;
+        const ruleInst = rule.institution_type?.toLowerCase();
+        const ruleProd = rule.product_type?.toLowerCase();
+        const ruleChan = rule.channel?.toLowerCase();
+
+        const instMismatch = Boolean(reqInstitution && ruleInst && ruleInst !== "all" && ruleInst !== reqInstitution);
+        const prodMismatch = Boolean(reqProduct && ruleProd && ruleProd !== "all" && ruleProd !== reqProduct);
+        const chanMismatch = Boolean(reqChannel && ruleChan && ruleChan !== "all" && ruleChan !== reqChannel);
+
+        if (cond.exempt === true || instMismatch || prodMismatch || chanMismatch) {
           applicabilityStatus = "EXEMPT";
-          reason = rule.condition_logic?.description || "Exemption condition applies.";
-        } else if (rule.rule_type === "CONDITIONAL") {
+          reason =
+            (typeof cond.description === "string" && cond.description) ||
+            "Institution/product scope falls outside this rule's applicability criteria.";
+          break;
+        }
+
+        if (Object.keys(cond).length > 0 || rule.institution_type || rule.product_type || rule.channel) {
           applicabilityStatus = "CONDITIONALLY_APPLICABLE";
-          reason = rule.condition_logic?.description || "Conditional threshold requirements.";
+          reason =
+            (typeof cond.description === "string" && cond.description) ||
+            clauseObligations[0]?.applicability_description ||
+            `Applies to ${[rule.institution_type, rule.product_type, rule.channel].filter(Boolean).join(" / ") || "targeted financial services"}.`;
         }
       }
 
@@ -1072,6 +1279,8 @@ export class StatutoryToolExecutor {
         regulatory_clause_id: clauseId,
         applicability_status: applicabilityStatus,
         reason,
+        matched_obligations_count: clauseObligations.length,
+        matched_rules_count: clauseRules.length,
         target_institution_type: args.institution_type || "ALL",
         target_channel: args.channel || "ALL",
       };
@@ -1135,9 +1344,78 @@ export class StatutoryToolExecutor {
    * Tool 9: search_live_web
    */
   public async searchLiveWeb(
-    args: { query: string; prioritize_official_regulators?: boolean },
+    args: {
+      query: string;
+      jurisdictions?: string[];
+      include_news?: boolean;
+      prioritize_official_regulators?: boolean;
+    },
     ctx: ToolExecutionContext
   ): Promise<Record<string, unknown>> {
+    const requestedJurisdictions = (
+      args.jurisdictions && args.jurisdictions.length > 0
+        ? args.jurisdictions
+        : ["NG"]
+    ).filter((j): j is SearchJurisdiction =>
+      (SEARCH_JURISDICTIONS as readonly string[]).includes(j)
+    );
+    const jurisdictions: SearchJurisdiction[] =
+      requestedJurisdictions.length > 0 ? requestedJurisdictions : ["NG"];
+
+    if (!ctx.quotaPreConsumed) {
+      const auth = await entitlementsService.authorizeAndConsumeLiveSearch(
+        ctx.tenantId,
+        jurisdictions
+      );
+
+      if (!auth.allowed) {
+        return {
+          source_class: "LIVE_WEB_INTELLIGENCE",
+          status: "upgrade_required",
+          upgrade_required: true,
+          reason:
+            auth.reason ||
+            "Real-time Nigeria & Pan-African web search requires an active Growth, Scale, or Enterprise plan.",
+          results: [],
+        };
+      }
+    }
+
+    if (
+      typeof webSearchRouter.isDualEngineActive === "function" &&
+      webSearchRouter.isDualEngineActive()
+    ) {
+      const africaResult = await webSearchRouter.searchAfricaLiveWeb(
+        {
+          query: args.query,
+          jurisdictions,
+          searchIntent: "REGULATORY_CIRCULAR",
+          includeNews: args.include_news !== false,
+        },
+        ctx.tenantId
+      );
+
+      return {
+        source_class: "LIVE_WEB_INTELLIGENCE",
+        status: "ok",
+        web_summary: africaResult.webSummary,
+        cache_hit: africaResult.cacheHit,
+        providers_used: africaResult.providersUsed,
+        results: africaResult.results.map((r) => ({
+          live_web_retrieval_id: r.live_web_retrieval_id,
+          page_title: r.page_title,
+          retrieved_url: r.retrieved_url,
+          snippet_content: r.full_content_excerpt || r.snippet_content,
+          highlights: r.highlights,
+          retrieved_at: r.retrieved_at,
+          provider: r.provider,
+          jurisdiction_code: r.jurisdiction_code,
+          trust_tier: r.trust_tier,
+          source_class: "LIVE_WEB_INTELLIGENCE",
+        })),
+      };
+    }
+
     return webSearchRouter.searchLiveWeb(
       {
         query: args.query,
@@ -1706,6 +1984,343 @@ export class StatutoryToolExecutor {
       artifact_type: args.artifact_type,
       kfs_and_channel_kit: kit,
       computed_financials: kit?.aprSummary?.computedFinancials || null,
+    };
+  }
+
+  /**
+   * Tool 29: compare_policy_against_regulation
+   */
+  public async comparePolicyAgainstRegulation(
+    args: {
+      knowledge_doc_id?: string;
+      policy_text?: string;
+      regulation_query: string;
+      regulators?: string[];
+    },
+    ctx: ToolExecutionContext
+  ): Promise<Record<string, unknown>> {
+    const supabase = createAdminSupabaseClient();
+    let policyTitle = "Internal Institutional Policy / SOP";
+    let policyChunks: Array<{ chunk_index: number; chunk_text: string }> = [];
+
+    if (args.knowledge_doc_id) {
+      const [{ data: docRow }, { data: chunkRows }] = await Promise.all([
+        supabase
+          .from("marketing_knowledge_documents")
+          .select("id, title, document_type, status")
+          .eq("tenant_id", ctx.tenantId)
+          .eq("id", args.knowledge_doc_id)
+          .maybeSingle(),
+        supabase
+          .from("marketing_knowledge_chunks")
+          .select("chunk_index, chunk_text")
+          .eq("tenant_id", ctx.tenantId)
+          .eq("knowledge_document_id", args.knowledge_doc_id)
+          .order("chunk_index", { ascending: true })
+          .limit(12),
+      ]);
+      if (docRow?.title) policyTitle = String(docRow.title);
+      policyChunks = (chunkRows || []) as Array<{ chunk_index: number; chunk_text: string }>;
+    }
+
+    if (policyChunks.length === 0 && !args.policy_text) {
+      const kbRes = await this.searchInstitutionalKnowledge(
+        { query: args.regulation_query, limit: 6 },
+        ctx
+      ).catch(() => ({ chunks: [] }));
+      const matchedChunks = (kbRes.chunks as Array<Record<string, unknown>>) || [];
+      policyChunks = matchedChunks.map((c, idx) => ({
+        chunk_index: Number(c.chunk_index ?? idx),
+        chunk_text: String(c.chunk_text || ""),
+      }));
+    }
+
+    const vaultRes = await this.searchRegulatoryEvidence(
+      {
+        query: args.regulation_query,
+        regulators: args.regulators,
+        limit: 8,
+      },
+      ctx
+    );
+
+    const vaultResults = (vaultRes.results as Array<Record<string, unknown>>) || [];
+    const combinedPolicyText =
+      args.policy_text ||
+      policyChunks.map((c) => `[Section #${c.chunk_index + 1}] ${c.chunk_text}`).join("\n\n");
+
+    return {
+      success: true,
+      source_class: "INTERNAL_PLAYBOOK",
+      policy_title: policyTitle,
+      knowledge_doc_id: args.knowledge_doc_id || null,
+      policy_excerpt: combinedPolicyText.slice(0, 6000),
+      policy_sections_count: policyChunks.length || (args.policy_text ? 1 : 0),
+      statutory_benchmarks: vaultResults,
+      legal_floors: [
+        "NFIU / MLPPA 2022 §8: Customer & transaction record retention >= 5 years.",
+        "NDPA 2023 §40 / GAID 2025: Personal data breach notification to NDPC within 72 hours.",
+        "CBN CDD Regulations 2023: Mandatory BVN/NIN verification on Tier 2/3 & business accounts.",
+      ],
+    };
+  }
+
+  /**
+   * Tool 30: parse_and_answer_ddq_questions
+   */
+  public async parseAndAnswerDdqQuestions(
+    args: {
+      ddq_text?: string;
+      asset_id?: string;
+      knowledge_doc_id?: string;
+    },
+    ctx: ToolExecutionContext
+  ): Promise<Record<string, unknown>> {
+    const supabase = createAdminSupabaseClient();
+    let rawDdqText = args.ddq_text || "";
+
+    if (!rawDdqText && args.asset_id) {
+      const { data: ext } = await supabase
+        .from("asset_extractions")
+        .select("extracted_text")
+        .eq("tenant_id", ctx.tenantId)
+        .eq("asset_id", args.asset_id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      rawDdqText = String(ext?.extracted_text || "");
+    }
+
+    // Parse numbered / bulleted / question-mark lines up to 25 items
+    const parsedQuestions = rawDdqText
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter((l) => /^(?:\d+[.)]|[-*•]|Q\d+[:.)])\s+/i.test(l) || l.endsWith("?"))
+      .map((l) => l.replace(/^(?:\d+[.)]|[-*•]|Q\d+[:.)])\s*/i, "").trim())
+      .filter((l) => l.length >= 8)
+      .slice(0, 25);
+
+    const questions = parsedQuestions.length > 0 ? parsedQuestions : [rawDdqText.trim()].filter(Boolean);
+
+    const [kbRes, productRes, vaultRes] = await Promise.all([
+      this.searchInstitutionalKnowledge(
+        { query: questions.slice(0, 5).join(" ").slice(0, 250) || "compliance policy", limit: 8 },
+        ctx
+      ).catch(() => ({ chunks: [], rules: [] })),
+      productService.getProductTruth(ctx.tenantId, {}).catch(() => null),
+      this.searchRegulatoryEvidence(
+        { query: questions.slice(0, 5).join(" ").slice(0, 250) || "CBN AML KYC NDPA", limit: 8 },
+        ctx
+      ).catch(() => ({ results: [] })),
+    ]);
+
+    let explicitDocChunks: Array<Record<string, unknown>> = [];
+    if (args.knowledge_doc_id) {
+      const { data: docChunks } = await supabase
+        .from("marketing_knowledge_chunks")
+        .select("id, chunk_index, chunk_text")
+        .eq("tenant_id", ctx.tenantId)
+        .eq("knowledge_document_id", args.knowledge_doc_id)
+        .order("chunk_index", { ascending: true })
+        .limit(10);
+      explicitDocChunks = (docChunks || []) as Array<Record<string, unknown>>;
+    }
+
+    const kbChunks = (kbRes.chunks as Array<Record<string, unknown>>) || [];
+    const kbRules = (kbRes.rules as Array<Record<string, unknown>>) || [];
+    const hasInternalEvidence =
+      explicitDocChunks.length > 0 || kbChunks.length > 0 || kbRules.length > 0 || Boolean(productRes);
+
+    const evidenceGaps: WorkProductEvidenceGap[] = [];
+    const questionAlignments = questions.map((q, idx) => {
+      const tokens = q
+        .toLowerCase()
+        .replace(/[^\w\s]/g, " ")
+        .split(/\s+/)
+        .filter((t) => t.length >= 4);
+
+      const matchedChunks = [...explicitDocChunks, ...kbChunks].filter((c) => {
+        const txt = String(c.chunk_text || "").toLowerCase();
+        return tokens.some((tok) => txt.includes(tok));
+      });
+
+      const grounded = matchedChunks.length > 0;
+      if (!grounded) {
+        evidenceGaps.push({
+          gap_code: `DDQ_GAP_Q${idx + 1}`,
+          section_or_question: `Q${idx + 1}: ${q.slice(0, 90)}`,
+          description: "No matching internal policy or product evidence found in workspace Knowledge Base.",
+          severity: "HIGH",
+          remediation_prompt: `Provide internal SOP/evidence covering: ${q.slice(0, 120)}`,
+        });
+      }
+
+      return {
+        question_number: idx + 1,
+        question: q,
+        internal_evidence_found: grounded,
+        marker: grounded ? "GROUNDED_INTERNAL" : "[NEEDS_INTERNAL_EVIDENCE]",
+        matching_excerpts: matchedChunks.slice(0, 2).map((c) => String(c.chunk_text || "").slice(0, 350)),
+      };
+    });
+
+    return {
+      success: true,
+      parsed_questions_count: questions.length,
+      has_internal_evidence: hasInternalEvidence,
+      evidence_gaps_count: evidenceGaps.length,
+      evidence_gaps: evidenceGaps,
+      question_alignments: questionAlignments,
+      statutory_benchmarks: (vaultRes.results as Array<Record<string, unknown>>) || [],
+    };
+  }
+
+  /**
+   * Tool 31: compare_african_jurisdictions
+   */
+  public async compareAfricanJurisdictions(
+    args: {
+      topic: string;
+      jurisdictions: string[];
+      product_type?: string;
+    },
+    ctx: ToolExecutionContext
+  ): Promise<Record<string, unknown>> {
+    const requested = args.jurisdictions
+      .map((j) => j.toUpperCase())
+      .filter((j): j is SearchJurisdiction =>
+        (SEARCH_JURISDICTIONS as readonly string[]).includes(j)
+      );
+    const jurisdictions: SearchJurisdiction[] =
+      requested.length > 0 ? requested : ["NG"];
+
+    const hasCrossBorder = jurisdictions.some((j) => j !== "NG");
+    if (hasCrossBorder) {
+      const gate = await entitlementsService.checkTenantEntitlement(
+        ctx.tenantId,
+        "cross_border_research"
+      );
+      if (!gate.allowed) {
+        return {
+          success: false,
+          upgrade_required: true,
+          feature: "cross_border_research",
+          reason:
+            gate.reason ||
+            "Pan-African cross-border comparison (Kenya, Ghana, South Africa, Rwanda, Egypt) requires the Scale or Enterprise plan.",
+          jurisdiction_profiles: jurisdictions.map((j) => AFRICA_JURISDICTION_REGISTRY[j]),
+          statutory_vault_ng: [],
+          live_results: [],
+        };
+      }
+    }
+
+    const vaultPromise = jurisdictions.includes("NG")
+      ? this.searchRegulatoryEvidence({ query: args.topic, limit: 5 }, ctx).catch(() => ({
+          results: [],
+        }))
+      : Promise.resolve({ results: [] });
+
+    const liveSearchPromise = this.searchLiveWeb(
+      {
+        query: `${args.topic} ${args.product_type || ""}`.trim(),
+        jurisdictions,
+        include_news: true,
+      },
+      ctx
+    ).catch(() => ({ status: "error", results: [] }));
+
+    const [vaultRes, liveRes] = await Promise.all([vaultPromise, liveSearchPromise]);
+
+    return {
+      success: true,
+      topic: args.topic,
+      jurisdictions,
+      jurisdiction_profiles: jurisdictions.map((j) => AFRICA_JURISDICTION_REGISTRY[j]),
+      statutory_vault_ng: (vaultRes.results as Array<Record<string, unknown>>) || [],
+      live_web_status: liveRes.status || "ok",
+      live_results: (liveRes.results as Array<Record<string, unknown>>) || [],
+    };
+  }
+
+  /**
+   * Tool 32: upsert_work_product_artifact
+   */
+  public async upsertWorkProductArtifact(
+    args: {
+      work_product_id?: string;
+      workflow_type: string;
+      artifact_type: string;
+      title: string;
+      jurisdiction_scope?: string[];
+      markdown_content: string;
+      structured_payload?: Record<string, unknown>;
+      citations?: WorkProductCitation[];
+      evidence_gaps?: WorkProductEvidenceGap[];
+      status?: string;
+      change_summary?: string;
+    },
+    ctx: ToolExecutionContext
+  ): Promise<Record<string, unknown>> {
+    const workflowType = (WORKFLOW_TYPES as readonly string[]).includes(args.workflow_type)
+      ? (args.workflow_type as WorkflowType)
+      : "PRODUCT_STRUCTURING_MEMO";
+
+    const artifactType = (WORK_PRODUCT_ARTIFACT_TYPES as readonly string[]).includes(
+      args.artifact_type
+    )
+      ? (args.artifact_type as WorkProductArtifactType)
+      : "statutory_structuring_memo";
+
+    const jurisdictions = (
+      args.jurisdiction_scope && args.jurisdiction_scope.length > 0
+        ? args.jurisdiction_scope
+        : ["NG"]
+    ).filter((j): j is SearchJurisdiction =>
+      (SEARCH_JURISDICTIONS as readonly string[]).includes(j)
+    );
+
+    const status: WorkProductStatus =
+      args.status === "REVIEWED" || args.status === "FINALIZED" || args.status === "ARCHIVED"
+        ? args.status
+        : "DRAFT";
+
+    const { workProduct, created } = await workProductService.upsertWorkProduct(
+      ctx.tenantId,
+      ctx.userId || "system_copilot",
+      {
+        work_product_id: args.work_product_id,
+        conversation_id: ctx.conversationId || null,
+        workflow_type: workflowType,
+        artifact_type: artifactType,
+        title: args.title,
+        jurisdiction_scope: jurisdictions.length > 0 ? jurisdictions : ["NG"],
+        markdown_content: args.markdown_content,
+        structured_payload: args.structured_payload || {},
+        citations: args.citations || [],
+        evidence_gaps: args.evidence_gaps || [],
+        status,
+        change_summary: args.change_summary,
+      },
+      {
+        allowedLiveUrls: ctx.allowedLiveUrls,
+        hasInternalKnowledgeRefs: ctx.hasInternalKnowledgeRefs,
+      }
+    );
+
+    return {
+      success: true,
+      created,
+      work_product: {
+        id: workProduct.id,
+        workflow_type: workProduct.workflow_type,
+        artifact_type: workProduct.artifact_type,
+        title: workProduct.title,
+        version_number: workProduct.version_number,
+        status: workProduct.status,
+        evidence_gaps_count: workProduct.evidence_gaps?.length || 0,
+        guardrail_report: workProduct.guardrail_report,
+      },
     };
   }
 }

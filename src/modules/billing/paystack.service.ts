@@ -25,6 +25,8 @@ export const DEFAULT_PLANS: Record<PlanSlug, SubscriptionPlan> = {
     monthly_audit_limit: 3,
     seat_limit: 2,
     url_drift_monitor_limit: 0,
+    monthly_live_search_limit: 0,
+    allowed_search_jurisdictions: [],
     retention_days: 7,
     features: {
       export_unwatermarked: false,
@@ -34,6 +36,11 @@ export const DEFAULT_PLANS: Record<PlanSlug, SubscriptionPlan> = {
       compliant_rewrites: 10,
       support_sla: "Community",
       custom_corpora: false,
+      live_web_search: false,
+      cross_border_research: false,
+      work_product_docx_export: false,
+      regulatory_ripple_live_web: false,
+      monthly_live_search_limit: 0,
     },
     is_active: true,
   },
@@ -46,6 +53,8 @@ export const DEFAULT_PLANS: Record<PlanSlug, SubscriptionPlan> = {
     monthly_audit_limit: 25,
     seat_limit: 3,
     url_drift_monitor_limit: 0,
+    monthly_live_search_limit: 100,
+    allowed_search_jurisdictions: ["NG"],
     retention_days: 90,
     features: {
       export_unwatermarked: true,
@@ -55,6 +64,11 @@ export const DEFAULT_PLANS: Record<PlanSlug, SubscriptionPlan> = {
       compliant_rewrites: -1,
       support_sla: "Standard Email (24h)",
       custom_corpora: false,
+      live_web_search: true,
+      cross_border_research: false,
+      work_product_docx_export: true,
+      regulatory_ripple_live_web: false,
+      monthly_live_search_limit: 100,
     },
     is_active: true,
   },
@@ -67,6 +81,8 @@ export const DEFAULT_PLANS: Record<PlanSlug, SubscriptionPlan> = {
     monthly_audit_limit: -1,
     seat_limit: 10,
     url_drift_monitor_limit: 15,
+    monthly_live_search_limit: 500,
+    allowed_search_jurisdictions: ["NG", "GH", "KE", "ZA", "RW", "EG", "AFRICA_REGIONAL"],
     retention_days: 730,
     features: {
       export_unwatermarked: true,
@@ -76,6 +92,11 @@ export const DEFAULT_PLANS: Record<PlanSlug, SubscriptionPlan> = {
       compliant_rewrites: -1,
       support_sla: "Priority Email + Chat (4h)",
       custom_corpora: false,
+      live_web_search: true,
+      cross_border_research: true,
+      work_product_docx_export: true,
+      regulatory_ripple_live_web: true,
+      monthly_live_search_limit: 500,
     },
     is_active: true,
   },
@@ -88,6 +109,8 @@ export const DEFAULT_PLANS: Record<PlanSlug, SubscriptionPlan> = {
     monthly_audit_limit: -1,
     seat_limit: -1,
     url_drift_monitor_limit: -1,
+    monthly_live_search_limit: -1,
+    allowed_search_jurisdictions: ["NG", "GH", "KE", "ZA", "RW", "EG", "AFRICA_REGIONAL", "GLOBAL"],
     retention_days: 2555,
     features: {
       export_unwatermarked: true,
@@ -97,6 +120,11 @@ export const DEFAULT_PLANS: Record<PlanSlug, SubscriptionPlan> = {
       compliant_rewrites: -1,
       support_sla: "Dedicated Compliance Manager (1h)",
       custom_corpora: true,
+      live_web_search: true,
+      cross_border_research: true,
+      work_product_docx_export: true,
+      regulatory_ripple_live_web: true,
+      monthly_live_search_limit: -1,
     },
     is_active: true,
   },
@@ -150,6 +178,7 @@ export class PaystackBillingService {
         .maybeSingle();
 
       if (!error && data) {
+        const fallback = DEFAULT_PLANS[slug];
         return {
           id: data.id,
           slug: data.slug as PlanSlug,
@@ -161,8 +190,18 @@ export class PaystackBillingService {
           monthly_audit_limit: data.monthly_audit_limit,
           seat_limit: data.seat_limit,
           url_drift_monitor_limit: data.url_drift_monitor_limit,
+          monthly_live_search_limit:
+            typeof data.monthly_live_search_limit === "number"
+              ? data.monthly_live_search_limit
+              : fallback.monthly_live_search_limit,
+          allowed_search_jurisdictions: Array.isArray(data.allowed_search_jurisdictions)
+            ? data.allowed_search_jurisdictions
+            : fallback.allowed_search_jurisdictions,
           retention_days: data.retention_days,
-          features: data.features,
+          features: {
+            ...fallback.features,
+            ...(data.features || {}),
+          },
           is_active: data.is_active,
         };
       }
@@ -438,18 +477,20 @@ export class PaystackBillingService {
 
     // 1. Idempotency Check
     try {
-      const { data: existingTx } = await supabase
+      const { data: existingTx, error: idempErr } = await supabase
         .from("billing_transactions")
         .select("id")
         .eq("paystack_reference", reference)
         .maybeSingle();
+
+      if (idempErr) throw idempErr;
 
       if (existingTx) {
         logger.info("Transaction already processed (idempotent skip)", { reference });
         return { processed: false, reason: "Transaction already processed", tenantId };
       }
     } catch {
-      // Table might not exist yet; check tenant settings fallback
+      // Table unreachable fallback; check tenant settings ledger
       const { data: tenant } = await supabase
         .from("tenants")
         .select("settings")
@@ -466,7 +507,7 @@ export class PaystackBillingService {
 
     // 2. Record Billing Transaction
     try {
-      await supabase.from("billing_transactions").insert({
+      const { error: txInsertErr } = await supabase.from("billing_transactions").insert({
         tenant_id: tenantId,
         paystack_reference: reference,
         amount_kobo: data.amount,
@@ -477,6 +518,7 @@ export class PaystackBillingService {
         channel: data.channel || "card",
         raw_payload: data,
       });
+      if (txInsertErr) throw txInsertErr;
     } catch (insertErr) {
       logger.warn("Could not insert into billing_transactions table, recording in tenant settings", {
         insertErr,
@@ -490,15 +532,17 @@ export class PaystackBillingService {
 
       const existingSettings = (currentTenant?.settings || {}) as Record<string, unknown>;
       const existingTx = (existingSettings.billing_transactions as string[]) || [];
-      await supabase
-        .from("tenants")
-        .update({
-          settings: {
-            ...existingSettings,
-            billing_transactions: [...existingTx, reference],
-          },
-        })
-        .eq("id", tenantId);
+      if (!existingTx.includes(reference)) {
+        await supabase
+          .from("tenants")
+          .update({
+            settings: {
+              ...existingSettings,
+              billing_transactions: [...existingTx, reference],
+            },
+          })
+          .eq("id", tenantId);
+      }
     }
 
     // 3. Compute Subscription Period (+30 days or +365 days)
@@ -508,7 +552,7 @@ export class PaystackBillingService {
 
     // 4. Upsert Tenant Subscription
     try {
-      await supabase.from("tenant_subscriptions").upsert(
+      const { error: subUpsertErr } = await supabase.from("tenant_subscriptions").upsert(
         {
           tenant_id: tenantId,
           plan_id: plan.id,
@@ -522,6 +566,7 @@ export class PaystackBillingService {
         },
         { onConflict: "tenant_id" },
       );
+      if (subUpsertErr) throw subUpsertErr;
     } catch (subErr) {
       logger.warn("Could not upsert into tenant_subscriptions table, updating tenant settings", {
         subErr,

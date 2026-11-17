@@ -76,6 +76,11 @@ export const PlanFeaturesSchema = z.object({
   compliant_rewrites: z.number().default(10), // -1 for unlimited
   support_sla: z.string().default("Community"),
   custom_corpora: z.boolean().optional().default(false),
+  live_web_search: z.boolean().optional().default(false),
+  cross_border_research: z.boolean().optional().default(false),
+  work_product_docx_export: z.boolean().optional().default(false),
+  regulatory_ripple_live_web: z.boolean().optional().default(false),
+  monthly_live_search_limit: z.number().int().optional().default(0), // -1 = unlimited
 });
 export type PlanFeatures = z.infer<typeof PlanFeaturesSchema>;
 
@@ -90,6 +95,8 @@ export const SubscriptionPlanSchema = z.object({
   monthly_audit_limit: z.number().int(), // -1 = unlimited
   seat_limit: z.number().int(), // -1 = unlimited
   url_drift_monitor_limit: z.number().int(), // -1 = unlimited
+  monthly_live_search_limit: z.number().int().optional().default(0), // -1 = unlimited
+  allowed_search_jurisdictions: z.array(z.string()).optional().default([]),
   retention_days: z.number().int(),
   features: PlanFeaturesSchema,
   is_active: z.boolean().default(true),
@@ -181,6 +188,8 @@ export const FEATURE_GATE_TYPES = [
   "export_unwatermarked",
   "cco_approval_lock",
   "url_drift_monitoring",
+  "live_web_search",
+  "cross_border_research",
 ] as const;
 export type FeatureGateType = (typeof FEATURE_GATE_TYPES)[number];
 
@@ -190,6 +199,8 @@ export const EntitlementCheckResultSchema = z.object({
   reason: z.string().optional(),
   currentCount: z.number().int().optional(),
   limit: z.number().int().optional(), // -1 = unlimited
+  remaining: z.number().int().optional(), // -1 = unlimited
+  allowedJurisdictions: z.array(z.string()).optional(),
   planSlug: z.enum(PLAN_SLUGS).optional(),
   status: z.enum(SUBSCRIPTION_STATUSES).optional(),
   trialDaysRemaining: z.number().int().optional(),

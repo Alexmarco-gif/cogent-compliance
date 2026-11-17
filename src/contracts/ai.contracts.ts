@@ -4,6 +4,11 @@
  */
 
 import { z } from "zod";
+import {
+  LIVE_SEARCH_PROVIDERS,
+  SEARCH_JURISDICTIONS,
+  SOURCE_TRUST_TIERS,
+} from "./search.contracts";
 
 export const aiTaskTypeSchema = z.enum([
   "CHAT_RESPONSE",
@@ -14,6 +19,8 @@ export const aiTaskTypeSchema = z.enum([
   "EMBEDDING_GENERATION",
   "LIVE_WEB_SEARCH",
   "DRIFT_INSPECTION",
+  "WORKFLOW_SYNTHESIS",
+  "WORK_PRODUCT_GUARDRAIL",
 ]);
 
 export type AiTaskType = z.infer<typeof aiTaskTypeSchema>;
@@ -44,6 +51,12 @@ export type AiModelRun = z.infer<typeof aiModelRunSchema>;
 export const liveWebSearchArgsSchema = z.object({
   query: z.string().min(2, "Search query must be at least 2 characters"),
   prioritize_official_regulators: z.boolean().default(false),
+  jurisdictions: z.array(z.enum(SEARCH_JURISDICTIONS)).default(["NG"]).optional(),
+  search_intent: z
+    .enum(["REGULATORY_CIRCULAR", "LEGAL_ANALYSIS", "NEWS_ENFORCEMENT", "CROSS_BORDER"])
+    .default("REGULATORY_CIRCULAR")
+    .optional(),
+  include_news: z.boolean().default(true).optional(),
   tenant_id: z.string().uuid().optional(),
 });
 
@@ -51,10 +64,21 @@ export type LiveWebSearchArgs = z.infer<typeof liveWebSearchArgsSchema>;
 
 export const liveWebSearchResultSchema = z.object({
   live_web_retrieval_id: z.string().uuid(),
+  provider: z.enum(LIVE_SEARCH_PROVIDERS).default("GEMINI_GOOGLE_SEARCH").optional(),
+  jurisdiction_code: z.string().default("NG").optional(),
+  trust_tier: z.enum(SOURCE_TRUST_TIERS).default("GENERAL_LIVE_WEB").optional(),
+  trust_badge_label: z.string().optional(),
   page_title: z.string().default("Regulatory Intelligence Citation"),
   retrieved_url: z.string().url(),
+  domain: z.string().optional(),
+  is_pdf: z.boolean().optional(),
+  published_at: z.string().nullable().optional(),
   snippet_content: z.string().min(1),
+  full_content_excerpt: z.string().optional(),
+  highlights: z.array(z.string()).default([]).optional(),
+  relevance_score: z.number().optional(),
   retrieved_at: z.string().datetime(),
+  cache_hit: z.boolean().default(false).optional(),
   source_class: z.literal("LIVE_WEB_INTELLIGENCE").default("LIVE_WEB_INTELLIGENCE"),
   metadata: z.record(z.unknown()).optional(),
 });
@@ -66,6 +90,10 @@ export const liveWebSearchResponseSchema = z.object({
   results: z.array(liveWebSearchResultSchema),
   web_summary: z.string().optional(),
   status: z.string().optional(),
+  providers_used: z.array(z.enum(LIVE_SEARCH_PROVIDERS)).optional(),
+  cache_hit: z.boolean().optional(),
+  latency_ms: z.number().int().nonnegative().optional(),
+  upgrade_required: z.boolean().optional(),
 });
 
 export type LiveWebSearchResponse = z.infer<typeof liveWebSearchResponseSchema>;

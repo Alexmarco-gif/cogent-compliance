@@ -26,10 +26,16 @@ import {
   Building2,
   LogOut,
   ChevronUp,
+  Globe,
+  FileCheck2,
+  FileText,
+  Loader2,
+  X,
 } from "lucide-react";
 import { useAuth, useClerk, useUser } from "@clerk/nextjs";
 import { CogentLogo } from "@/components/brand/CogentLogo";
 import type { ConversationRecord } from "@/modules/conversations/conversation.service";
+import type { CommandCenterHit, SearchQuotaSnapshot } from "@/contracts/search.contracts";
 
 interface SubscriptionSummary {
   planName: string;
@@ -94,6 +100,11 @@ export function WorkspaceSidebar({
   const { user } = useUser();
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [commandModalOpen, setCommandModalOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
+  const [commandHits, setCommandHits] = useState<CommandCenterHit[]>([]);
+  const [commandLoading, setCommandLoading] = useState(false);
+  const [searchQuota, setSearchQuota] = useState<SearchQuotaSnapshot | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -103,6 +114,7 @@ export function WorkspaceSidebar({
   const [selfConversations, setSelfConversations] = useState<ConversationRecord[]>([]);
   const [loadingSelfConversations, setLoadingSelfConversations] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const commandInputRef = useRef<HTMLInputElement>(null);
   const focusSearchAfterExpandRef = useRef(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
@@ -123,24 +135,70 @@ export function WorkspaceSidebar({
     .map((part) => part[0]?.toUpperCase() || "")
     .join("") || "U";
 
-  // Keyboard shortcut Cmd/Ctrl + K focuses sidebar search
+  // Keyboard shortcut Cmd/Ctrl + K opens Workspace Command Search Modal
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        if (collapsed && onToggleCollapse) {
-          focusSearchAfterExpandRef.current = true;
-          onToggleCollapse();
-        } else {
-          searchInputRef.current?.focus();
-        }
+        setCommandModalOpen((prev) => !prev);
       } else if (e.key === "Escape") {
         setUserMenuOpen(false);
+        setCommandModalOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [collapsed, onToggleCollapse]);
+  }, []);
+
+  useEffect(() => {
+    if (commandModalOpen) {
+      requestAnimationFrame(() => {
+        commandInputRef.current?.focus();
+      });
+    }
+  }, [commandModalOpen]);
+
+  // Debounced Command Center Search against PostgreSQL RPC
+  useEffect(() => {
+    if (!commandModalOpen) return;
+    const q = commandQuery.trim();
+    if (q.length < 2) {
+      setCommandHits([]);
+      setCommandLoading(false);
+      return;
+    }
+
+    let cancelled = false;
+    setCommandLoading(true);
+    const timer = setTimeout(() => {
+      fetch("/api/marketing-shield/v1/search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          query: q,
+          mode: "COMMAND_CENTER",
+          enable_live_web: false,
+          limit: 12,
+        }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => {
+          if (cancelled || !json?.success) return;
+          setCommandHits(json.data?.workspace_hits || []);
+        })
+        .catch(() => {
+          // Silent failure inside command modal
+        })
+        .finally(() => {
+          if (!cancelled) setCommandLoading(false);
+        });
+    }, 200);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [commandModalOpen, commandQuery]);
 
   useEffect(() => {
     if (!collapsed && focusSearchAfterExpandRef.current) {
@@ -215,9 +273,10 @@ export function WorkspaceSidebar({
     };
   }, [managesOwnThreads, isLoaded, isSignedIn, orgId, userId]);
 
-  // Load current plan summary quietly when authenticated with an active org
+  // Load current plan & live search quota summary quietly when authenticated with an active org
   useEffect(() => {
     setSubSummary(null);
+    setSearchQuota(null);
     if (!isLoaded || !isSignedIn || !orgId) return;
     let active = true;
 
@@ -250,13 +309,25 @@ export function WorkspaceSidebar({
         .catch(() => {
           // Silent fail so sidebar never flashes raw errors
         });
+
+      fetch("/api/marketing-shield/v1/search/quota", { cache: "no-store" })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => {
+          if (!active || !json?.success || !json.data?.quota) return;
+          setSearchQuota(json.data.quota as SearchQuotaSnapshot);
+        })
+        .catch(() => {
+          // Silent fail
+        });
     };
 
     loadSummary();
     window.addEventListener("cogent:billing-updated", loadSummary);
+    window.addEventListener("cogent:search-quota-updated", loadSummary);
     return () => {
       active = false;
       window.removeEventListener("cogent:billing-updated", loadSummary);
+      window.removeEventListener("cogent:search-quota-updated", loadSummary);
     };
   }, [isLoaded, isSignedIn, orgId, userId]);
 
@@ -411,7 +482,7 @@ export function WorkspaceSidebar({
           )}
         </div>
 
-        {/* Search Input */}
+        {/* Search Input + Command Center Modal Trigger */}
         <div className="px-3 pb-3 shrink-0">
           <div className="relative flex items-center">
             <Search className="h-3.5 w-3.5 text-zinc-400 absolute left-2.5 pointer-events-none" />
@@ -420,12 +491,18 @@ export function WorkspaceSidebar({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search..."
+              placeholder="Filter threads..."
               className="w-full h-8 pl-8 pr-11 bg-white border border-zinc-200 rounded-md text-[12.5px] text-zinc-900 placeholder:text-zinc-400 focus:outline-hidden focus:border-zinc-400 transition-colors"
             />
-            <kbd className="pointer-events-none absolute right-2 text-[10px] font-mono text-zinc-400 bg-zinc-100 border border-zinc-200 rounded px-1 py-0.2">
+            <button
+              type="button"
+              onClick={() => setCommandModalOpen(true)}
+              title="Open Command Search (⌘K)"
+              aria-label="Open Command Search"
+              className="absolute right-1.5 text-[10px] font-mono text-zinc-500 hover:text-zinc-900 bg-zinc-100 hover:bg-zinc-200 border border-zinc-200 rounded px-1.5 py-0.5 cursor-pointer transition-colors"
+            >
               ⌘K
-            </kbd>
+            </button>
           </div>
         </div>
 
@@ -461,6 +538,15 @@ export function WorkspaceSidebar({
                 <span>New Audit</span>
               </Link>
             )}
+
+            <Link
+              href="/search"
+              onClick={onCloseMobile}
+              className={navLinkClass(pathname.startsWith("/search"))}
+            >
+              <Globe className="h-4 w-4 text-zinc-500 shrink-0" />
+              <span>Regulatory Search</span>
+            </Link>
 
             <Link
               href="/knowledge-base?tab=playbooks"
@@ -667,6 +753,18 @@ export function WorkspaceSidebar({
                 ? formatTrialCountdown(subSummary)
                 : `Active ${subSummary.planName} plan`}
             </p>
+            {searchQuota && (
+              <div className="flex items-center justify-between text-[11px] text-zinc-500 pt-0.5">
+                <span>Live web search</span>
+                <span className="font-mono text-zinc-800">
+                  {!searchQuota.live_web_allowed
+                    ? "Locked (Trial)"
+                    : searchQuota.monthly_limit === -1
+                      ? "Unlimited"
+                      : `${searchQuota.used_this_month}/${searchQuota.monthly_limit}`}
+                </span>
+              </div>
+            )}
             <Link
               href="/pricing"
               className="inline-flex items-center gap-1 text-[11.5px] font-medium text-zinc-900 hover:underline pt-0.5"
@@ -755,15 +853,10 @@ export function WorkspaceSidebar({
 
         <button
           type="button"
-          onClick={() => {
-            if (onToggleCollapse) {
-              focusSearchAfterExpandRef.current = true;
-              onToggleCollapse();
-            }
-          }}
+          onClick={() => setCommandModalOpen(true)}
           className="h-9 w-9 flex items-center justify-center rounded-md text-zinc-500 hover:text-zinc-950 hover:bg-zinc-200/50 transition-colors cursor-pointer"
-          title="Search threads (⌘K)"
-          aria-label="Search threads"
+          title="Command Search (⌘K)"
+          aria-label="Command Search"
         >
           <Search className="h-4 w-4" />
         </button>
@@ -790,6 +883,15 @@ export function WorkspaceSidebar({
             <Plus className="h-4 w-4" />
           </Link>
         )}
+
+        <Link
+          href="/search"
+          className={iconNavClass(pathname.startsWith("/search"))}
+          title="Regulatory Search"
+          aria-label="Regulatory Search"
+        >
+          <Globe className="h-4 w-4" />
+        </Link>
 
         <Link
           href="/knowledge-base?tab=playbooks"
@@ -904,6 +1006,113 @@ export function WorkspaceSidebar({
             onClick={onCloseMobile}
           />
           <div className="relative z-10 h-full">{sidebarContent}</div>
+        </div>
+      )}
+
+      {/* Command Center Modal (⌘K) */}
+      {commandModalOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-zinc-950/30 backdrop-blur-xs flex items-start justify-center pt-[12vh] px-4"
+          onClick={() => setCommandModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Workspace Command Search"
+        >
+          <div
+            className="w-full max-w-xl rounded-xl border border-zinc-200 bg-white shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="px-3.5 py-2.5 border-b border-zinc-200 flex items-center gap-2.5">
+              <Search className="h-4 w-4 text-zinc-500 shrink-0" />
+              <input
+                ref={commandInputRef}
+                type="text"
+                value={commandQuery}
+                onChange={(e) => setCommandQuery(e.target.value)}
+                placeholder="Search conversations, work products, playbooks & statutory clauses..."
+                className="flex-1 bg-transparent text-[13.5px] text-zinc-950 placeholder:text-zinc-400 focus:outline-hidden"
+              />
+              {commandLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-500 shrink-0" />}
+              <button
+                type="button"
+                onClick={() => setCommandModalOpen(false)}
+                className="p-1 rounded text-zinc-400 hover:text-zinc-900 cursor-pointer"
+                aria-label="Close command search"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="max-h-[380px] overflow-y-auto divide-y divide-zinc-100">
+              {commandQuery.trim().length < 2 ? (
+                <div className="px-4 py-6 text-center text-[12.5px] text-zinc-500">
+                  Type at least 2 characters to search across threads, saved work products, internal playbooks, and Nigerian statutory clauses.
+                </div>
+              ) : !commandLoading && commandHits.length === 0 ? (
+                <div className="px-4 py-6 text-center text-[12.5px] text-zinc-500">
+                  No matching workspace records or statutory clauses found.
+                </div>
+              ) : (
+                commandHits.map((hit) => {
+                  const Icon =
+                    hit.entity_type === "WORK_PRODUCT"
+                      ? FileCheck2
+                      : hit.entity_type === "CONVERSATION"
+                        ? MessageSquare
+                        : hit.entity_type === "PLAYBOOK"
+                          ? BookOpen
+                          : FileText;
+
+                  return (
+                    <button
+                      key={`${hit.entity_type}-${hit.entity_id}`}
+                      type="button"
+                      onClick={() => {
+                        setCommandModalOpen(false);
+                        router.push(hit.route_href || "/chat");
+                      }}
+                      className="w-full text-left px-4 py-2.5 hover:bg-zinc-50 flex items-start gap-3 transition-colors cursor-pointer"
+                    >
+                      <Icon className="h-4 w-4 text-zinc-500 shrink-0 mt-0.5" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[13px] font-medium text-zinc-950 truncate">
+                            {hit.title}
+                          </span>
+                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-600 shrink-0">
+                            {hit.entity_type.replace(/_/g, " ")}
+                          </span>
+                        </div>
+                        <p className="text-[11.5px] text-zinc-500 truncate">{hit.subtitle}</p>
+                        {hit.snippet && (
+                          <p className="text-[11.5px] text-zinc-600 line-clamp-1 mt-0.5">
+                            {hit.snippet}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+
+            <div className="px-3.5 py-2 border-t border-zinc-200 bg-zinc-50/70 flex items-center justify-between text-[11.5px] text-zinc-600">
+              <span>Press Esc to close</span>
+              <Link
+                href={
+                  commandQuery.trim().length >= 2
+                    ? `/search?q=${encodeURIComponent(commandQuery.trim())}`
+                    : "/search"
+                }
+                onClick={() => setCommandModalOpen(false)}
+                className="inline-flex items-center gap-1 font-medium text-zinc-900 hover:underline"
+              >
+                <Globe className="h-3.5 w-3.5" />
+                <span>Open Africa Regulatory Search Workbench</span>
+                <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
+          </div>
         </div>
       )}
     </>

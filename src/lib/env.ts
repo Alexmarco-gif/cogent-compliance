@@ -52,6 +52,13 @@ export const serverEnvSchema = z.object({
 
   // Internal / Founder Enterprise Allowlist (comma-separated verified emails)
   INTERNAL_ENTERPRISE_EMAILS: z.string().optional(),
+
+  // Dual-Engine Regulatory Web Search (Document 14 & Document 15)
+  EXA_API_KEY: z.string().optional(),
+  SERPAPI_API_KEY: z.string().optional(),
+  LIVE_WEB_INTERACTIVE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(15000).default(3500),
+  LIVE_WEB_CACHE_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(12),
+  ENABLE_DUAL_LIVE_WEB_SEARCH: z.enum(["true", "false"]).default("true"),
 });
 
 /**
@@ -146,6 +153,12 @@ export function validateEnv(customEnv?: Record<string, string | undefined>): Env
       INTERNAL_ENTERPRISE_EMAILS: rawEnv.INTERNAL_ENTERPRISE_EMAILS,
       NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY:
         rawEnv.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "pk_test_mock_paystack_public_key",
+      EXA_API_KEY: rawEnv.EXA_API_KEY,
+      SERPAPI_API_KEY: rawEnv.SERPAPI_API_KEY,
+      LIVE_WEB_INTERACTIVE_TIMEOUT_MS: Number(rawEnv.LIVE_WEB_INTERACTIVE_TIMEOUT_MS) || 3500,
+      LIVE_WEB_CACHE_TTL_HOURS: Number(rawEnv.LIVE_WEB_CACHE_TTL_HOURS) || 12,
+      ENABLE_DUAL_LIVE_WEB_SEARCH:
+        rawEnv.ENABLE_DUAL_LIVE_WEB_SEARCH === "false" ? "false" : "true",
     };
   }
 

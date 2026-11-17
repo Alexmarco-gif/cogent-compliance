@@ -15,12 +15,15 @@ import {
   Calculator,
   Loader2,
   Scale,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import type {
   BlindSpotFindingItem,
   ComplianceArtifactType,
   StructuredComplianceReport,
 } from "@/contracts/conversation.contracts";
+import { WorkProductCanvas } from "@/components/work-products/WorkProductCanvas";
 
 export interface ArtifactCanvasDrawerProps {
   isOpen: boolean;
@@ -28,6 +31,7 @@ export interface ArtifactCanvasDrawerProps {
   onSelectTab: (tab: ComplianceArtifactType) => void;
   onClose: () => void;
   report: StructuredComplianceReport | null;
+  workProductId?: string | null;
   onInspectEvidence?: (clauseId: string) => void;
   onApplyCompliantRewrite?: (rewrittenCopy: string) => Promise<boolean | void> | boolean | void;
   onApproveAndSealDossier?: (rewrittenCopy: string) => Promise<boolean | void> | boolean | void;
@@ -247,12 +251,20 @@ function exportArconMemoToPrintWindow(
   printWin.document.close();
 }
 
+const WORKFLOW_ARTIFACT_TABS = new Set<ComplianceArtifactType>([
+  "statutory_structuring_memo",
+  "policy_gap_redline",
+  "supervisory_ddq_response",
+  "cross_border_matrix",
+]);
+
 export function ArtifactCanvasDrawer({
   isOpen,
   activeTab,
   onSelectTab,
   onClose,
   report,
+  workProductId,
   onInspectEvidence,
   onApplyCompliantRewrite,
   onApproveAndSealDossier,
@@ -264,6 +276,7 @@ export function ArtifactCanvasDrawer({
   const [rewriteApplied, setRewriteApplied] = useState(false);
   const [sealingDossier, setSealingDossier] = useState(false);
   const [dossierSealed, setDossierSealed] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const rawRewrittenCopy = report?.artifacts.compliant_rewrite?.rewritten_copy || "";
 
@@ -274,7 +287,80 @@ export function ArtifactCanvasDrawer({
     setDossierSealed(false);
   }, [rawRewrittenCopy]);
 
-  if (!isOpen || !report) return null;
+  const effectiveWorkProductId = workProductId || report?.work_product_id || null;
+  const showWorkProductStudio =
+    Boolean(effectiveWorkProductId) &&
+    (!report || WORKFLOW_ARTIFACT_TABS.has(activeTab));
+
+  if (!isOpen || (!report && !effectiveWorkProductId)) return null;
+
+  const drawerAsideClass = isExpanded
+    ? "fixed inset-0 z-50 w-full h-screen bg-white flex flex-col shadow-2xl"
+    : "fixed inset-0 z-50 lg:static lg:z-auto lg:w-[50%] xl:w-[50%] shrink-0 h-screen bg-white border-l border-zinc-200 flex flex-col shadow-xl lg:shadow-none";
+
+  if (showWorkProductStudio && effectiveWorkProductId) {
+    return (
+      <aside
+        aria-label="Compliance Artifact Canvas Drawer"
+        className={drawerAsideClass}
+      >
+        <div className="px-4 py-3 border-b border-zinc-200 bg-zinc-50/70 flex items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-mono text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded bg-zinc-900 text-white">
+              Work Product Studio
+            </span>
+            {report && (
+              <button
+                type="button"
+                onClick={() => onSelectTab("compliant_ad_rewrite")}
+                className="text-[11.5px] font-medium px-2 py-0.5 rounded border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 cursor-pointer"
+              >
+                View Campaign Audit Tabs
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsExpanded((prev) => !prev)}
+              className="hidden lg:inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-600 hover:text-zinc-950 text-[11.5px] font-medium transition-colors cursor-pointer"
+              aria-label={isExpanded ? "Exit fullscreen studio" : "Expand studio to fullscreen"}
+              title={isExpanded ? "Split-screen view" : "Expand to fullscreen"}
+            >
+              {isExpanded ? (
+                <>
+                  <Minimize2 className="h-3.5 w-3.5" />
+                  <span>Split View</span>
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="h-3.5 w-3.5" />
+                  <span>Expand</span>
+                </>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setIsExpanded(false);
+                onClose();
+              }}
+              className="p-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-600 hover:text-zinc-950 transition-colors cursor-pointer shrink-0"
+              aria-label="Close Artifact Canvas Drawer"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+        <WorkProductCanvas
+          workProductId={effectiveWorkProductId}
+          onInspectEvidence={onInspectEvidence}
+        />
+      </aside>
+    );
+  }
+
+  if (!report) return null;
 
   const { pre_flight_gate, blind_spot_findings, artifacts, computed_financials } = report;
   const apr = pre_flight_gate.apr_audit;
@@ -336,9 +422,11 @@ export function ArtifactCanvasDrawer({
     }
   };
 
-  const tabMeta: Record<
-    ComplianceArtifactType,
-    { label: string; shortLabel: string; icon: React.ReactNode; available: boolean }
+  const tabMeta: Partial<
+    Record<
+      ComplianceArtifactType,
+      { label: string; shortLabel: string; icon: React.ReactNode; available: boolean }
+    >
   > = {
     compliant_ad_rewrite: {
       label: "Compliant Ad Copy & Redline Diff",
@@ -377,7 +465,7 @@ export function ArtifactCanvasDrawer({
   return (
     <aside
       aria-label="Compliance Artifact Canvas Drawer"
-      className="fixed inset-0 z-50 lg:static lg:z-auto lg:w-[46%] xl:w-[48%] lg:max-w-[680px] shrink-0 h-screen bg-white border-l border-zinc-200 flex flex-col shadow-xl lg:shadow-none"
+      className={drawerAsideClass}
     >
       {/* 1. Top Studio Header */}
       <div className="px-4 py-3 border-b border-zinc-200 bg-zinc-50/70 flex items-center justify-between gap-3 shrink-0">
@@ -393,25 +481,58 @@ export function ArtifactCanvasDrawer({
             )}
           </div>
           <h2 className="text-[13.5px] font-semibold text-zinc-950 truncate mt-1">
-            {tabMeta[resolvedTab].label}
+            {tabMeta[resolvedTab]?.label || "Compliance Deliverable"}
           </h2>
         </div>
 
-        <button
-          type="button"
-          onClick={onClose}
-          className="p-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-600 hover:text-zinc-950 transition-colors cursor-pointer shrink-0"
-          aria-label="Close Artifact Canvas Drawer"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsExpanded((prev) => !prev)}
+            className="hidden lg:inline-flex items-center gap-1 px-2 py-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-600 hover:text-zinc-950 text-[11.5px] font-medium transition-colors cursor-pointer"
+            aria-label={isExpanded ? "Exit fullscreen canvas" : "Expand canvas to fullscreen"}
+          >
+            {isExpanded ? (
+              <>
+                <Minimize2 className="h-3.5 w-3.5" />
+                <span>Split View</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="h-3.5 w-3.5" />
+                <span>Expand</span>
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setIsExpanded(false);
+              onClose();
+            }}
+            className="p-1.5 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-100 text-zinc-600 hover:text-zinc-950 transition-colors cursor-pointer shrink-0"
+            aria-label="Close Artifact Canvas Drawer"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* 2. Deliverable Switcher Bar */}
       <div className="px-3 py-2 border-b border-zinc-200 bg-white flex items-center gap-1.5 overflow-x-auto shrink-0">
+        {effectiveWorkProductId && (
+          <button
+            type="button"
+            onClick={() => onSelectTab("statutory_structuring_memo")}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11.5px] font-medium bg-zinc-100/80 text-zinc-700 hover:text-zinc-950 hover:bg-zinc-200/70 transition-colors cursor-pointer shrink-0"
+          >
+            <FileCheck2 className="h-3.5 w-3.5 shrink-0" />
+            <span>Work Product Studio</span>
+          </button>
+        )}
         {(Object.keys(tabMeta) as ComplianceArtifactType[]).map((tabKey) => {
           const item = tabMeta[tabKey];
-          if (!item.available) return null;
+          if (!item || !item.available) return null;
           const isSelected = resolvedTab === tabKey;
           return (
             <button

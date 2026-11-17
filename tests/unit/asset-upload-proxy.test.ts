@@ -104,6 +104,33 @@ vi.mock("@/modules/ai-orchestration/tools/statutory-tools", () => ({
   },
 }));
 
+const mockAuthorizeLiveSearch = vi.fn().mockResolvedValue({
+  allowed: true,
+  feature: "live_web_search",
+  currentCount: 1,
+  limit: 150,
+  remaining: 149,
+  allowedJurisdictions: ["NG"],
+  planSlug: "growth",
+});
+
+vi.mock("@/modules/billing/entitlements.service", () => ({
+  entitlementsService: {
+    authorizeAndConsumeLiveSearch: (...args: unknown[]) => mockAuthorizeLiveSearch(...args),
+    checkTenantEntitlement: vi.fn().mockResolvedValue({ allowed: true }),
+    getLiveSearchQuotaSnapshot: vi.fn().mockResolvedValue({
+      plan_slug: "growth",
+      live_web_allowed: true,
+      cross_border_allowed: false,
+      allowed_jurisdictions: ["NG"],
+      used_this_month: 1,
+      monthly_limit: 150,
+      remaining: 149,
+      trial_locked_reason: null,
+    }),
+  },
+}));
+
 describe("Asset Upload Proxy, MIME Normalization & Copilot Attachment Pipeline", () => {
   beforeEach(() => {
     vi.clearAllMocks();

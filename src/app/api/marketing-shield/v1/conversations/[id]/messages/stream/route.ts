@@ -84,7 +84,22 @@ export async function POST(
     }
 
     // 2. Parse request body
-    const rawBody = await req.json();
+    let rawBody: unknown;
+    try {
+      rawBody = await req.json();
+    } catch {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "VALIDATION_FAILED",
+            message: "Malformed JSON request body",
+            request_id: requestId,
+          },
+        },
+        { status: 400 },
+      );
+    }
     const validated = sendMessageStreamSchema.parse(rawBody);
 
     logger.info("Starting Copilot SSE stream", {
@@ -145,6 +160,10 @@ export async function POST(
           campaignUrls: validated.campaign_urls,
           activeCampaignId: validated.active_campaign_id,
           referencedProductId: validated.referenced_product_id,
+          referencedKnowledgeDocId: validated.referenced_knowledge_doc_id,
+          enableLiveWebSearch: validated.enable_live_web_search,
+          searchJurisdictions: validated.search_jurisdictions,
+          workflowHint: validated.workflow_hint,
         });
 
         const deadlineAt = Date.now() + STREAM_SOFT_DEADLINE_MS;

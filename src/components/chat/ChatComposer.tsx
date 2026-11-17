@@ -1,24 +1,35 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import Link from "next/link";
 import {
-  ArrowUp,
-  Paperclip,
+  ArrowUpRight,
   Loader2,
   Globe,
   FileImage,
-  Percent,
-  Video,
-  ClipboardCheck,
   FileText,
+  FileCheck2,
+  Scale,
+  BookOpen,
   Tag,
   X,
+  Lock,
+  Plus,
+  Upload,
+  ChevronRight,
+  Check,
+  Sparkles,
 } from "lucide-react";
 import { extractApiError } from "@/lib/api-client";
 import {
   resolveUploadMimeType,
   type SupportedUploadMimeType,
 } from "@/lib/upload-mime";
+import type {
+  SearchJurisdiction,
+  SearchQuotaSnapshot,
+} from "@/contracts/search.contracts";
+import type { WorkflowType } from "@/contracts/work-product.contracts";
 
 export { resolveUploadMimeType, type SupportedUploadMimeType };
 
@@ -26,6 +37,12 @@ export interface ProductOption {
   id: string;
   product_name: string;
   product_type: string;
+}
+
+export interface KnowledgeDocOption {
+  id: string;
+  title: string;
+  document_type: string;
 }
 
 export interface PendingAttachment {
@@ -38,12 +55,39 @@ export interface PendingAttachment {
 
 const VERCEL_SERVER_PROXY_LIMIT_BYTES = 4_500_000;
 
+const JURISDICTION_SOURCES: Array<{
+  code: SearchJurisdiction;
+  flag: string;
+  name: string;
+  regulators: string;
+}> = [
+  { code: "NG", flag: "🇳🇬", name: "Nigeria", regulators: "CBN, SEC, NDPC, FCCPC, ARCON" },
+  { code: "KE", flag: "🇰🇪", name: "Kenya", regulators: "CBK, CMA, ODPC" },
+  { code: "GH", flag: "🇬🇭", name: "Ghana", regulators: "Bank of Ghana, SEC" },
+  { code: "ZA", flag: "🇿🇦", name: "South Africa", regulators: "SARB, FSCA" },
+  { code: "RW", flag: "🇷🇼", name: "Rwanda", regulators: "BNR" },
+  { code: "EG", flag: "🇪🇬", name: "Egypt", regulators: "CBE, FRA" },
+  { code: "AFRICA_REGIONAL", flag: "🌍", name: "Pan-Africa", regulators: "Cross-border frameworks" },
+];
+
+const WORKFLOW_LABELS: Record<WorkflowType, string> = {
+  PRODUCT_STRUCTURING_MEMO: "Structuring Memo",
+  POLICY_GAP_REDLINE: "Policy Redline",
+  SUPERVISORY_DDQ_RESPONSE: "Supervisory DDQ",
+  CROSS_BORDER_COMPARISON: "Cross-Border Matrix",
+  CAMPAIGN_COMPLIANCE_KIT: "Campaign Clearance",
+};
+
 export interface ChatComposerProps {
   onSendMessage: (
     content: string,
     options?: {
       attachmentAssetIds?: string[];
       attachments?: PendingAttachment[];
+      enableLiveWebSearch?: boolean;
+      searchJurisdictions?: SearchJurisdiction[];
+      referencedKnowledgeDocId?: string;
+      workflowHint?: WorkflowType;
     },
   ) => Promise<boolean | void>;
   onAssetUploaded?: (
@@ -57,56 +101,81 @@ export interface ChatComposerProps {
   products?: ProductOption[];
   selectedProductId?: string | null;
   onSelectProduct?: (productId: string | null) => void;
+  knowledgeDocs?: KnowledgeDocOption[];
+  selectedKnowledgeDocId?: string | null;
+  onSelectKnowledgeDoc?: (docId: string | null) => void;
+  liveSearchQuota?: SearchQuotaSnapshot | null;
+  enableLiveWebSearch?: boolean;
+  onToggleLiveWebSearch?: (enabled: boolean) => void;
+  searchJurisdictions?: SearchJurisdiction[];
+  onSelectJurisdictions?: (jurisdictions: SearchJurisdiction[]) => void;
+  workflowHint?: WorkflowType | null;
+  onSelectWorkflowHint?: (workflow: WorkflowType | null) => void;
+  prefillText?: string | null;
+  onPrefillConsumed?: () => void;
   wideRail?: boolean;
 }
 
-const STARTER_CARDS = [
+const STARTER_CARDS: Array<{
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  subtitle: string;
+  prompt: string;
+  workflowHint: WorkflowType;
+  prefillOnly: boolean;
+}> = [
   {
-    icon: FileImage,
-    title: "Audit a campaign flyer",
-    subtitle: "Extract text and check ARCON rules",
+    icon: Scale,
+    title: "Product Structuring Memo",
+    subtitle: "Multi-agency rules, limits & disclosures",
     prompt:
-      "Review this promotional campaign copy for CBN, FCCPC, and ARCON compliance: ",
+      "We want to launch a USD virtual card & BNPL wallet feature in Nigeria. What CBN FX/payment rules, NDPC data transfer rules, and FCCPC credit disclosures apply? Output a complete Statutory Structuring Memo.",
+    workflowHint: "PRODUCT_STRUCTURING_MEMO",
+    prefillOnly: false,
+  },
+  {
+    icon: BookOpen,
+    title: "Policy Gap & SOP Redline",
+    subtitle: "Diff internal policy vs latest circulars",
+    prompt:
+      "Compare our internal AML / Operations policy against the latest CBN & NFIU guidelines and draft exact redlined policy replacement clauses.",
+    workflowHint: "POLICY_GAP_REDLINE",
     prefillOnly: true,
   },
   {
-    icon: Percent,
-    title: "Verify loan APR & fees",
-    subtitle: "Check copy against internal rate card",
+    icon: FileCheck2,
+    title: "Supervisory & Partner DDQ",
+    subtitle: "Citation-backed bank / audit responses",
     prompt:
-      "What are the mandatory APR and fee disclosure requirements under FCCPC DEON Regulations for digital lenders?",
-    prefillOnly: false,
-  },
-  {
-    icon: Video,
-    title: "Screen influencer script",
-    subtitle: "Check FCCPC & ARCON disclosure rules",
-    prompt:
-      "What are the ARCON ASP pre-vetting and influencer disclosure requirements for digital financial campaigns in Nigeria?",
-    prefillOnly: false,
+      "Draft formal citation-backed responses with [NEEDS_INTERNAL_EVIDENCE] flags for this sponsor bank / CBN supervisory compliance questionnaire:\n",
+    workflowHint: "SUPERVISORY_DDQ_RESPONSE",
+    prefillOnly: true,
   },
   {
     icon: Globe,
-    title: "Scan live landing page",
-    subtitle: "Check URL copy for compliance gaps",
-    prompt: "Inspect this live promotional landing page URL for regulatory compliance: https://",
+    title: "Cross-Border Expansion",
+    subtitle: "Compare NG vs KE, GH & ZA licensing",
+    prompt:
+      "Compare Nigerian CBN PSP/PSSP licensing capital requirements and settlement rules against Kenya (CBK) and Ghana (BoG) Payment Service Provider frameworks.",
+    workflowHint: "CROSS_BORDER_COMPARISON",
+    prefillOnly: false,
+  },
+  {
+    icon: FileImage,
+    title: "Audit a campaign flyer",
+    subtitle: "Extract text & verify CBN/ARCON locks",
+    prompt:
+      "Review this promotional campaign copy for CBN, FCCPC, and ARCON compliance: ",
+    workflowHint: "CAMPAIGN_COMPLIANCE_KIT",
     prefillOnly: true,
   },
   {
-    icon: ClipboardCheck,
-    title: "CBN disclosure checklist",
-    subtitle: "Consumer Protection Framework mandates",
-    prompt:
-      "Can a Nigerian bank or fintech advertise '0% interest' without disclosing management fees and total cost of credit under CBN Consumer Protection Regulations?",
-    prefillOnly: false,
-  },
-  {
     icon: FileText,
-    title: "Prepare audit dossier",
-    subtitle: "2-year FCCPC retention requirements",
-    prompt:
-      "What promotional records and sign-off evidence must be retained for 2 years under FCCPC consumer protection regulations and NDPA 2023 marketing opt-out rules?",
-    prefillOnly: false,
+    title: "Scan live landing page",
+    subtitle: "Check URL disclosures & KFS terms",
+    prompt: "Inspect this live promotional landing page URL for regulatory compliance: https://",
+    workflowHint: "CAMPAIGN_COMPLIANCE_KIT",
+    prefillOnly: true,
   },
 ];
 
@@ -118,16 +187,45 @@ export function ChatComposer({
   products = [],
   selectedProductId = null,
   onSelectProduct,
+  knowledgeDocs = [],
+  selectedKnowledgeDocId = null,
+  onSelectKnowledgeDoc,
+  liveSearchQuota = null,
+  enableLiveWebSearch = false,
+  onToggleLiveWebSearch,
+  searchJurisdictions = ["NG"],
+  onSelectJurisdictions,
+  workflowHint = null,
+  onSelectWorkflowHint,
+  prefillText = null,
+  onPrefillConsumed,
   wideRail = false,
 }: ChatComposerProps) {
   const [content, setContent] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [upgradePopover, setUpgradePopover] = useState<"live_search" | "cross_border" | null>(
+    null,
+  );
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
+  const [activeSubmenu, setActiveSubmenu] = useState<"knowledge" | "products" | "workflows" | null>(
+    null,
+  );
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const plusMenuContainerRef = useRef<HTMLDivElement>(null);
   const pendingAttachmentsRef = useRef<PendingAttachment[]>([]);
   pendingAttachmentsRef.current = pendingAttachments;
+
+  useEffect(() => {
+    if (prefillText && prefillText.trim()) {
+      setContent(prefillText);
+      onPrefillConsumed?.();
+      textareaRef.current?.focus();
+    }
+  }, [prefillText, onPrefillConsumed]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -144,10 +242,41 @@ export function ChatComposer({
     };
   }, []);
 
+  useEffect(() => {
+    if (!plusMenuOpen) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (
+        plusMenuContainerRef.current &&
+        !plusMenuContainerRef.current.contains(e.target as Node)
+      ) {
+        setPlusMenuOpen(false);
+        setActiveSubmenu(null);
+      }
+    };
+    const handleKeyDownWindow = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setPlusMenuOpen(false);
+        setActiveSubmenu(null);
+      }
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    window.addEventListener("keydown", handleKeyDownWindow);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      window.removeEventListener("keydown", handleKeyDownWindow);
+    };
+  }, [plusMenuOpen]);
+
   const canSend =
     (content.trim().length > 0 || pendingAttachments.length > 0) &&
     !disabled &&
     !isUploading;
+
+  const liveSearchAllowed = Boolean(liveSearchQuota?.live_web_allowed);
+  const crossBorderAllowed = Boolean(liveSearchQuota?.cross_border_allowed);
+  const activeJurisdiction = searchJurisdictions[0] || "NG";
+  const selectedProduct = products.find((p) => p.id === selectedProductId) || null;
+  const selectedKnowledgeDoc = knowledgeDocs.find((d) => d.id === selectedKnowledgeDocId) || null;
 
   const removePendingAttachment = (assetId: string) => {
     setPendingAttachments((prev) => {
@@ -155,6 +284,35 @@ export function ChatComposer({
       if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
       return prev.filter((a) => a.assetId !== assetId);
     });
+  };
+
+  const handleToggleLiveSearchClick = () => {
+    if (liveSearchQuota && !liveSearchQuota.live_web_allowed) {
+      setUpgradePopover((prev) => (prev === "live_search" ? null : "live_search"));
+      onToggleLiveWebSearch?.(false);
+      setPlusMenuOpen(false);
+      return;
+    }
+    setUpgradePopover(null);
+    onToggleLiveWebSearch?.(!enableLiveWebSearch);
+  };
+
+  const handleSelectJurisdictionSource = (nextJur: SearchJurisdiction) => {
+    if (liveSearchQuota && !liveSearchQuota.live_web_allowed) {
+      setUpgradePopover("live_search");
+      setPlusMenuOpen(false);
+      return;
+    }
+    if (nextJur !== "NG" && liveSearchQuota && !liveSearchQuota.cross_border_allowed) {
+      setUpgradePopover("cross_border");
+      setPlusMenuOpen(false);
+      return;
+    }
+    setUpgradePopover(null);
+    onSelectJurisdictions?.([nextJur]);
+    if (!enableLiveWebSearch) {
+      onToggleLiveWebSearch?.(true);
+    }
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
@@ -166,11 +324,14 @@ export function ChatComposer({
     const attachmentNames = currentAttachments.map((a) => a.filename).join(", ");
     const text =
       content.trim() ||
-      `Review the attached campaign asset (${attachmentNames}) against CBN, FCCPC, and ARCON requirements.`;
+      `Review the attached document/asset (${attachmentNames}) and generate the appropriate compliance deliverable.`;
 
     // Clear composer immediately for responsive UX
     setContent("");
     setPendingAttachments([]);
+    setUpgradePopover(null);
+    setPlusMenuOpen(false);
+    setActiveSubmenu(null);
     for (const att of currentAttachments) {
       if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
     }
@@ -181,11 +342,16 @@ export function ChatComposer({
     const sent = await onSendMessage(text, {
       attachmentAssetIds: attachmentAssetIds.length > 0 ? attachmentAssetIds : undefined,
       attachments: currentAttachments.length > 0 ? currentAttachments : undefined,
+      enableLiveWebSearch: Boolean(enableLiveWebSearch && liveSearchAllowed),
+      searchJurisdictions:
+        searchJurisdictions && searchJurisdictions.length > 0 ? searchJurisdictions : ["NG"],
+      referencedKnowledgeDocId: selectedKnowledgeDocId || undefined,
+      workflowHint: workflowHint || undefined,
     });
 
     if (sent === false) {
       // Restore draft on pre-flight failure
-      setContent(content.trim());
+      setContent(text);
     }
   };
 
@@ -196,123 +362,128 @@ export function ChatComposer({
     }
   };
 
+  const uploadSingleFile = async (file: File): Promise<PendingAttachment> => {
+    const mimeType = resolveUploadMimeType(file);
+    const arrayBuffer = await file.arrayBuffer();
+    const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const sha256_hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
+
+    const sessionRes = await fetch("/api/marketing-shield/v1/assets/upload-session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        conversation_id: conversationId,
+        original_filename: file.name,
+        mime_type: mimeType,
+        file_size_bytes: file.size,
+        sha256_hash,
+      }),
+    });
+
+    const sessionJson = await sessionRes.json().catch(() => ({}));
+    if (!sessionRes.ok || !sessionJson.success) {
+      const parsed = extractApiError(
+        sessionRes.status,
+        sessionJson,
+        "Failed to create upload session",
+      );
+      throw new Error(parsed.message);
+    }
+
+    const { asset_id, presigned_upload_url } = sessionJson.data;
+
+    if (!presigned_upload_url.includes("mock")) {
+      let directUploadOk = false;
+      let directUploadErrMsg: string | null = null;
+      try {
+        const putRes = await fetch(presigned_upload_url, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": mimeType },
+        });
+        if (putRes.ok) {
+          directUploadOk = true;
+        } else {
+          directUploadErrMsg = `Direct storage upload failed (HTTP ${putRes.status})`;
+        }
+      } catch (directErr) {
+        directUploadErrMsg =
+          directErr instanceof Error ? directErr.message : "Direct storage upload failed";
+      }
+
+      if (!directUploadOk) {
+        if (file.size > VERCEL_SERVER_PROXY_LIMIT_BYTES) {
+          throw new Error(
+            `${directUploadErrMsg || "Direct storage upload was blocked"} and the file exceeds the 4.5 MB server upload proxy limit. Please upload a file <= 4.5 MB or configure CORS on the R2 bucket.`,
+          );
+        }
+
+        const proxyRes = await fetch(`/api/marketing-shield/v1/assets/${asset_id}/upload`, {
+          method: "PUT",
+          body: file,
+          headers: { "Content-Type": mimeType },
+        });
+        const proxyJson = await proxyRes.json().catch(() => ({}));
+        if (!proxyRes.ok || !proxyJson.success) {
+          const parsed = extractApiError(
+            proxyRes.status,
+            proxyJson,
+            directUploadErrMsg || `Upload failed (HTTP ${proxyRes.status})`,
+          );
+          throw new Error(parsed.message);
+        }
+      }
+    }
+
+    const completeRes = await fetch(`/api/marketing-shield/v1/assets/${asset_id}/complete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auto_assess: true }),
+    });
+
+    const completeJson = await completeRes.json().catch(() => ({}));
+    if (!completeRes.ok || !completeJson.success) {
+      const parsed = extractApiError(
+        completeRes.status,
+        completeJson,
+        "Failed to process uploaded asset",
+      );
+      throw new Error(parsed.message);
+    }
+
+    const extractedText =
+      typeof completeJson.data?.extraction?.extractedText === "string"
+        ? completeJson.data.extraction.extractedText
+        : undefined;
+
+    const previewUrl = mimeType.startsWith("image/")
+      ? URL.createObjectURL(file)
+      : undefined;
+
+    return {
+      assetId: asset_id,
+      filename: file.name,
+      mimeType,
+      previewUrl,
+      extractedText,
+    };
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    if (files.length === 0) return;
 
     setIsUploading(true);
     setUploadError(null);
 
     try {
-      const mimeType = resolveUploadMimeType(file);
-      const arrayBuffer = await file.arrayBuffer();
-      const hashBuffer = await crypto.subtle.digest("SHA-256", arrayBuffer);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      const sha256_hash = hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
-
-      const sessionRes = await fetch("/api/marketing-shield/v1/assets/upload-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversation_id: conversationId,
-          original_filename: file.name,
-          mime_type: mimeType,
-          file_size_bytes: file.size,
-          sha256_hash,
-        }),
-      });
-
-      const sessionJson = await sessionRes.json().catch(() => ({}));
-      if (!sessionRes.ok || !sessionJson.success) {
-        const parsed = extractApiError(
-          sessionRes.status,
-          sessionJson,
-          "Failed to create upload session",
-        );
-        throw new Error(parsed.message);
+      const uploaded: PendingAttachment[] = [];
+      for (const file of files) {
+        const item = await uploadSingleFile(file);
+        uploaded.push(item);
       }
-
-      const { asset_id, presigned_upload_url } = sessionJson.data;
-
-      if (!presigned_upload_url.includes("mock")) {
-        let directUploadOk = false;
-        let directUploadErrMsg: string | null = null;
-        try {
-          const putRes = await fetch(presigned_upload_url, {
-            method: "PUT",
-            body: file,
-            headers: { "Content-Type": mimeType },
-          });
-          if (putRes.ok) {
-            directUploadOk = true;
-          } else {
-            directUploadErrMsg = `Direct storage upload failed (HTTP ${putRes.status})`;
-          }
-        } catch (directErr) {
-          directUploadErrMsg =
-            directErr instanceof Error ? directErr.message : "Direct storage upload failed";
-        }
-
-        if (!directUploadOk) {
-          if (file.size > VERCEL_SERVER_PROXY_LIMIT_BYTES) {
-            throw new Error(
-              `${directUploadErrMsg || "Direct storage upload was blocked"} and the file exceeds the 4.5 MB server upload proxy limit. Please upload a file <= 4.5 MB or configure CORS on the R2 bucket.`,
-            );
-          }
-
-          const proxyRes = await fetch(`/api/marketing-shield/v1/assets/${asset_id}/upload`, {
-            method: "PUT",
-            body: file,
-            headers: { "Content-Type": mimeType },
-          });
-          const proxyJson = await proxyRes.json().catch(() => ({}));
-          if (!proxyRes.ok || !proxyJson.success) {
-            const parsed = extractApiError(
-              proxyRes.status,
-              proxyJson,
-              directUploadErrMsg || `Upload failed (HTTP ${proxyRes.status})`,
-            );
-            throw new Error(parsed.message);
-          }
-        }
-      }
-
-      const completeRes = await fetch(`/api/marketing-shield/v1/assets/${asset_id}/complete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ auto_assess: true }),
-      });
-
-      const completeJson = await completeRes.json().catch(() => ({}));
-      if (!completeRes.ok || !completeJson.success) {
-        const parsed = extractApiError(
-          completeRes.status,
-          completeJson,
-          "Failed to process uploaded asset",
-        );
-        throw new Error(parsed.message);
-      }
-
-      const extractedText =
-        typeof completeJson.data?.extraction?.extractedText === "string"
-          ? completeJson.data.extraction.extractedText
-          : undefined;
-
-      const previewUrl = mimeType.startsWith("image/")
-        ? URL.createObjectURL(file)
-        : undefined;
-
-      setPendingAttachments((prev) => [
-        ...prev,
-        {
-          assetId: asset_id,
-          filename: file.name,
-          mimeType,
-          previewUrl,
-          extractedText,
-        },
-      ]);
-
+      setPendingAttachments((prev) => [...prev, ...uploaded]);
       textareaRef.current?.focus();
     } catch (err) {
       setUploadError((err as Error).message);
@@ -322,14 +493,22 @@ export function ChatComposer({
     }
   };
 
+  const hasActiveTopContext =
+    pendingAttachments.length > 0 ||
+    isUploading ||
+    (enableLiveWebSearch && liveSearchAllowed) ||
+    Boolean(selectedKnowledgeDoc) ||
+    Boolean(selectedProduct) ||
+    Boolean(workflowHint);
+
   return (
     <div
       className={
         isZeroState
-          ? "w-full max-w-2xl mx-auto"
+          ? "w-full max-w-2xl mx-auto relative"
           : wideRail
-            ? "w-full max-w-5xl mx-auto"
-            : "w-full max-w-3xl mx-auto"
+            ? "w-full max-w-5xl mx-auto relative"
+            : "w-full max-w-3xl mx-auto relative"
       }
     >
       {uploadError && (
@@ -345,51 +524,166 @@ export function ChatComposer({
         </div>
       )}
 
-      {/* Unified Multi-Line Composer Dock */}
+      {/* Paid Live Web Search / Cross-Border Upgrade Popover */}
+      {upgradePopover && (
+        <div
+          role="dialog"
+          aria-label="Live Web Search Upgrade Notice"
+          className="mb-2.5 rounded-xl border border-zinc-200 bg-zinc-50 p-3.5 text-[12.5px] text-zinc-800 shadow-sm flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
+        >
+          <div className="flex items-start gap-2.5">
+            <Lock className="h-4 w-4 text-zinc-700 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-zinc-950">
+                {upgradePopover === "cross_border"
+                  ? "Pan-African Cross-Border Search (KE, GH, ZA, RW, EG) requires Scale"
+                  : "Live Regulatory Search (NG & Africa) requires Growth or Scale"}
+              </p>
+              <p className="text-zinc-600 mt-0.5">
+                {upgradePopover === "cross_border"
+                  ? "Scale unlocks Exa AI + SerpAPI cross-jurisdictional search across 6 African central banks ($449/mo)."
+                  : "Growth ($149/mo) unlocks real-time CBN, SEC, NDPC & FCCPC search alongside our verified Statutory Vault."}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Link
+              href={
+                upgradePopover === "cross_border"
+                  ? "/settings/billing?upgrade=scale"
+                  : "/settings/billing?upgrade=growth"
+              }
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-white text-[12px] font-medium"
+            >
+              <span>Upgrade Plan</span>
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </Link>
+            <button
+              type="button"
+              onClick={() => setUpgradePopover(null)}
+              className="p-1 rounded text-zinc-500 hover:text-zinc-900 cursor-pointer"
+              aria-label="Close upgrade notice"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Harvey-Style Silicon Valley Composer Dock */}
       <form
         onSubmit={handleSubmit}
-        className="rounded-xl border border-zinc-200 bg-white shadow-xs focus-within:border-zinc-400 transition-colors p-3"
+        className="rounded-2xl border border-zinc-200 bg-white shadow-[0_2px_14px_-4px_rgba(9,9,11,0.07)] focus-within:border-zinc-400 focus-within:shadow-[0_6px_24px_-8px_rgba(9,9,11,0.12)] transition-all p-3.5"
       >
-        {/* Pending Attached Files Strip */}
-        {(pendingAttachments.length > 0 || isUploading) && (
-          <div className="mb-2 flex flex-wrap items-center gap-2">
+        {/* Top Context Chips Strip (Attachments + Web search + Policy/Rate Card) */}
+        {hasActiveTopContext && (
+          <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
             {pendingAttachments.map((att) => (
               <div
                 key={att.assetId}
-                className="group relative inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 pl-1.5 pr-2 py-1 text-[12px] text-zinc-800 max-w-[260px]"
+                className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50/90 pl-1.5 pr-2 py-1 text-[12px] text-zinc-800 max-w-[240px]"
               >
                 {att.previewUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={att.previewUrl}
                     alt={att.filename}
-                    className="h-8 w-8 rounded object-cover border border-zinc-200 shrink-0"
+                    className="h-5 w-5 rounded object-cover border border-zinc-200 shrink-0"
                   />
                 ) : (
-                  <div className="h-8 w-8 rounded bg-zinc-200/70 flex items-center justify-center shrink-0">
-                    <FileText className="h-4 w-4 text-zinc-600" />
-                  </div>
+                  <FileText className="h-3.5 w-3.5 text-rose-600 shrink-0 ml-0.5" />
                 )}
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-zinc-900">{att.filename}</p>
-                  <p className="text-[10.5px] text-emerald-700 font-medium">Ready to send</p>
-                </div>
+                <span className="truncate font-medium text-zinc-900">{att.filename}</span>
                 <button
                   type="button"
                   onClick={() => removePendingAttachment(att.assetId)}
-                  className="ml-1 rounded-full p-0.5 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-800 transition-colors cursor-pointer shrink-0"
+                  className="rounded-full p-0.5 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-800 transition-colors cursor-pointer shrink-0"
                   aria-label={`Remove ${att.filename}`}
                 >
-                  <X className="h-3.5 w-3.5" />
+                  <X className="h-3 w-3" />
                 </button>
               </div>
             ))}
 
             {isUploading && (
-              <div className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-[12px] text-zinc-600">
+              <div className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[12px] text-zinc-600">
                 <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-600" />
-                <span>Uploading & extracting text...</span>
+                <span>Uploading &amp; extracting...</span>
               </div>
+            )}
+
+            {enableLiveWebSearch && liveSearchAllowed && (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50/80 px-2.5 py-1 text-[12px] font-medium text-sky-950">
+                <Globe className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+                <span>Web search</span>
+                <span className="font-mono text-[10.5px] text-sky-700 bg-white/80 border border-sky-200/80 rounded px-1">
+                  {activeJurisdiction === "AFRICA_REGIONAL" ? "AFRICA" : activeJurisdiction}
+                </span>
+                {liveSearchQuota && liveSearchQuota.monthly_limit > 0 && (
+                  <span className="font-mono text-[10px] text-sky-700/80">
+                    ({liveSearchQuota.remaining}/{liveSearchQuota.monthly_limit})
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => onToggleLiveWebSearch?.(false)}
+                  className="rounded-full p-0.5 text-sky-600 hover:bg-sky-100 hover:text-sky-900 cursor-pointer"
+                  aria-label="Disable live web search"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+
+            {selectedKnowledgeDoc && (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-100/80 px-2.5 py-1 text-[12px] font-medium text-zinc-800 max-w-[220px]">
+                <BookOpen className="h-3.5 w-3.5 text-zinc-600 shrink-0" />
+                <span className="truncate">{selectedKnowledgeDoc.title}</span>
+                {onSelectKnowledgeDoc && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectKnowledgeDoc(null)}
+                    className="rounded-full p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 cursor-pointer shrink-0"
+                    aria-label="Clear referenced policy document"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </span>
+            )}
+
+            {selectedProduct && (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-100/80 px-2.5 py-1 text-[12px] font-medium text-zinc-800 max-w-[200px]">
+                <Tag className="h-3.5 w-3.5 text-zinc-600 shrink-0" />
+                <span className="truncate">{selectedProduct.product_name}</span>
+                {onSelectProduct && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectProduct(null)}
+                    className="rounded-full p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 cursor-pointer shrink-0"
+                    aria-label="Clear referenced product rate card"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </span>
+            )}
+
+            {workflowHint && (
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1 font-mono text-[11px] font-medium text-zinc-700">
+                <Sparkles className="h-3 w-3 text-zinc-500" />
+                <span>{WORKFLOW_LABELS[workflowHint] || workflowHint}</span>
+                {onSelectWorkflowHint && (
+                  <button
+                    type="button"
+                    onClick={() => onSelectWorkflowHint(null)}
+                    className="text-zinc-400 hover:text-zinc-900 cursor-pointer"
+                    aria-label="Clear workflow hint"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </span>
             )}
           </div>
         )}
@@ -401,108 +695,412 @@ export function ChatComposer({
           onKeyDown={handleKeyDown}
           placeholder={
             pendingAttachments.length > 0
-              ? "Add your message or instructions for the attached file, then press Send..."
+              ? "Add instructions for your attached flyers, PDFs, or policy docs..."
               : isZeroState
-                ? "Ask any question about CBN/FCCPC/ARCON rules, brainstorm a campaign, or paste ad copy to clear..."
-                : "Ask a follow-up question, discuss recommendations, or attach new copy/flyer to clear..."
+                ? "Ask a compliance question, draft a policy clause, or attach flyers/docs to clear..."
+                : "Ask a follow-up, refine the work product, or attach another document..."
           }
           disabled={disabled}
-          rows={isZeroState ? 2 : 1}
-          className="w-full resize-none bg-transparent px-1 py-1 text-[14px] text-zinc-950 placeholder:text-zinc-400 focus:outline-hidden min-h-[40px] max-h-[180px] leading-relaxed"
+          rows={isZeroState ? 3 : 2}
+          className="w-full resize-none bg-transparent px-1 py-1 text-[14px] text-zinc-950 placeholder:text-zinc-400 focus:outline-hidden min-h-[48px] max-h-[180px] leading-relaxed"
         />
 
         <input
           type="file"
+          multiple
           ref={fileInputRef}
           onChange={handleFileChange}
           accept=".png,.jpg,.jpeg,.webp,.pdf,.docx,image/png,image/jpeg,image/webp,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           className="hidden"
         />
 
-        <div className="mt-2 pt-2 border-t border-zinc-100 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 flex-wrap">
+        {/* Bottom Toolbar: + Files & sources on left, Ask Cogent on right */}
+        <div className="mt-2.5 pt-2.5 border-t border-zinc-100 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap relative" ref={plusMenuContainerRef}>
+            {/* Primary + Attachment & Sources Button */}
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={disabled || isUploading}
-              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 px-2.5 py-1 text-[12px] font-medium text-zinc-700 transition-colors cursor-pointer disabled:opacity-50"
-            >
-              {isUploading ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-600" />
-              ) : (
-                <Paperclip className="h-3.5 w-3.5 text-zinc-500" />
-              )}
-              <span>{isUploading ? "Attaching..." : "Attach flyer / PDF"}</span>
-            </button>
-
-            <button
-              type="button"
+              aria-haspopup="menu"
+              aria-expanded={plusMenuOpen}
               onClick={() => {
-                setContent((prev) =>
-                  prev.trim()
-                    ? prev
-                    : "Review this landing page URL for compliance: https://",
-                );
-                textareaRef.current?.focus();
+                setPlusMenuOpen((prev) => !prev);
+                setActiveSubmenu(null);
               }}
               disabled={disabled || isUploading}
-              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 px-2.5 py-1 text-[12px] font-medium text-zinc-700 transition-colors cursor-pointer disabled:opacity-50"
+              className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition-colors cursor-pointer disabled:opacity-50 ${
+                plusMenuOpen
+                  ? "bg-zinc-900 text-white"
+                  : "text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950"
+              }`}
+              title="Attach files (flyers, PDFs, docs) or enable Web search sources"
             >
-              <Globe className="h-3.5 w-3.5 text-zinc-500" />
-              <span>Scan URL</span>
+              {isUploading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              <span>Files and sources</span>
             </button>
 
-            {onSelectProduct && (
-              <label
-                className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[12px] font-medium transition-colors cursor-pointer ${
-                  selectedProductId
-                    ? "border-zinc-900 bg-zinc-900 text-white"
-                    : "border-zinc-200 bg-white hover:bg-zinc-50 text-zinc-700"
+            {/* Quick Workflow Selector Pill */}
+            {onSelectWorkflowHint && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPlusMenuOpen(true);
+                  setActiveSubmenu("workflows");
+                }}
+                disabled={disabled || isUploading}
+                className="hidden sm:inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Scale className="h-3.5 w-3.5 text-zinc-500" />
+                <span>Workflows</span>
+              </button>
+            )}
+
+            {/* + Popover Menu (Files, Knowledge Base, Rate Cards, Web Search & Jurisdictions) */}
+            {plusMenuOpen && (
+              <div
+                role="menu"
+                aria-label="Files and regulatory sources"
+                className={`absolute left-0 z-50 w-[300px] sm:w-[320px] rounded-xl border border-zinc-200 bg-white shadow-xl py-1.5 text-[12.5px] text-zinc-800 ${
+                  isZeroState ? "top-full mt-2" : "bottom-full mb-2"
                 }`}
               >
-                <Tag
-                  className={`h-3.5 w-3.5 shrink-0 ${
-                    selectedProductId ? "text-zinc-200" : "text-zinc-500"
-                  }`}
-                />
-                <select
-                  aria-label="Reference approved product"
-                  value={selectedProductId || ""}
-                  onChange={(e) => onSelectProduct(e.target.value || null)}
-                  disabled={disabled || isUploading}
-                  className={`bg-transparent text-[12px] font-medium focus:outline-hidden cursor-pointer max-w-[170px] truncate ${
-                    selectedProductId ? "text-white" : "text-zinc-700"
-                  }`}
-                >
-                  <option value="" className="text-zinc-900 bg-white">
-                    {products.length > 0 ? "Ref: Product rate card" : "No products added"}
-                  </option>
-                  {products.map((prod) => (
-                    <option key={prod.id} value={prod.id} className="text-zinc-900 bg-white">
-                      {prod.product_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                {activeSubmenu === "knowledge" ? (
+                  <div className="max-h-[300px] overflow-y-auto">
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubmenu(null)}
+                      className="w-full px-3 py-2 text-left text-[11.5px] font-semibold text-zinc-500 hover:text-zinc-900 border-b border-zinc-100 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>← Back to Files &amp; sources</span>
+                    </button>
+                    {knowledgeDocs.length === 0 ? (
+                      <div className="px-3.5 py-3 text-[12px] text-zinc-500 space-y-2">
+                        <p>No internal policies indexed yet.</p>
+                        <Link
+                          href="/knowledge-base"
+                          className="inline-flex items-center gap-1 font-medium text-zinc-900 underline"
+                        >
+                          Upload policy in Knowledge Base
+                          <ArrowUpRight className="h-3 w-3" />
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="py-1">
+                        {selectedKnowledgeDocId && onSelectKnowledgeDoc && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onSelectKnowledgeDoc(null);
+                              setPlusMenuOpen(false);
+                              setActiveSubmenu(null);
+                            }}
+                            className="w-full px-3.5 py-2 text-left text-rose-600 hover:bg-zinc-50 font-medium cursor-pointer"
+                          >
+                            Clear selected policy
+                          </button>
+                        )}
+                        {knowledgeDocs.map((doc) => {
+                          const selected = doc.id === selectedKnowledgeDocId;
+                          return (
+                            <button
+                              key={doc.id}
+                              type="button"
+                              onClick={() => {
+                                onSelectKnowledgeDoc?.(selected ? null : doc.id);
+                                setPlusMenuOpen(false);
+                                setActiveSubmenu(null);
+                              }}
+                              className="w-full px-3.5 py-2 text-left hover:bg-zinc-50 flex items-center justify-between gap-2 cursor-pointer"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate font-medium text-zinc-900">{doc.title}</p>
+                                <p className="text-[10.5px] text-zinc-400 font-mono">
+                                  {doc.document_type}
+                                </p>
+                              </div>
+                              {selected && <Check className="h-3.5 w-3.5 text-zinc-900 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : activeSubmenu === "products" ? (
+                  <div className="max-h-[300px] overflow-y-auto">
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubmenu(null)}
+                      className="w-full px-3 py-2 text-left text-[11.5px] font-semibold text-zinc-500 hover:text-zinc-900 border-b border-zinc-100 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>← Back to Files &amp; sources</span>
+                    </button>
+                    {products.length === 0 ? (
+                      <div className="px-3.5 py-3 text-[12px] text-zinc-500 space-y-2">
+                        <p>No product rate cards configured yet.</p>
+                        <Link
+                          href="/knowledge-base"
+                          className="inline-flex items-center gap-1 font-medium text-zinc-900 underline"
+                        >
+                          Configure product truth
+                          <ArrowUpRight className="h-3 w-3" />
+                        </Link>
+                      </div>
+                    ) : (
+                      <div className="py-1">
+                        {selectedProductId && onSelectProduct && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onSelectProduct(null);
+                              setPlusMenuOpen(false);
+                              setActiveSubmenu(null);
+                            }}
+                            className="w-full px-3.5 py-2 text-left text-rose-600 hover:bg-zinc-50 font-medium cursor-pointer"
+                          >
+                            Clear selected rate card
+                          </button>
+                        )}
+                        {products.map((prod) => {
+                          const selected = prod.id === selectedProductId;
+                          return (
+                            <button
+                              key={prod.id}
+                              type="button"
+                              onClick={() => {
+                                onSelectProduct?.(selected ? null : prod.id);
+                                setPlusMenuOpen(false);
+                                setActiveSubmenu(null);
+                              }}
+                              className="w-full px-3.5 py-2 text-left hover:bg-zinc-50 flex items-center justify-between gap-2 cursor-pointer"
+                            >
+                              <div className="min-w-0">
+                                <p className="truncate font-medium text-zinc-900">
+                                  {prod.product_name}
+                                </p>
+                                <p className="text-[10.5px] text-zinc-400 font-mono">
+                                  {prod.product_type}
+                                </p>
+                              </div>
+                              {selected && <Check className="h-3.5 w-3.5 text-zinc-900 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ) : activeSubmenu === "workflows" ? (
+                  <div className="py-1">
+                    <button
+                      type="button"
+                      onClick={() => setActiveSubmenu(null)}
+                      className="w-full px-3 py-2 text-left text-[11.5px] font-semibold text-zinc-500 hover:text-zinc-900 border-b border-zinc-100 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <span>← Back to Files &amp; sources</span>
+                    </button>
+                    {(Object.keys(WORKFLOW_LABELS) as WorkflowType[]).map((wf) => {
+                      const active = workflowHint === wf;
+                      return (
+                        <button
+                          key={wf}
+                          type="button"
+                          onClick={() => {
+                            onSelectWorkflowHint?.(active ? null : wf);
+                            setPlusMenuOpen(false);
+                            setActiveSubmenu(null);
+                          }}
+                          className="w-full px-3.5 py-2 text-left hover:bg-zinc-50 flex items-center justify-between gap-2 cursor-pointer"
+                        >
+                          <span className="font-medium text-zinc-900">{WORKFLOW_LABELS[wf]}</span>
+                          {active && <Check className="h-3.5 w-3.5 text-zinc-900 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <>
+                    {/* Section 1: Files & Internal Vault */}
+                    <div className="py-1">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setPlusMenuOpen(false);
+                          fileInputRef.current?.click();
+                        }}
+                        className="w-full px-3.5 py-2 text-left hover:bg-zinc-50 flex items-center gap-2.5 cursor-pointer"
+                      >
+                        <Upload className="h-4 w-4 text-zinc-600 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-zinc-900">Upload files</p>
+                          <p className="text-[11px] text-zinc-400">
+                            Flyers (PNG/JPG/WEBP), PDFs &amp; Word (.docx)
+                          </p>
+                        </div>
+                      </button>
+
+                      {onSelectKnowledgeDoc && (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => setActiveSubmenu("knowledge")}
+                          className="w-full px-3.5 py-2 text-left hover:bg-zinc-50 flex items-center justify-between gap-2 cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2.5 min-w-0">
+                            <BookOpen className="h-4 w-4 text-zinc-600 shrink-0" />
+                            <span className="font-medium text-zinc-900 truncate">
+                              Add from Knowledge base
+                            </span>
+                          </span>
+                          <span className="flex items-center gap-1 shrink-0">
+                            {selectedKnowledgeDoc && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                            )}
+                            <ChevronRight className="h-3.5 w-3.5 text-zinc-400" />
+                          </span>
+                        </button>
+                      )}
+
+                      {onSelectProduct && (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          onClick={() => setActiveSubmenu("products")}
+                          className="w-full px-3.5 py-2 text-left hover:bg-zinc-50 flex items-center justify-between gap-2 cursor-pointer"
+                        >
+                          <span className="flex items-center gap-2.5 min-w-0">
+                            <Tag className="h-4 w-4 text-zinc-600 shrink-0" />
+                            <span className="font-medium text-zinc-900 truncate">
+                              Attach Product Rate Card
+                            </span>
+                          </span>
+                          <span className="flex items-center gap-1 shrink-0">
+                            {selectedProduct && (
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-600" />
+                            )}
+                            <ChevronRight className="h-3.5 w-3.5 text-zinc-400" />
+                          </span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Section 2: Sources (Web Search + Jurisdictional Regulators) */}
+                    <div className="my-1 border-t border-zinc-100 pt-1.5">
+                      <p className="px-3.5 py-1 text-[11px] font-medium text-zinc-400">Sources</p>
+
+                      <button
+                        type="button"
+                        role="menuitemcheckbox"
+                        aria-checked={Boolean(enableLiveWebSearch && liveSearchAllowed)}
+                        onClick={handleToggleLiveSearchClick}
+                        className="w-full px-3.5 py-2 text-left hover:bg-zinc-50 flex items-center justify-between gap-2 cursor-pointer"
+                      >
+                        <span className="flex items-center gap-2.5 min-w-0">
+                          <Globe
+                            className={`h-4 w-4 shrink-0 ${
+                              enableLiveWebSearch && liveSearchAllowed
+                                ? "text-sky-600"
+                                : "text-zinc-600"
+                            }`}
+                          />
+                          <span className="font-medium text-zinc-900">Web search</span>
+                        </span>
+
+                        {!liveSearchAllowed && liveSearchQuota ? (
+                          <span className="inline-flex items-center gap-1 text-[10.5px] font-mono text-zinc-500">
+                            <Lock className="h-3 w-3" />
+                            <span>Growth</span>
+                          </span>
+                        ) : enableLiveWebSearch && liveSearchAllowed ? (
+                          <span className="inline-flex items-center gap-1 rounded bg-sky-50 border border-sky-200 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-sky-800">
+                            <Check className="h-3 w-3" />
+                            <span>ON</span>
+                          </span>
+                        ) : (
+                          <span className="text-[10.5px] font-mono text-zinc-400">
+                            Exa + SerpAPI
+                          </span>
+                        )}
+                      </button>
+
+                      {/* Jurisdictional Regulatory Sources */}
+                      {onSelectJurisdictions && (
+                        <div className="mt-0.5 max-h-[190px] overflow-y-auto">
+                          {JURISDICTION_SOURCES.map((jur) => {
+                            const isSelected =
+                              enableLiveWebSearch &&
+                              liveSearchAllowed &&
+                              activeJurisdiction === jur.code;
+                            const isGated = jur.code !== "NG" && !crossBorderAllowed;
+
+                            return (
+                              <button
+                                key={jur.code}
+                                type="button"
+                                role="menuitemradio"
+                                aria-checked={isSelected}
+                                onClick={() => {
+                                  handleSelectJurisdictionSource(jur.code);
+                                  if (!isGated && liveSearchAllowed) {
+                                    setPlusMenuOpen(false);
+                                  }
+                                }}
+                                className={`w-full px-3.5 py-1.5 text-left hover:bg-zinc-50 flex items-center justify-between gap-2 cursor-pointer ${
+                                  isSelected ? "bg-zinc-50" : ""
+                                }`}
+                              >
+                                <span className="flex items-center gap-2.5 min-w-0">
+                                  <span className="text-[14px] leading-none shrink-0" aria-hidden="true">
+                                    {jur.flag}
+                                  </span>
+                                  <span className="min-w-0">
+                                    <span className="block font-medium text-zinc-900 truncate">
+                                      {jur.name}
+                                    </span>
+                                    <span className="block text-[10.5px] text-zinc-400 truncate">
+                                      {jur.regulators}
+                                    </span>
+                                  </span>
+                                </span>
+
+                                {isGated ? (
+                                  <span className="text-[10px] font-mono text-zinc-400 shrink-0">
+                                    Scale
+                                  </span>
+                                ) : isSelected ? (
+                                  <Check className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+                                ) : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             )}
           </div>
 
           <button
             type="submit"
             disabled={!canSend}
-            className={`flex h-8 w-8 items-center justify-center rounded-full transition-colors cursor-pointer ${
+            className={`inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-[12.5px] font-medium transition-colors cursor-pointer shrink-0 ${
               canSend
-                ? "bg-zinc-900 hover:bg-zinc-800 text-white"
+                ? "bg-zinc-950 hover:bg-zinc-800 text-white shadow-xs"
                 : "bg-zinc-100 text-zinc-400 cursor-not-allowed"
             }`}
-            aria-label="Send message"
+            aria-label="Ask Cogent"
           >
-            <ArrowUp className="h-4 w-4" />
+            {disabled ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            <span>Ask Cogent</span>
           </button>
         </div>
       </form>
 
-      {/* 2x3 Hairline Starter Grid (Zero State Only) */}
+      {/* 2x3 Hairline Workflow & Compliance Starter Grid (Zero State Only) */}
       {isZeroState && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mt-5">
           {STARTER_CARDS.map((card, idx) => {
@@ -513,11 +1111,19 @@ export function ChatComposer({
                 type="button"
                 disabled={disabled}
                 onClick={() => {
+                  onSelectWorkflowHint?.(card.workflowHint);
                   if (card.prefillOnly) {
                     setContent(card.prompt);
                     textareaRef.current?.focus();
                   } else {
-                    void onSendMessage(card.prompt);
+                    void onSendMessage(card.prompt, {
+                      enableLiveWebSearch: Boolean(
+                        enableLiveWebSearch && liveSearchQuota?.live_web_allowed,
+                      ),
+                      searchJurisdictions,
+                      referencedKnowledgeDocId: selectedKnowledgeDocId || undefined,
+                      workflowHint: card.workflowHint,
+                    });
                   }
                 }}
                 className="text-left p-3.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 hover:border-zinc-300 transition-colors cursor-pointer disabled:opacity-50"

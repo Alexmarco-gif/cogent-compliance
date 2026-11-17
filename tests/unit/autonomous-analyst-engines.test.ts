@@ -247,12 +247,12 @@ describe("Phase A: Autonomous Compliance Analyst Deterministic & Forensic Engine
     });
   });
 
-  describe("6. Phase B: 28-Tool Autonomous Function Calling & Copilot Registry", () => {
-    it("exposes all 28 statutory, campaign, deterministic forensic, and autonomous copilot tools", async () => {
+  describe("6. Phase B & Reg-Intel: 32-Tool Autonomous Function Calling & Copilot Registry", () => {
+    it("exposes all 32 statutory, campaign, forensic, autonomous copilot, and regulatory intelligence tools", async () => {
       const { STATUTORY_TOOL_DECLARATIONS } = await import(
         "@/modules/ai-orchestration/tools/statutory-tools"
       );
-      expect(STATUTORY_TOOL_DECLARATIONS).toHaveLength(28);
+      expect(STATUTORY_TOOL_DECLARATIONS).toHaveLength(32);
       const toolNames = STATUTORY_TOOL_DECLARATIONS.map((t) => t.name);
       expect(toolNames).toContain("calculate_effective_apr_and_drip_fees");
       expect(toolNames).toContain("audit_flyer_visual_forensics");
@@ -268,6 +268,11 @@ describe("Phase A: Autonomous Compliance Analyst Deterministic & Forensic Engine
       expect(toolNames).toContain("search_nigerian_regulations");
       expect(toolNames).toContain("scan_live_url_or_creative");
       expect(toolNames).toContain("create_compliance_artifact");
+      // 4 Phase 3 Regulatory Intelligence & Work Product Studio Tools
+      expect(toolNames).toContain("compare_policy_against_regulation");
+      expect(toolNames).toContain("parse_and_answer_ddq_questions");
+      expect(toolNames).toContain("compare_african_jurisdictions");
+      expect(toolNames).toContain("upsert_work_product_artifact");
     });
   });
 

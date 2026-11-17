@@ -3,7 +3,7 @@
  * Document Reference: Document 04 (Section 6.1), Document 05, Document 08 (Phase 6)
  */
 
-import { createApiHandler } from "@/lib/api-handler";
+import { AppApiError, createApiHandler } from "@/lib/api-handler";
 import { statutoryToolExecutor } from "@/modules/ai-orchestration/tools/statutory-tools";
 
 /**
@@ -17,7 +17,7 @@ export const GET = createApiHandler(
   async (_req, { tenant, params }) => {
     const clauseId = Array.isArray(params.id) ? params.id[0] : params.id;
     if (!clauseId) {
-      throw new Error("Regulatory clause ID is required");
+      throw new AppApiError("VALIDATION_FAILED", "Regulatory clause ID is required", 400);
     }
 
     const result = await statutoryToolExecutor.getRegulatoryProvision(
@@ -26,7 +26,7 @@ export const GET = createApiHandler(
     );
 
     if (!result.success) {
-      throw new Error((result.error as string) || "Clause not found");
+      throw new AppApiError("NOT_FOUND", (result.error as string) || "Clause not found", 404);
     }
 
     return result;

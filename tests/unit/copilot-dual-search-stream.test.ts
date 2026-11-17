@@ -1,9 +1,42 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { CopilotOrchestrator } from "@/modules/conversations/copilot.orchestrator";
+import { entitlementsService } from "@/modules/billing/entitlements.service";
 import type { GoogleGenAI } from "@google/genai";
 
 vi.mock("@/lib/supabase", () => ({
   createAdminSupabaseClient: () => ({ from: vi.fn(), rpc: vi.fn() }),
+}));
+
+vi.mock("@/modules/billing/entitlements.service", () => ({
+  entitlementsService: {
+    authorizeAndConsumeLiveSearch: vi.fn().mockResolvedValue({
+      allowed: true,
+      feature: "live_web_search",
+      planSlug: "growth",
+      limit: 100,
+      remaining: 99,
+    }),
+    checkTenantEntitlement: vi.fn().mockResolvedValue({
+      allowed: true,
+      feature: "live_web_search",
+      planSlug: "growth",
+    }),
+  },
+}));
+
+vi.mock("@/modules/work-products/work-product.service", () => ({
+  workProductService: {
+    upsertWorkProduct: vi.fn().mockResolvedValue({
+      created: true,
+      workProduct: {
+        id: "wp_mock_1",
+        workflow_type: "PRODUCT_STRUCTURING_MEMO",
+        artifact_type: "statutory_structuring_memo",
+        title: "BNPL Product Structuring Memo",
+        version_number: 1,
+      },
+    }),
+  },
 }));
 
 vi.mock("@/modules/conversations/conversation.service", () => ({
@@ -60,12 +93,20 @@ vi.mock("@/modules/ai-orchestration/tools/statutory-tools", () => ({
   statutoryToolExecutor: {
     searchRegulatoryEvidence: (...args: unknown[]) => mockSearchVault(...args),
     searchLiveWeb: (...args: unknown[]) => mockSearchWeb(...args),
+    searchInstitutionalKnowledge: vi.fn().mockResolvedValue({ chunks: [], rules: [] }),
   },
 }));
 
-describe("CopilotOrchestrator Dual Grounding & Live Token Streaming", () => {
+describe("CopilotOrchestrator Dual Grounding, Entitlements & Workflow Engine", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(entitlementsService.authorizeAndConsumeLiveSearch).mockResolvedValue({
+      allowed: true,
+      feature: "live_web_search",
+      planSlug: "growth",
+      limit: 100,
+      remaining: 99,
+    });
   });
 
   it("runs Vault + Live Web Search in parallel and streams tokens via generateContentStream", async () => {
@@ -98,6 +139,7 @@ describe("CopilotOrchestrator Dual Grounding & Live Token Streaming", () => {
       userId: "user_1",
       conversationId: "conv_dual_1",
       userPrompt: "What are the latest CBN rules on loan fee ads?",
+      enableLiveWebSearch: true,
     })) {
       events.push(event);
     }
@@ -107,27 +149,102 @@ describe("CopilotOrchestrator Dual Grounding & Live Token Streaming", () => {
     expect(generateContentStream).toHaveBeenCalledTimes(1);
     expect(mockGenAi.models.generateContent).not.toHaveBeenCalled();
 
-    // Context injected into first Gemini stream call should include both Vault and Live Web evidence
     const callArgs = generateContentStream.mock.calls[0]?.[0];
     const serialized = JSON.stringify(callArgs.contents);
     expect(serialized).toContain("dual_grounding_context");
     expect(serialized).toContain("CBN Consumer Protection Framework");
     expect(serialized).toContain("CBN 2026 Digital Credit Disclosure Circular");
 
-    // Streamed deltas arrived sequentially
     const deltas = events
       .filter((e) => e.type === "assistant.delta")
       .map((e) => e.data.text_delta);
     expect(deltas).toHaveLength(2);
     expect(deltas.join("")).toContain("recent CBN circular updates");
 
-    // Completed citations include BOTH Verified Statutory Vault PDF AND Live Web source
     const completed = events.find((e) => e.type === "message.completed") as {
       data: { citations: Array<{ source_class: string; retrieved_url?: string }> };
     };
     const sourceClasses = completed.data.citations.map((c) => c.source_class);
     expect(sourceClasses).toContain("VERIFIED_OFFICIAL_SOURCE");
     expect(sourceClasses).toContain("LIVE_WEB_INTELLIGENCE");
+  });
+
+  it("emits entitlement.blocked and falls back to Vault-only when Evaluation tenant toggles Live Web Search", async () => {
+    vi.mocked(entitlementsService.authorizeAndConsumeLiveSearch).mockResolvedValueOnce({
+      allowed: false,
+      planSlug: "evaluation",
+      feature: "live_web_search",
+      reason: "Upgrade to Growth for Live Search.",
+    });
+
+    const generateContentStream = vi.fn().mockImplementation(async function* () {
+      yield {
+        candidates: [{ content: { parts: [{ text: "Vault-only CBN Consumer Protection analysis." }] } }],
+      };
+    });
+
+    const orchestrator = new CopilotOrchestrator({
+      models: { generateContentStream, generateContent: vi.fn() },
+    } as unknown as GoogleGenAI);
+
+    const events = [];
+    for await (const event of orchestrator.streamChat({
+      tenantId: "00000000-0000-0000-0000-000000000001",
+      userId: "user_1",
+      conversationId: "conv_eval_blocked",
+      userPrompt: "What are the latest CBN rules on stablecoins?",
+      enableLiveWebSearch: true,
+    })) {
+      events.push(event);
+    }
+
+    expect(mockSearchWeb).not.toHaveBeenCalled();
+    expect(mockSearchVault).toHaveBeenCalledTimes(1);
+    const blockedEvt = events.find((e) => e.type === "entitlement.blocked") as
+      | { type: "entitlement.blocked"; data: { vault_fallback_active: boolean } }
+      | undefined;
+    expect(blockedEvt).toBeDefined();
+    expect(blockedEvt?.data.vault_fallback_active).toBe(true);
+  });
+
+  it("executes Workflow Engine and auto-persists Work Product for PRODUCT_STRUCTURING_MEMO", async () => {
+    const generateContentStream = vi.fn().mockImplementation(async function* () {
+      yield {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: "### BNPL Product Structuring Memo\n\nUnder CBN CPF §4.2.1 and FCCPA §115, all BNPL fees, APR, and cooling-off rights must be prominently disclosed prior to checkout.",
+                },
+              ],
+            },
+          },
+        ],
+      };
+    });
+
+    const orchestrator = new CopilotOrchestrator({
+      models: { generateContentStream, generateContent: vi.fn() },
+    } as unknown as GoogleGenAI);
+
+    const events = [];
+    for await (const event of orchestrator.streamChat({
+      tenantId: "00000000-0000-0000-0000-000000000001",
+      userId: "user_1",
+      conversationId: "conv_wf_1",
+      userPrompt: "We want to launch a BNPL product in Nigeria — structure all CBN and FCCPC requirements.",
+      workflowHint: "PRODUCT_STRUCTURING_MEMO",
+    })) {
+      events.push(event);
+    }
+
+    const wpEvent = events.find((e) => e.type === "work_product.created") as
+      | { type: "work_product.created"; data: { work_product_id: string; workflow_type: string } }
+      | undefined;
+    expect(wpEvent).toBeDefined();
+    expect(wpEvent?.data.work_product_id).toBe("wp_mock_1");
+    expect(wpEvent?.data.workflow_type).toBe("PRODUCT_STRUCTURING_MEMO");
   });
 
   it("strips attachment filenames/boilerplate from webQuery and deduplicates repeated Vault clauses", async () => {

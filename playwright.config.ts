@@ -1,4 +1,14 @@
+import fs from "fs";
 import { defineConfig, devices } from "@playwright/test";
+
+const systemChromium = fs.existsSync("/usr/bin/chromium")
+  ? "/usr/bin/chromium"
+  : fs.existsSync("/usr/bin/google-chrome")
+    ? "/usr/bin/google-chrome"
+    : undefined;
+
+const chromiumExecutable =
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || systemChromium;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -15,7 +25,18 @@ export default defineConfig({
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        ignoreHTTPSErrors: true,
+        launchOptions: {
+          ...(chromiumExecutable ? { executablePath: chromiumExecutable } : {}),
+          args: [
+            "--no-sandbox",
+            "--disable-setuid-sandbox",
+            "--proxy-bypass-list=localhost;127.0.0.1",
+          ],
+        },
+      },
     },
   ],
   webServer: process.env.CI

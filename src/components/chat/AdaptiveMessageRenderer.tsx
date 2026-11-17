@@ -17,7 +17,12 @@ import {
   ShieldAlert,
   ShieldCheck,
   AlertTriangle,
+  FileCheck2,
+  Lock,
+  Loader2,
+  CheckCircle2,
 } from "lucide-react";
+import Link from "next/link";
 import type {
   CitationItem,
   ComplianceArtifactItem,
@@ -32,6 +37,28 @@ export interface MessageAttachmentChip {
   filename: string;
 }
 
+export interface SearchTrackPill {
+  track: string;
+  label: string;
+  status: "RUNNING" | "COMPLETED" | "SKIPPED" | "TIMEOUT";
+  resultCount?: number;
+  cacheHit?: boolean;
+}
+
+export interface EntitlementBlockedBanner {
+  feature: "live_web_search" | "cross_border_research";
+  reason: string;
+  upgrade_plan: "growth" | "scale";
+}
+
+export interface WorkProductBannerRef {
+  work_product_id: string;
+  artifact_type: string;
+  workflow_type: string;
+  title: string;
+  version_number: number;
+}
+
 export interface AdaptiveMessageRendererProps {
   content: string;
   role: "USER" | "ASSISTANT" | "SYSTEM" | "TOOL";
@@ -39,12 +66,16 @@ export interface AdaptiveMessageRendererProps {
   planSteps?: ExecutionPlanStep[];
   structuredReport?: StructuredComplianceReport;
   attachments?: MessageAttachmentChip[];
+  searchTracks?: SearchTrackPill[];
+  entitlementBlocked?: EntitlementBlockedBanner;
+  workProductRef?: WorkProductBannerRef;
   wideRail?: boolean;
   onInspectEvidence?: (clauseId: string) => void;
   onOpenArtifactCanvas?: (
     artifactType: ComplianceArtifactType,
     report: StructuredComplianceReport
   ) => void;
+  onOpenWorkProduct?: (workProductId: string, artifactType?: string) => void;
   onApplyCompliantRewrite?: (rewrittenCopy: string) => Promise<boolean | void> | boolean | void;
   onApproveAndSealDossier?: (rewrittenCopy: string) => Promise<boolean | void> | boolean | void;
   isStreaming?: boolean;
@@ -264,8 +295,12 @@ export function AdaptiveMessageRenderer({
   planSteps = [],
   structuredReport,
   attachments = [],
+  searchTracks = [],
+  entitlementBlocked,
+  workProductRef,
   onInspectEvidence,
   onOpenArtifactCanvas,
+  onOpenWorkProduct,
   isStreaming,
 }: AdaptiveMessageRendererProps) {
   const dedupedCitations = React.useMemo(
@@ -328,6 +363,55 @@ export function AdaptiveMessageRenderer({
           citationCount={dedupedCitations.length}
           matchedProductName={matchedProductName}
         />
+      )}
+
+      {/* 1b. Parallel Live Regulatory Search Track Pills */}
+      {searchTracks.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {searchTracks.map((tr) => (
+            <span
+              key={tr.track}
+              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-mono text-zinc-700"
+            >
+              {tr.status === "RUNNING" ? (
+                <Loader2 className="h-3 w-3 animate-spin text-zinc-700 shrink-0" />
+              ) : (
+                <CheckCircle2 className="h-3 w-3 text-emerald-600 shrink-0" />
+              )}
+              <span>{tr.label}</span>
+              {typeof tr.resultCount === "number" && tr.status === "COMPLETED" && (
+                <span className="text-zinc-500">
+                  ({tr.resultCount}
+                  {tr.cacheHit ? " cached" : ""})
+                </span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* 1c. Server-Enforced Entitlement Blocked Banner (with Vault fallback active) */}
+      {entitlementBlocked && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50/70 px-3.5 py-2.5 text-[12px] text-amber-950 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
+          <div className="flex items-start gap-2">
+            <Lock className="h-3.5 w-3.5 text-amber-800 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">
+                {entitlementBlocked.reason}
+              </p>
+              <p className="text-amber-800 text-[11.5px]">
+                Statutory Vault &amp; internal policy grounding remain active for this answer.
+              </p>
+            </div>
+          </div>
+          <Link
+            href={`/settings/billing?upgrade=${entitlementBlocked.upgrade_plan}`}
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-[11.5px] font-medium shrink-0 self-start sm:self-center"
+          >
+            <span>Upgrade to {entitlementBlocked.upgrade_plan === "scale" ? "Scale" : "Growth"}</span>
+            <ArrowUpRight className="h-3 w-3" />
+          </Link>
+        </div>
       )}
 
       {/* 2. Compact 1-Line Inline Verdict Pill (ONLY when auditing an asset, campaign, or rate card) */}
@@ -639,6 +723,45 @@ export function AdaptiveMessageRenderer({
         </div>
       )}
 
+      {/* 4b. Persisted Regulatory Work Product Deliverable Card */}
+      {workProductRef && (
+        <div className="pt-2">
+          <button
+            type="button"
+            onClick={() =>
+              onOpenWorkProduct?.(workProductRef.work_product_id, workProductRef.artifact_type)
+            }
+            className="w-full group text-left rounded-xl border border-zinc-200 bg-zinc-50/60 hover:bg-zinc-50 hover:border-zinc-300 px-4 py-3 shadow-sm transition-all flex items-center justify-between gap-3 cursor-pointer"
+          >
+            <div className="flex items-start gap-3 min-w-0">
+              <div className="p-2 rounded-lg bg-zinc-900 text-white shrink-0">
+                <FileCheck2 className="h-4 w-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
+                    {workProductRef.workflow_type.replace(/_/g, " ")}
+                  </span>
+                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-white border border-zinc-200 text-zinc-700">
+                    v{workProductRef.version_number}
+                  </span>
+                </div>
+                <p className="text-[13.5px] font-semibold text-zinc-950 truncate mt-0.5">
+                  {workProductRef.title}
+                </p>
+                <p className="text-[11.5px] text-zinc-500 mt-0.5">
+                  Editable inline deliverable • Exportable to PDF &amp; Word (.docx)
+                </p>
+              </div>
+            </div>
+            <span className="shrink-0 inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white border border-zinc-200 group-hover:border-zinc-400 font-mono text-[11px] font-medium text-zinc-900">
+              <span>Open Studio</span>
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </span>
+          </button>
+        </div>
+      )}
+
       {/* 5. Clean, Deduplicated Statutory & Institutional Source Chips */}
       {dedupedCitations.length > 0 && (
         <div className="pt-3 border-t border-zinc-200/80 space-y-2">
@@ -696,6 +819,8 @@ export function AdaptiveMessageRenderer({
               }
 
               if (citation.source_class === "LIVE_WEB_INTELLIGENCE") {
+                const isOfficial = citation.trust_tier === "OFFICIAL_REGULATOR_WEB";
+                const isLegalPress = citation.trust_tier === "VERIFIED_AFRICAN_LEGAL_MEDIA";
                 return (
                   <a
                     key={index}
@@ -705,9 +830,25 @@ export function AdaptiveMessageRenderer({
                     className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 px-2.5 py-1 text-[11.5px] text-zinc-700 transition-colors shadow-sm"
                     title="Open live web source"
                   >
-                    <Globe className="h-3 w-3 text-zinc-500 shrink-0" />
-                    <span className="font-mono text-[10.5px] font-semibold text-zinc-900">
-                      LIVE WEB
+                    <Globe
+                      className={`h-3 w-3 shrink-0 ${
+                        isOfficial ? "text-emerald-600" : "text-zinc-500"
+                      }`}
+                    />
+                    <span
+                      className={`font-mono text-[10.5px] font-semibold ${
+                        isOfficial
+                          ? "text-emerald-700"
+                          : isLegalPress
+                            ? "text-zinc-900"
+                            : "text-zinc-700"
+                      }`}
+                    >
+                      {isOfficial
+                        ? "OFFICIAL WEB"
+                        : isLegalPress
+                          ? "LEGAL / PRESS"
+                          : "LIVE WEB"}
                     </span>
                     <span className="truncate max-w-[220px] text-zinc-700">
                       {citation.page_title || citation.retrieved_url}

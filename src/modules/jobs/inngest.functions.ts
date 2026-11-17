@@ -616,6 +616,123 @@ export const scheduledRegulatoryRippleJob = inngest.createFunction(
   }
 );
 
+/**
+ * Scheduled Pan-African Live Regulatory Sentinel running every 6 hours.
+ * Sweeps official Nigerian & African regulator updates via Exa AI + SerpAPI and triggers
+ * Zero-Prompt Ripple Alerts for active Growth/Scale/Enterprise tenants.
+ */
+export const scheduledRegulatoryMonitorJob = inngest.createFunction(
+  {
+    id: "scheduled-africa-regulatory-monitor",
+    triggers: [{ cron: "0 */6 * * *" }],
+  },
+  async ({ step }) => {
+    const supabase = createAdminSupabaseClient();
+    const { webSearchRouter } = await import(
+      "@/modules/live-web-intelligence/web-search.router"
+    );
+    const { regulatoryRippleService } = await import(
+      "@/modules/regulatory-vault/regulatory-ripple.service"
+    );
+
+    const queries = [
+      {
+        regulator: "CBN",
+        jurisdictions: ["NG"] as const,
+        query: "Central Bank of Nigeria latest circular guideline directive 2026",
+      },
+      {
+        regulator: "FCCPC",
+        jurisdictions: ["NG"] as const,
+        query: "FCCPC Nigeria digital lending consumer enforcement notice 2026",
+      },
+      {
+        regulator: "NDPC",
+        jurisdictions: ["NG"] as const,
+        query: "NDPC Nigeria Data Protection Act GAID directive 2026",
+      },
+      {
+        regulator: "CBK",
+        jurisdictions: ["KE", "GH"] as const,
+        query: "Central Bank Kenya Ghana digital credit payment circular 2026",
+      },
+    ];
+
+    const paidTenants = await step.run("load-paid-monitoring-tenants", async () => {
+      const { data } = await supabase
+        .from("tenant_subscriptions")
+        .select("tenant_id, subscription_plans!inner(slug)")
+        .in("status", ["active", "trialing"])
+        .limit(50);
+
+      return ((data || []) as Array<Record<string, unknown>>)
+        .filter((row) => {
+          const plan = row.subscription_plans as { slug?: string } | null;
+          return plan?.slug === "growth" || plan?.slug === "scale" || plan?.slug === "enterprise";
+        })
+        .map((row) => String(row.tenant_id));
+    });
+
+    if (paidTenants.length === 0) {
+      return { success: true, sweptQueries: 0, alertsGenerated: 0 };
+    }
+
+    let sweptQueries = 0;
+    let alertsGenerated = 0;
+    const anchorTenantId = paidTenants[0]!;
+
+    for (const q of queries) {
+      const findings = await step.run(`sweep-${q.regulator}`, async () => {
+        try {
+          if (!webSearchRouter.isDualEngineActive()) {
+            return [];
+          }
+          const bundle = await webSearchRouter.searchAfricaLiveWeb(
+            {
+              query: q.query,
+              jurisdictions: [...q.jurisdictions],
+              searchIntent: "REGULATORY_CIRCULAR",
+              includeNews: true,
+              limit: 4,
+            },
+            anchorTenantId
+          );
+          return bundle.results.slice(0, 2);
+        } catch (err) {
+          logger.warn("Scheduled regulator sweep failed softly", {
+            regulator: q.regulator,
+            error: (err as Error).message,
+          });
+          return [];
+        }
+      });
+
+      sweptQueries++;
+
+      for (const item of findings) {
+        for (const tenantId of paidTenants) {
+          await step.run(`ripple-live-${q.regulator}-${tenantId.slice(0, 8)}`, async () => {
+            const alerts = await regulatoryRippleService.scanTenantForCircularRipple(tenantId, {
+              regulator: q.regulator,
+              title: item.page_title,
+              summaryText: item.full_content_excerpt || item.snippet_content || item.page_title,
+              sourceUrl: item.retrieved_url,
+            });
+            alertsGenerated += alerts.length;
+          });
+        }
+      }
+    }
+
+    return {
+      success: true,
+      sweptQueries,
+      paidTenantsCount: paidTenants.length,
+      alertsGenerated,
+    };
+  }
+);
+
 export const inngestFunctions = [
   assessmentExecutionJob,
   regulatoryEmbeddingJob,
@@ -625,4 +742,5 @@ export const inngestFunctions = [
   assetExtractionJob,
   playbookIngestionJob,
   scheduledRegulatoryRippleJob,
+  scheduledRegulatoryMonitorJob,
 ];

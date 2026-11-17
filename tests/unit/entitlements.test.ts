@@ -264,4 +264,130 @@ describe("EntitlementsService & Contextual Feature Gating", () => {
       expect(info.trialHoursRemaining).toBeLessThanOrEqual(96);
     });
   });
+
+  describe("Dual-Engine Live Search & Cross-Border Entitlements (Document 14 & 15)", () => {
+    it("blocks live_web_search on Evaluation Pilot without throwing", async () => {
+      vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue({
+        from: vi.fn().mockImplementation((table: string) => {
+          if (table === "tenants") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: { created_at: new Date().toISOString(), settings: {} },
+              }),
+            };
+          }
+          if (table === "tenant_subscriptions") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+            };
+          }
+          return { select: vi.fn().mockReturnThis() };
+        }),
+      } as any);
+
+      const authRes = await entitlementsService.authorizeAndConsumeLiveSearch(tenantId, ["NG"]);
+      expect(authRes.allowed).toBe(false);
+      expect(authRes.planSlug).toBe("evaluation");
+      expect(authRes.limit).toBe(0);
+    });
+
+    it("allows NG-only on Growth and blocks KE cross-border requests before hitting quota RPC", async () => {
+      const rpcMock = vi.fn().mockResolvedValue({
+        data: [{ allowed: true, current_count: 15, remaining: 85 }],
+        error: null,
+      });
+
+      vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue({
+        rpc: rpcMock,
+        from: vi.fn().mockImplementation((table: string) => {
+          if (table === "tenants") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: {
+                  created_at: new Date().toISOString(),
+                  settings: {
+                    subscription: {
+                      plan_slug: "growth",
+                      status: "active",
+                      current_period_end: new Date(Date.now() + 86400000 * 30).toISOString(),
+                    },
+                  },
+                },
+              }),
+            };
+          }
+          if (table === "tenant_subscriptions") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+            };
+          }
+          if (table === "subscription_plans") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+            };
+          }
+          return { select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), maybeSingle: vi.fn().mockResolvedValue({ data: null }) };
+        }),
+      } as any);
+
+      const blockedKe = await entitlementsService.authorizeAndConsumeLiveSearch(tenantId, ["NG", "KE"]);
+      expect(blockedKe.allowed).toBe(false);
+      expect(blockedKe.feature).toBe("cross_border_research");
+      expect(rpcMock).not.toHaveBeenCalled();
+
+      const allowedNg = await entitlementsService.authorizeAndConsumeLiveSearch(tenantId, ["NG"]);
+      expect(allowedNg.allowed).toBe(true);
+      expect(allowedNg.currentCount).toBe(15);
+      expect(allowedNg.remaining).toBe(85);
+      expect(rpcMock).toHaveBeenCalledTimes(1);
+    });
+
+    it("fails closed when consume_live_search_quota RPC returns an error", async () => {
+      vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue({
+        rpc: vi.fn().mockResolvedValue({
+          data: null,
+          error: { message: "connection timeout" },
+        }),
+        from: vi.fn().mockImplementation((table: string) => {
+          if (table === "tenants") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: {
+                  created_at: new Date().toISOString(),
+                  settings: {
+                    subscription: {
+                      plan_slug: "scale",
+                      status: "active",
+                      current_period_end: new Date(Date.now() + 86400000 * 30).toISOString(),
+                    },
+                  },
+                },
+              }),
+            };
+          }
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+          };
+        }),
+      } as any);
+
+      const res = await entitlementsService.authorizeAndConsumeLiveSearch(tenantId, ["KE"]);
+      expect(res.allowed).toBe(false);
+      expect(res.reason).toContain("Unable to verify monthly live search quota");
+    });
+  });
 });

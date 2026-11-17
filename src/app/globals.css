@@ -110,6 +110,156 @@ body {
   scrollbar-width: none;
 }
 
+@keyframes cogentCaret {
+  0%, 45% {
+    opacity: 1;
+  }
+  55%, 100% {
+    opacity: 0;
+  }
+}
+
+.animate-cogent-caret {
+  animation: cogentCaret 1s steps(1, end) infinite;
+}
+
+/* Word-grade WYSIWYG Document Editor Surface */
+.cogent-doc-editor .ProseMirror {
+  outline: none;
+  color: #18181b;
+  font-size: 14px;
+  line-height: 1.72;
+  word-break: break-word;
+  min-height: 440px;
+}
+
+.cogent-doc-editor .ProseMirror > *:first-child {
+  margin-top: 0;
+}
+
+.cogent-doc-editor .ProseMirror h1 {
+  font-size: 1.375rem;
+  line-height: 1.28;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: #09090b;
+  margin-top: 1.4rem;
+  margin-bottom: 0.65rem;
+}
+
+.cogent-doc-editor .ProseMirror h2 {
+  font-size: 1.125rem;
+  line-height: 1.35;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: #09090b;
+  margin-top: 1.35rem;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid #f4f4f5;
+}
+
+.cogent-doc-editor .ProseMirror h3 {
+  font-size: 0.975rem;
+  line-height: 1.4;
+  font-weight: 600;
+  color: #18181b;
+  margin-top: 1.1rem;
+  margin-bottom: 0.35rem;
+}
+
+.cogent-doc-editor .ProseMirror p {
+  margin-top: 0.55rem;
+  margin-bottom: 0.55rem;
+}
+
+.cogent-doc-editor .ProseMirror ul {
+  list-style-type: disc;
+  padding-left: 1.35rem;
+  margin: 0.55rem 0;
+}
+
+.cogent-doc-editor .ProseMirror ol {
+  list-style-type: decimal;
+  padding-left: 1.35rem;
+  margin: 0.55rem 0;
+}
+
+.cogent-doc-editor .ProseMirror li {
+  margin: 0.25rem 0;
+}
+
+.cogent-doc-editor .ProseMirror li > p {
+  margin: 0.15rem 0;
+}
+
+.cogent-doc-editor .ProseMirror blockquote {
+  border-left: 3px solid #10b981;
+  background-color: rgba(236, 253, 245, 0.55);
+  padding: 0.6rem 0.9rem;
+  margin: 0.85rem 0;
+  border-radius: 0 0.5rem 0.5rem 0;
+  color: #27272a;
+}
+
+.cogent-doc-editor .ProseMirror s,
+.cogent-doc-editor .ProseMirror del {
+  background-color: #fff1f2;
+  color: #9f1239;
+  padding: 0 0.2rem;
+  border-radius: 0.2rem;
+}
+
+.cogent-doc-editor .ProseMirror a {
+  color: #1d4ed8;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cogent-doc-editor .ProseMirror code {
+  font-family: var(--font-mono);
+  font-size: 0.85em;
+  background-color: #f4f4f5;
+  border: 1px solid #e4e4e7;
+  padding: 0.1rem 0.3rem;
+  border-radius: 0.25rem;
+}
+
+.cogent-doc-editor .ProseMirror hr {
+  border: none;
+  border-top: 1px solid #e4e4e7;
+  margin: 1.25rem 0;
+}
+
+.cogent-doc-editor .ProseMirror table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.9rem 0;
+  font-size: 13px;
+  border: 1px solid #e4e4e7;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.cogent-doc-editor .ProseMirror th,
+.cogent-doc-editor .ProseMirror td {
+  border: 1px solid #e4e4e7;
+  padding: 0.5rem 0.7rem;
+  vertical-align: top;
+  text-align: left;
+  min-width: 80px;
+}
+
+.cogent-doc-editor .ProseMirror th {
+  background-color: #fafafa;
+  font-weight: 600;
+  color: #18181b;
+}
+
+.cogent-doc-editor .ProseMirror .selectedCell {
+  background-color: rgba(24, 24, 27, 0.06);
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

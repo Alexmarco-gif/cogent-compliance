@@ -4,8 +4,18 @@
  */
 
 import { z } from "zod";
+import { SEARCH_JURISDICTIONS } from "./search.contracts";
+import { WORKFLOW_TYPES, WORK_PRODUCT_ARTIFACT_TYPES } from "./work-product.contracts";
 
-export const conversationContextTypeEnum = z.enum(["GENERAL", "REGULATORY", "CAMPAIGN"]);
+export const conversationContextTypeEnum = z.enum([
+  "GENERAL",
+  "REGULATORY",
+  "CAMPAIGN",
+  "WORKFLOW_RESEARCH",
+  "POLICY_REDLINE",
+  "DDQ_RESPONSE",
+  "CROSS_BORDER",
+]);
 export const conversationStatusEnum = z.enum(["ACTIVE", "ARCHIVED", "CLOSED"]);
 export const messageRoleEnum = z.enum(["USER", "ASSISTANT", "SYSTEM", "TOOL"]);
 export const messageContentTypeEnum = z.enum(["TEXT", "STRUCTURED", "MIXED"]);
@@ -34,11 +44,15 @@ export const listConversationsQuerySchema = z.object({
 });
 
 export const sendMessageStreamSchema = z.object({
-  content: z.string().min(1, "Message content cannot be empty").max(10000),
+  content: z.string().min(1, "Message content cannot be empty").max(15000),
   attachment_asset_ids: z.array(z.string().uuid()).default([]).optional(),
   campaign_urls: z.array(z.string().url()).default([]).optional(),
   active_campaign_id: z.string().uuid().nullable().optional(),
   referenced_product_id: z.string().uuid().nullable().optional(),
+  referenced_knowledge_doc_id: z.string().uuid().nullable().optional(),
+  enable_live_web_search: z.boolean().default(false).optional(),
+  search_jurisdictions: z.array(z.enum(SEARCH_JURISDICTIONS)).default(["NG"]).optional(),
+  workflow_hint: z.enum(WORKFLOW_TYPES).optional(),
 });
 
 export const searchRegulatoryEvidenceArgsSchema = z.object({
@@ -88,6 +102,10 @@ export interface CitationItem {
   page_title?: string;
   retrieved_url?: string;
   live_web_retrieval_id?: string;
+  provider?: string;
+  trust_tier?: "OFFICIAL_REGULATOR_WEB" | "VERIFIED_AFRICAN_LEGAL_MEDIA" | "GENERAL_LIVE_WEB";
+  jurisdiction_code?: string;
+  retrieved_at?: string;
 }
 
 export interface ExecutionPlanStep {
@@ -133,11 +151,7 @@ export interface ComputedFinancials {
   short_tenor_violation: boolean;
 }
 
-export type ComplianceArtifactType =
-  | "compliant_ad_rewrite"
-  | "cbn_kfs_statement"
-  | "arcon_vetting_memo"
-  | "audit_dossier_summary";
+export type ComplianceArtifactType = (typeof WORK_PRODUCT_ARTIFACT_TYPES)[number];
 
 export interface ComplianceArtifactItem {
   id: string;
@@ -201,6 +215,7 @@ export interface StructuredComplianceReport {
     product_id?: string | null;
     product_name?: string | null;
   } | null;
+  work_product_id?: string | null;
 }
 
 export type SSEEvent =
@@ -224,6 +239,43 @@ export type SSEEvent =
         step_id: string;
         status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
         summary?: string;
+      };
+    }
+  | {
+      type: "search.track_started";
+      data: {
+        track: "VAULT_AND_PLAYBOOKS" | "SERPAPI_NG_AFRICA" | "EXA_NEURAL_EXTRACTION";
+        label: string;
+        jurisdictions: string[];
+      };
+    }
+  | {
+      type: "search.track_completed";
+      data: {
+        track: string;
+        result_count: number;
+        latency_ms: number;
+        cache_hit: boolean;
+        status: "COMPLETED" | "SKIPPED" | "TIMEOUT";
+      };
+    }
+  | {
+      type: "entitlement.blocked";
+      data: {
+        feature: "live_web_search" | "cross_border_research";
+        reason: string;
+        upgrade_plan: "growth" | "scale";
+        vault_fallback_active: true;
+      };
+    }
+  | {
+      type: "work_product.created" | "work_product.updated";
+      data: {
+        work_product_id: string;
+        artifact_type: string;
+        workflow_type: string;
+        title: string;
+        version_number: number;
       };
     }
   | {

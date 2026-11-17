@@ -615,7 +615,7 @@ export class PlaybookService {
       });
     }
 
-    // 2. Call Supabase Hybrid RRF RPC search_marketing_knowledge_chunks_rrf
+    // 2. Call Supabase Hybrid RRF RPC search_knowledge_chunks_rrf
     let matchedChunks: Array<{
       chunk_id: string;
       document_id: string;
@@ -627,7 +627,7 @@ export class PlaybookService {
 
     if (queryEmbedding) {
       const { data: rrfData, error: rrfErr } = await supabase.rpc(
-        "search_marketing_knowledge_chunks_rrf",
+        "search_knowledge_chunks_rrf",
         {
           p_tenant_id: tenantId,
           query_text: query,
@@ -637,7 +637,12 @@ export class PlaybookService {
         }
       );
 
-      if (!rrfErr && rrfData) {
+      if (rrfErr) {
+        logger.warn("search_knowledge_chunks_rrf RPC returned error, falling back to text search", {
+          tenantId,
+          error: rrfErr.message,
+        });
+      } else if (rrfData) {
         matchedChunks = rrfData;
       }
     }

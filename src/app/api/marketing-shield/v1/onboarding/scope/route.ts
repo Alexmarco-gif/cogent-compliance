@@ -9,7 +9,12 @@ import { logger } from "@/lib/logger";
 export async function POST(req: NextRequest) {
   try {
     const tenantContext = await resolveTenantContext(req);
-    const body = await req.json();
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Malformed JSON request body" }, { status: 400 });
+    }
     const parseResult = OnboardingScopeRequestSchema.safeParse(body);
 
     if (!parseResult.success) {
