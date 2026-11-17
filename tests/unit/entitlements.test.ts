@@ -224,5 +224,44 @@ describe("EntitlementsService & Contextual Feature Gating", () => {
       expect(check.reason).toContain("Evaluation Pilot has expired");
       expect(check.trialDaysRemaining).toBe(0);
     });
+
+    it("accurately counts down remaining days and hours for a 3-day-old workspace", async () => {
+      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+
+      vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue({
+        from: vi.fn().mockImplementation((table: string) => {
+          if (table === "tenants") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({
+                data: {
+                  created_at: new Date().toISOString(),
+                  settings: {
+                    trial_started_at: threeDaysAgo,
+                  },
+                },
+              }),
+            };
+          }
+          if (table === "tenant_subscriptions") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+            };
+          }
+          return { select: vi.fn().mockReturnThis() };
+        }),
+      } as any);
+
+      const info = await entitlementsService.getTenantSubscriptionInfo(tenantId);
+      expect(info.isTrial).toBe(true);
+      expect(info.isTrialExpired).toBe(false);
+      expect(info.status).toBe("trialing");
+      expect(info.trialDaysRemaining).toBe(4);
+      expect(info.trialHoursRemaining).toBeGreaterThanOrEqual(95);
+      expect(info.trialHoursRemaining).toBeLessThanOrEqual(96);
+    });
   });
 });

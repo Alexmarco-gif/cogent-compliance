@@ -333,6 +333,9 @@ describe("End-to-End Autonomous Compliance Analyst Scenarios & Routes", () => {
       events.push(ev);
     }
 
+    const planCreated = events.find((e) => e.type === "plan.created");
+    expect(planCreated).toBeUndefined();
+
     const assessmentCompleted = events.find((e) => e.type === "assessment.completed");
     expect(assessmentCompleted).toBeUndefined();
 
@@ -341,6 +344,71 @@ describe("End-to-End Autonomous Compliance Analyst Scenarios & Routes", () => {
     if (messageCompleted && messageCompleted.type === "message.completed") {
       expect(messageCompleted.data.structured_report).toBeUndefined();
     }
+  });
+
+  it("SCENARIO 5: Conversational Follow-Up ('This is good so what next do you recommend i do now') streams direct CCO advice with ZERO 5-step audit checklist", async () => {
+    const { CopilotOrchestrator } = await import(
+      "@/modules/conversations/copilot.orchestrator"
+    );
+
+    const mockGenAi = {
+      models: {
+        generateContent: vi.fn().mockResolvedValue({
+          text: "### Recommended Next Steps\n\n1. **Apply the Compliant Rewrite & CBN KFS Table** from the right-hand Artifact Canvas Drawer.\n2. **Submit the ARCON ASP Vetting Memo** to obtain your ASP Certificate ID before media placement.\n3. **Enable Live URL Drift Monitoring** once the campaign page goes live.",
+          functionCalls: [],
+        }),
+      },
+    };
+
+    const orchestrator = new CopilotOrchestrator(mockGenAi as never);
+
+    expect(
+      orchestrator.classifyTurnIntent({
+        conversationId: "conv_followup_001",
+        tenantId: mockTenantContext.tenantId,
+        userId: mockTenantContext.userId,
+        userPrompt: "This is good so what next do you recommend i do now",
+      })
+    ).toBe("CONVERSATIONAL_ADVISORY");
+
+    expect(
+      orchestrator.classifyTurnIntent({
+        conversationId: "conv_followup_001",
+        tenantId: mockTenantContext.tenantId,
+        userId: mockTenantContext.userId,
+        userPrompt: "what do i do now",
+      })
+    ).toBe("CONVERSATIONAL_ADVISORY");
+
+    expect(
+      orchestrator.classifyTurnIntent({
+        conversationId: "conv_followup_001",
+        tenantId: mockTenantContext.tenantId,
+        userId: mockTenantContext.userId,
+        userPrompt: "what is it you recommend we do",
+      })
+    ).toBe("CONVERSATIONAL_ADVISORY");
+
+    const events: SSEEvent[] = [];
+    for await (const ev of orchestrator.streamChat({
+      conversationId: "conv_followup_001",
+      tenantId: mockTenantContext.tenantId,
+      userId: mockTenantContext.userId,
+      userPrompt: "This is good so what next do you recommend i do now",
+    })) {
+      events.push(ev);
+    }
+
+    // Must NOT emit the 5-step audit plan box or any plan.step_updated events
+    expect(events.find((e) => e.type === "plan.created")).toBeUndefined();
+    expect(events.find((e) => e.type === "plan.step_updated")).toBeUndefined();
+    expect(events.find((e) => e.type === "assessment.completed")).toBeUndefined();
+
+    const deltas = events
+      .filter((e) => e.type === "assistant.delta")
+      .map((e) => (e.type === "assistant.delta" ? e.data.text_delta : ""))
+      .join("");
+    expect(deltas).toContain("Recommended Next Steps");
   });
 
   it("SCENARIO 2: Zero-Prompt URL Drift Sentinel detects newly introduced <60-day Play Store trap & spawns an Incident Conversation", async () => {

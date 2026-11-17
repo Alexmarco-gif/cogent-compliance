@@ -1,13 +1,24 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import { useAuth } from "@clerk/nextjs";
 import {
   BillingInterval,
   PlanSlug,
 } from "@/contracts/billing.contracts";
 import { MarketingHeader } from "@/components/marketing/MarketingHeader";
 import { MarketingFooter } from "@/components/marketing/MarketingFooter";
-import { Check, ArrowRight, Globe } from "lucide-react";
+import { Check, ArrowRight, Globe, Info } from "lucide-react";
+
+interface CurrentSubBanner {
+  planSlug: string;
+  planName: string;
+  status: string;
+  isTrial: boolean;
+  isTrialExpired: boolean;
+  trialDaysRemaining: number;
+  trialHoursRemaining: number;
+}
 
 const PLAN_MATRIX_ROWS = [
   {
@@ -69,15 +80,19 @@ const PLAN_MATRIX_ROWS = [
 ];
 
 export default function PricingPage() {
+  const { isLoaded: authLoaded, isSignedIn, orgId } = useAuth();
   const [billingInterval, setBillingInterval] = useState<BillingInterval>("monthly");
   const [fxRate, setFxRate] = useState<number>(1550.0);
+  const [currentSub, setCurrentSub] = useState<CurrentSubBanner | null>(null);
   const [checkoutLoading, setCheckoutLoading] = useState<PlanSlug | null>(null);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchPlans() {
       try {
-        const res = await fetch("/api/marketing-shield/v1/billing/plans");
+        const res = await fetch("/api/marketing-shield/v1/billing/plans", {
+          cache: "no-store",
+        });
         if (res.ok) {
           const data = await res.json();
           if (data.fx_rate) {
@@ -91,8 +106,50 @@ export default function PricingPage() {
     fetchPlans();
   }, []);
 
+  useEffect(() => {
+    if (!authLoaded || !isSignedIn || !orgId) return;
+    async function fetchCurrentSubscription() {
+      try {
+        const res = await fetch("/api/marketing-shield/v1/billing/entitlements", {
+          cache: "no-store",
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.subscription) {
+            setCurrentSub({
+              planSlug: json.subscription.plan?.slug || "evaluation",
+              planName: json.subscription.plan?.name || "Evaluation Pilot",
+              status: json.subscription.status || "trialing",
+              isTrial: Boolean(json.subscription.isTrial),
+              isTrialExpired: Boolean(json.subscription.isTrialExpired),
+              trialDaysRemaining: json.subscription.trialDaysRemaining ?? 0,
+              trialHoursRemaining: json.subscription.trialHoursRemaining ?? 0,
+            });
+          }
+        }
+      } catch {
+        // Non-blocking
+      }
+    }
+    fetchCurrentSubscription();
+  }, [authLoaded, isSignedIn, orgId]);
+
   const handleCheckout = async (slug: PlanSlug) => {
     if (slug === "evaluation") {
+      if (authLoaded && !isSignedIn) {
+        window.location.href = "/sign-up";
+        return;
+      }
+      window.location.href = isSignedIn && orgId ? "/chat" : "/onboarding";
+      return;
+    }
+
+    if (authLoaded && !isSignedIn) {
+      window.location.href = "/sign-in?redirect_url=/pricing";
+      return;
+    }
+
+    if (authLoaded && isSignedIn && !orgId) {
       window.location.href = "/onboarding";
       return;
     }
@@ -132,6 +189,12 @@ export default function PricingPage() {
     }).format(naira);
   };
 
+  const isCurrentActivePaid = (slug: PlanSlug) =>
+    currentSub !== null &&
+    !currentSub.isTrial &&
+    currentSub.status === "active" &&
+    currentSub.planSlug === slug;
+
   return (
     <div className="min-h-screen bg-[#FAFAFA] text-zinc-950 flex flex-col">
       <MarketingHeader />
@@ -146,10 +209,35 @@ export default function PricingPage() {
             Pre-publication marketing reviews and evidence dossiers across CBN, FCCPC, ARCON, NDPC, and SEC requirements.
           </p>
 
+          {currentSub && (
+            <div className="mt-4 inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-zinc-900 text-white text-xs">
+              <span className="font-medium">
+                Current workspace plan: {currentSub.planName}
+              </span>
+              <span className="text-zinc-300">·</span>
+              <span
+                className={
+                  currentSub.isTrialExpired
+                    ? "text-rose-300 font-semibold"
+                    : "text-emerald-300"
+                }
+              >
+                {currentSub.isTrial
+                  ? currentSub.isTrialExpired ||
+                    currentSub.trialHoursRemaining <= 0
+                    ? "7-day trial expired"
+                    : `${Math.floor(currentSub.trialHoursRemaining / 24)}d ${currentSub.trialHoursRemaining % 24}h left`
+                  : "Active"}
+              </span>
+            </div>
+          )}
+
           {/* Live FX Rate Indicator */}
-          <div className="mt-4 inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-white border border-zinc-200 text-xs text-zinc-600 font-mono">
-            <Globe className="h-3.5 w-3.5 text-zinc-500" />
-            <span>Settled via Paystack at ₦{fxRate.toLocaleString()}/$1</span>
+          <div className="mt-4 flex justify-center">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md bg-white border border-zinc-200 text-xs text-zinc-600 font-mono">
+              <Globe className="h-3.5 w-3.5 text-zinc-500" />
+              <span>Settled via Paystack at ₦{fxRate.toLocaleString()}/$1</span>
+            </div>
           </div>
 
           {/* Interval Selector Toggle */}
@@ -164,7 +252,9 @@ export default function PricingPage() {
             <button
               type="button"
               onClick={() =>
-                setBillingInterval((prev) => (prev === "monthly" ? "annual" : "monthly"))
+                setBillingInterval((prev) =>
+                  prev === "monthly" ? "annual" : "monthly"
+                )
               }
               className="w-11 h-6 rounded-full bg-zinc-900 p-0.5 transition-colors relative cursor-pointer"
               aria-label="Toggle Billing Interval"
@@ -211,7 +301,9 @@ export default function PricingPage() {
 
               <div className="mt-5 mb-4">
                 <div className="flex items-baseline gap-1">
-                  <span className="text-3xl font-semibold text-zinc-950 tabular-nums">$0</span>
+                  <span className="text-3xl font-semibold text-zinc-950 tabular-nums">
+                    $0
+                  </span>
                   <span className="text-xs text-zinc-400">/ 7 days</span>
                 </div>
                 <div className="text-[11px] text-zinc-400 font-mono mt-0.5">
@@ -251,9 +343,14 @@ export default function PricingPage() {
               <button
                 type="button"
                 onClick={() => handleCheckout("evaluation")}
-                className="w-full py-2.5 rounded-md border border-zinc-300 hover:bg-zinc-50 text-zinc-800 text-xs font-medium transition-colors cursor-pointer"
+                disabled={currentSub?.planSlug === "evaluation" && currentSub.isTrial}
+                className="w-full py-2.5 rounded-md border border-zinc-300 hover:bg-zinc-50 text-zinc-800 text-xs font-medium transition-colors disabled:opacity-60 cursor-pointer"
               >
-                Start 7-Day Evaluation
+                {currentSub?.planSlug === "evaluation"
+                  ? currentSub.isTrialExpired
+                    ? "7-Day Trial Expired"
+                    : "Active 7-Day Trial"
+                  : "Start 7-Day Evaluation"}
               </button>
             </div>
           </div>
@@ -278,7 +375,7 @@ export default function PricingPage() {
                 </div>
                 <div className="text-[11px] text-zinc-500 font-mono mt-0.5">
                   {billingInterval === "annual"
-                    ? `${formatNaira(Math.round(119 * fxRate * 100))}/mo ($1,428/yr)`
+                    ? `${formatNaira(Math.round(1428 * fxRate * 100))}/yr billed ($1,428/yr)`
                     : `${formatNaira(Math.round(149 * fxRate * 100))}/mo`}
                 </div>
               </div>
@@ -315,10 +412,14 @@ export default function PricingPage() {
               <button
                 type="button"
                 onClick={() => handleCheckout("growth")}
-                disabled={checkoutLoading === "growth"}
+                disabled={checkoutLoading === "growth" || isCurrentActivePaid("growth")}
                 className="w-full py-2.5 rounded-md border border-zinc-900 bg-white hover:bg-zinc-50 text-zinc-950 text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
               >
-                {checkoutLoading === "growth" ? "Preparing..." : "Choose Growth"}
+                {isCurrentActivePaid("growth")
+                  ? "Current Plan"
+                  : checkoutLoading === "growth"
+                    ? "Preparing..."
+                    : "Choose Growth"}
               </button>
             </div>
           </div>
@@ -347,7 +448,7 @@ export default function PricingPage() {
                 </div>
                 <div className="text-[11px] text-zinc-500 font-mono mt-0.5">
                   {billingInterval === "annual"
-                    ? `${formatNaira(Math.round(359 * fxRate * 100))}/mo ($4,308/yr)`
+                    ? `${formatNaira(Math.round(4308 * fxRate * 100))}/yr billed ($4,308/yr)`
                     : `${formatNaira(Math.round(449 * fxRate * 100))}/mo`}
                 </div>
               </div>
@@ -384,11 +485,19 @@ export default function PricingPage() {
               <button
                 type="button"
                 onClick={() => handleCheckout("scale")}
-                disabled={checkoutLoading === "scale"}
+                disabled={checkoutLoading === "scale" || isCurrentActivePaid("scale")}
                 className="w-full py-2.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
               >
-                {checkoutLoading === "scale" ? "Redirecting..." : "Choose Scale"}
-                <ArrowRight className="h-3.5 w-3.5" />
+                {isCurrentActivePaid("scale") ? (
+                  "Current Plan"
+                ) : (
+                  <>
+                    <span>
+                      {checkoutLoading === "scale" ? "Redirecting..." : "Choose Scale"}
+                    </span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -413,7 +522,7 @@ export default function PricingPage() {
                 </div>
                 <div className="text-[11px] text-zinc-500 font-mono mt-0.5">
                   {billingInterval === "annual"
-                    ? `${formatNaira(Math.round(1199 * fxRate * 100))}/mo ($14,388/yr)`
+                    ? `${formatNaira(Math.round(14388 * fxRate * 100))}/yr billed ($14,388/yr)`
                     : `${formatNaira(Math.round(1499 * fxRate * 100))}/mo`}
                 </div>
               </div>
@@ -450,17 +559,33 @@ export default function PricingPage() {
               <button
                 type="button"
                 onClick={() => handleCheckout("enterprise")}
-                disabled={checkoutLoading === "enterprise"}
+                disabled={
+                  checkoutLoading === "enterprise" || isCurrentActivePaid("enterprise")
+                }
                 className="w-full py-2.5 rounded-md border border-zinc-300 bg-white hover:bg-zinc-50 text-zinc-900 text-xs font-medium transition-colors disabled:opacity-50 cursor-pointer"
               >
-                {checkoutLoading === "enterprise" ? "Preparing..." : "Choose Enterprise"}
+                {isCurrentActivePaid("enterprise")
+                  ? "Current Plan"
+                  : checkoutLoading === "enterprise"
+                    ? "Preparing..."
+                    : "Choose Enterprise"}
               </button>
             </div>
           </div>
         </div>
 
+        {/* Paystack Settlement & Channel Note */}
+        <div className="max-w-4xl mx-auto mt-8 bg-white rounded-xl border border-zinc-200 p-4 flex items-start gap-3 text-xs text-zinc-600">
+          <Info className="h-4 w-4 text-zinc-500 shrink-0 mt-0.5" />
+          <div>
+            <span className="font-medium text-zinc-900">Paystack Checkout Channels:</span>{" "}
+            Supports Card, Bank, Transfer, USSD, OPay, and Zap. If{" "}
+            <strong>Pay with Transfer</strong> displays &ldquo;Unable to process transaction&rdquo; in test/sandbox mode or for higher Naira tiers, select <strong>Card</strong> or <strong>Bank</strong> inside the Paystack checkout window.
+          </div>
+        </div>
+
         {/* Regulatory Cost Reference Table */}
-        <div className="max-w-4xl mx-auto mt-14 bg-white rounded-xl border border-zinc-200 p-7">
+        <div className="max-w-4xl mx-auto mt-10 bg-white rounded-xl border border-zinc-200 p-7">
           <h3 className="text-base font-semibold text-zinc-950 mb-1">
             Regulatory Exposure Reference
           </h3>
@@ -539,10 +664,14 @@ export default function PricingPage() {
               <tbody className="divide-y divide-zinc-100">
                 {PLAN_MATRIX_ROWS.map((row) => (
                   <tr key={row.feature}>
-                    <td className="py-3 pr-4 font-medium text-zinc-950">{row.feature}</td>
+                    <td className="py-3 pr-4 font-medium text-zinc-950">
+                      {row.feature}
+                    </td>
                     <td className="py-3 px-3 text-zinc-600">{row.evaluation}</td>
                     <td className="py-3 px-3 text-zinc-700">{row.growth}</td>
-                    <td className="py-3 px-3 font-semibold text-zinc-950">{row.scale}</td>
+                    <td className="py-3 px-3 font-semibold text-zinc-950">
+                      {row.scale}
+                    </td>
                     <td className="py-3 pl-3 text-zinc-700">{row.enterprise}</td>
                   </tr>
                 ))}

@@ -35,9 +35,26 @@ interface SubscriptionSummary {
   planSlug: string;
   status: string;
   isTrial: boolean;
+  isTrialExpired: boolean;
   trialDaysRemaining: number;
+  trialHoursRemaining: number;
   auditLimit: number;
   auditsUsed?: number;
+}
+
+function formatTrialCountdown(sub: SubscriptionSummary): string {
+  if (sub.isTrialExpired || sub.status === "past_due" || sub.trialHoursRemaining <= 0) {
+    return "7-day trial expired";
+  }
+  const days = Math.floor(sub.trialHoursRemaining / 24);
+  const hours = sub.trialHoursRemaining % 24;
+  if (days <= 0) {
+    return hours <= 1 ? "Less than 1h left in trial" : `${hours}h left in trial`;
+  }
+  if (hours === 0) {
+    return days === 1 ? "1 day left in trial" : `${days} days left in trial`;
+  }
+  return `${days}d ${hours}h left in trial`;
 }
 
 export interface WorkspaceSidebarProps {
@@ -185,29 +202,43 @@ export function WorkspaceSidebar({
   useEffect(() => {
     if (!isLoaded || !isSignedIn || !orgId) return;
     let active = true;
-    fetch("/api/marketing-shield/v1/billing/entitlements")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((json) => {
-        if (!active || !json?.subscription) return;
-        const sub = json.subscription;
-        const auditEnt = Array.isArray(json.entitlements)
-          ? json.entitlements.find((e: { feature?: string }) => e.feature === "run_audit")
-          : undefined;
-        setSubSummary({
-          planName: sub.plan?.name || "Evaluation Pilot",
-          planSlug: sub.plan?.slug || "evaluation",
-          status: sub.status || "trialing",
-          isTrial: Boolean(sub.isTrial),
-          trialDaysRemaining: sub.trialDaysRemaining ?? 7,
-          auditLimit: sub.plan?.monthly_audit_limit ?? 3,
-          auditsUsed: auditEnt?.currentCount,
+
+    const loadSummary = () => {
+      fetch("/api/marketing-shield/v1/billing/entitlements", { cache: "no-store" })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => {
+          if (!active || !json?.subscription) return;
+          const sub = json.subscription;
+          const auditEnt = Array.isArray(json.entitlements)
+            ? json.entitlements.find((e: { feature?: string }) => e.feature === "run_audit")
+            : undefined;
+          const trialDays = typeof sub.trialDaysRemaining === "number" ? sub.trialDaysRemaining : 0;
+          const trialHours =
+            typeof sub.trialHoursRemaining === "number"
+              ? sub.trialHoursRemaining
+              : trialDays * 24;
+          setSubSummary({
+            planName: sub.plan?.name || "Evaluation Pilot",
+            planSlug: sub.plan?.slug || "evaluation",
+            status: sub.status || "trialing",
+            isTrial: Boolean(sub.isTrial),
+            isTrialExpired: Boolean(sub.isTrialExpired) || sub.status === "past_due",
+            trialDaysRemaining: trialDays,
+            trialHoursRemaining: trialHours,
+            auditLimit: sub.plan?.monthly_audit_limit ?? 3,
+            auditsUsed: auditEnt?.currentCount,
+          });
+        })
+        .catch(() => {
+          // Silent fail so sidebar never flashes raw errors
         });
-      })
-      .catch(() => {
-        // Silent fail so sidebar never flashes raw errors
-      });
+    };
+
+    loadSummary();
+    window.addEventListener("cogent:billing-updated", loadSummary);
     return () => {
       active = false;
+      window.removeEventListener("cogent:billing-updated", loadSummary);
     };
   }, [isLoaded, isSignedIn, orgId]);
 
@@ -513,7 +544,13 @@ export function WorkspaceSidebar({
       {/* Bottom Rail: Monochrome Plan Card, Utility Links, Org Switcher */}
       <div className="p-3 border-t border-zinc-200 space-y-2.5 shrink-0">
         {isLoaded && isSignedIn && subSummary && (
-          <div className="bg-white border border-zinc-200 rounded-lg p-3 space-y-1.5">
+          <div
+            className={`border rounded-lg p-3 space-y-1.5 ${
+              subSummary.isTrial && subSummary.isTrialExpired
+                ? "bg-rose-50/70 border-rose-200"
+                : "bg-white border-zinc-200"
+            }`}
+          >
             <div className="flex items-center justify-between gap-2">
               <span className="text-[12px] font-medium text-zinc-900 truncate">
                 {subSummary.planName}
@@ -524,16 +561,22 @@ export function WorkspaceSidebar({
                   : `${subSummary.auditsUsed ?? 0}/${subSummary.auditLimit}`}
               </span>
             </div>
-            <p className="text-[11.5px] text-zinc-500">
+            <p
+              className={`text-[11.5px] ${
+                subSummary.isTrial && subSummary.isTrialExpired
+                  ? "text-rose-700 font-medium"
+                  : "text-zinc-500"
+              }`}
+            >
               {subSummary.isTrial
-                ? `Trial ends in ${subSummary.trialDaysRemaining} days`
+                ? formatTrialCountdown(subSummary)
                 : `Active ${subSummary.planName} plan`}
             </p>
             <Link
               href="/pricing"
               className="inline-flex items-center gap-1 text-[11.5px] font-medium text-zinc-900 hover:underline pt-0.5"
             >
-              <span>Upgrade plan</span>
+              <span>{subSummary.isTrial ? "Upgrade plan" : "Manage plan"}</span>
               <ArrowRight className="h-3 w-3" />
             </Link>
           </div>

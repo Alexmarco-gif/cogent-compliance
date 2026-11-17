@@ -46,7 +46,7 @@ export function AgentExecutionPlanCard({
 }: AgentExecutionPlanProps) {
   const completedCount = steps ? steps.filter((s) => s.status === "COMPLETED").length : 0;
   const isAllDone = Boolean(steps && steps.length > 0 && completedCount === steps.length);
-  const [expanded, setExpanded] = useState(!isAllDone);
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => {
     if (isAllDone) {

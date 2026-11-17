@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
@@ -13,6 +13,8 @@ import {
   FileText,
   Clock,
   Layers,
+  Loader2,
+  XCircle,
 } from "lucide-react";
 
 interface SubscriptionData {
@@ -32,45 +34,163 @@ interface SubscriptionData {
   status: string;
   currentPeriodEnd: string;
   isTrial: boolean;
+  isTrialExpired?: boolean;
+  trialStartedAt?: string;
+  trialEndsAt?: string;
   trialDaysRemaining: number;
+  trialHoursRemaining?: number;
+}
+
+function formatDetailedTrialRemaining(sub: SubscriptionData): string {
+  const hoursTotal = sub.trialHoursRemaining ?? sub.trialDaysRemaining * 24;
+  if (sub.isTrialExpired || sub.status === "past_due" || hoursTotal <= 0) {
+    return "Your 7-day evaluation period has expired. Upgrade to restore compliance audits.";
+  }
+  const days = Math.floor(hoursTotal / 24);
+  const hours = hoursTotal % 24;
+  const endDate = sub.trialEndsAt || sub.currentPeriodEnd;
+  const formattedEnd = endDate
+    ? new Date(endDate).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+    : null;
+
+  const remainingLabel =
+    days <= 0
+      ? `${hours} hour${hours === 1 ? "" : "s"} remaining`
+      : hours === 0
+        ? `${days} day${days === 1 ? "" : "s"} remaining`
+        : `${days}d ${hours}h remaining`;
+
+  return formattedEnd
+    ? `7-day evaluation active: ${remainingLabel} (ends ${formattedEnd}).`
+    : `7-day evaluation active: ${remainingLabel}.`;
 }
 
 export function BillingPlanTab() {
   const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
   const searchParams = useSearchParams();
   const checkoutStatus = searchParams.get("checkout");
-  const checkoutRef = searchParams.get("ref");
+  const checkoutRef =
+    searchParams.get("reference") || searchParams.get("trxref") || searchParams.get("ref");
 
   const [subData, setSubData] = useState<SubscriptionData | null>(null);
+  const [loadingSub, setLoadingSub] = useState(true);
+  const [verifyState, setVerifyState] = useState<{
+    status: "idle" | "verifying" | "verified" | "failed";
+    message?: string;
+  }>({ status: "idle" });
+
+  const loadBilling = useCallback(async () => {
+    setLoadingSub(true);
+    try {
+      const res = await fetch("/api/marketing-shield/v1/billing/entitlements", {
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setSubData(json.subscription);
+      }
+    } catch (err) {
+      console.error("Failed to fetch billing state", err);
+    } finally {
+      setLoadingSub(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!clerkLoaded || !isSignedIn || !orgId) return;
-    async function loadBilling() {
+    loadBilling();
+  }, [clerkLoaded, isSignedIn, orgId, loadBilling]);
+
+  // Verify Paystack transaction automatically upon returning from hosted checkout
+  useEffect(() => {
+    if (!clerkLoaded || !isSignedIn || !orgId) return;
+    if (checkoutStatus !== "success" || !checkoutRef) return;
+
+    let cancelled = false;
+    async function verifyCheckout() {
+      setVerifyState({ status: "verifying" });
       try {
-        const res = await fetch("/api/marketing-shield/v1/billing/entitlements");
-        if (res.ok) {
-          const json = await res.json();
-          setSubData(json.subscription);
+        const res = await fetch("/api/marketing-shield/v1/billing/verify", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reference: checkoutRef }),
+        });
+        const json = await res.json();
+        if (cancelled) return;
+
+        if (res.ok && json.verified) {
+          if (json.subscription) {
+            setSubData(json.subscription);
+          }
+          setVerifyState({
+            status: "verified",
+            message: `Payment verified via Paystack. Your ${json.planSlug || "paid"} plan is now active.`,
+          });
+          window.dispatchEvent(new Event("cogent:billing-updated"));
+        } else {
+          setVerifyState({
+            status: "failed",
+            message:
+              json.message ||
+              json.error ||
+              "Paystack has not confirmed payment for this reference yet.",
+          });
         }
       } catch (err) {
-        console.error("Failed to fetch billing state", err);
+        if (!cancelled) {
+          setVerifyState({
+            status: "failed",
+            message: err instanceof Error ? err.message : "Unable to verify payment status.",
+          });
+        }
       }
     }
-    loadBilling();
-  }, [clerkLoaded, isSignedIn, orgId]);
+
+    verifyCheckout();
+    return () => {
+      cancelled = true;
+    };
+  }, [clerkLoaded, isSignedIn, orgId, checkoutStatus, checkoutRef]);
 
   const plan = subData?.plan;
   const isTrial = subData?.isTrial ?? true;
-  const trialDays = subData?.trialDaysRemaining ?? 7;
+  const isExpired =
+    Boolean(subData?.isTrialExpired) ||
+    subData?.status === "past_due" ||
+    (isTrial && subData !== null && (subData.trialHoursRemaining ?? subData.trialDaysRemaining * 24) <= 0);
 
   return (
     <div className="space-y-6">
-      {checkoutStatus === "success" && (
+      {verifyState.status === "verifying" && (
+        <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-800 flex items-center gap-3">
+          <Loader2 className="h-5 w-5 text-zinc-600 animate-spin shrink-0" />
+          <div className="text-xs">
+            Verifying your Paystack transaction{" "}
+            <span className="font-mono font-semibold">{checkoutRef}</span>...
+          </div>
+        </div>
+      )}
+
+      {verifyState.status === "verified" && (
         <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center gap-3">
           <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
           <div className="text-xs">
-            <span className="font-semibold">Payment confirmed via Paystack.</span> Your subscription has been updated. Reference:{" "}
-            <span className="font-mono">{checkoutRef || "CONFIRMED"}</span>.
+            <span className="font-semibold">{verifyState.message}</span> Reference:{" "}
+            <span className="font-mono">{checkoutRef}</span>.
+          </div>
+        </div>
+      )}
+
+      {verifyState.status === "failed" && (
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center gap-3">
+          <XCircle className="h-5 w-5 text-amber-600 shrink-0" />
+          <div className="text-xs">
+            <span className="font-semibold">Payment not yet confirmed:</span> {verifyState.message}{" "}
+            Reference: <span className="font-mono">{checkoutRef}</span>.
           </div>
         </div>
       )}
@@ -83,21 +203,27 @@ export function BillingPlanTab() {
               Current Plan
             </div>
             <h2 className="text-2xl font-semibold text-zinc-950 mt-1 flex items-center gap-2.5">
-              {plan?.name || "Evaluation"}
-              <span
-                className={`text-[11px] px-2 py-0.5 rounded-md font-semibold uppercase tracking-wide border ${
-                  subData?.status === "active"
-                    ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                    : "bg-zinc-100 text-zinc-700 border-zinc-200"
-                }`}
-              >
-                {subData?.status || "trialing"}
-              </span>
+              {loadingSub ? "Loading plan..." : plan?.name || "Evaluation Pilot"}
+              {subData && (
+                <span
+                  className={`text-[11px] px-2 py-0.5 rounded-md font-semibold uppercase tracking-wide border ${
+                    subData.status === "active"
+                      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                      : isExpired
+                        ? "bg-rose-50 text-rose-700 border-rose-200"
+                        : "bg-zinc-100 text-zinc-700 border-zinc-200"
+                  }`}
+                >
+                  {isExpired ? "EXPIRED" : subData.status}
+                </span>
+              )}
             </h2>
             <p className="text-xs text-zinc-500 mt-1">
-              {isTrial
-                ? `7-day evaluation active. ${trialDays} days remaining.`
-                : "Active subscription."}
+              {loadingSub
+                ? "Checking active workspace subscription..."
+                : isTrial && subData
+                  ? formatDetailedTrialRemaining(subData)
+                  : `Active subscription${subData?.currentPeriodEnd ? ` · Renews ${new Date(subData.currentPeriodEnd).toLocaleDateString()}` : ""}.`}
             </p>
           </div>
 
@@ -115,25 +241,35 @@ export function BillingPlanTab() {
               href="/pricing"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-xs font-medium transition-colors"
             >
-              <span>Change Plan</span>
+              <span>{isExpired ? "Upgrade Now" : "Change Plan"}</span>
               <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </div>
         </div>
 
-        {isTrial && (
-          <div className="mt-4 p-3.5 rounded-lg bg-zinc-50 border border-zinc-200 text-xs text-zinc-800 flex items-center justify-between gap-3">
+        {!loadingSub && isTrial && subData && (
+          <div
+            className={`mt-4 p-3.5 rounded-lg border text-xs flex items-center justify-between gap-3 ${
+              isExpired
+                ? "bg-rose-50 border-rose-200 text-rose-900"
+                : "bg-zinc-50 border-zinc-200 text-zinc-800"
+            }`}
+          >
             <div className="flex items-center gap-2">
-              <Clock className="h-4 w-4 text-zinc-500 shrink-0" />
-              <span>
-                Evaluation ends in <strong>{trialDays} days</strong>. Upgrade to unlock unlimited reviews and unwatermarked PDF dossiers.
-              </span>
+              {isExpired ? (
+                <AlertTriangle className="h-4 w-4 text-rose-600 shrink-0" />
+              ) : (
+                <Clock className="h-4 w-4 text-zinc-500 shrink-0" />
+              )}
+              <span>{formatDetailedTrialRemaining(subData)}</span>
             </div>
             <Link
               href="/pricing"
-              className="whitespace-nowrap font-semibold text-zinc-950 hover:underline"
+              className={`whitespace-nowrap font-semibold hover:underline ${
+                isExpired ? "text-rose-900" : "text-zinc-950"
+              }`}
             >
-              View plans →
+              {isExpired ? "Upgrade plan →" : "View plans →"}
             </Link>
           </div>
         )}
