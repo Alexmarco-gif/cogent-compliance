@@ -362,11 +362,15 @@ describe("End-to-End Autonomous Compliance Analyst Scenarios & Routes", () => {
 
     const orchestrator = new CopilotOrchestrator(mockGenAi as never);
 
+    // Even when activeCampaignId and referencedProductId are set on the thread (after a clearance or with product selected),
+    // conversational follow-ups and questions must NEVER be forced into a 5-step clearance audit
     expect(
       orchestrator.classifyTurnIntent({
         conversationId: "conv_followup_001",
         tenantId: mockTenantContext.tenantId,
         userId: mockTenantContext.userId,
+        activeCampaignId: "camp_001",
+        referencedProductId: mockQuickCashProductRow.id,
         userPrompt: "This is good so what next do you recommend i do now",
       })
     ).toBe("CONVERSATIONAL_ADVISORY");
@@ -376,7 +380,9 @@ describe("End-to-End Autonomous Compliance Analyst Scenarios & Routes", () => {
         conversationId: "conv_followup_001",
         tenantId: mockTenantContext.tenantId,
         userId: mockTenantContext.userId,
-        userPrompt: "what do i do now",
+        activeCampaignId: "camp_001",
+        referencedProductId: mockQuickCashProductRow.id,
+        userPrompt: "Why did you say 182.5% APR and what if we lower the fee to ₦1,000?",
       })
     ).toBe("CONVERSATIONAL_ADVISORY");
 
@@ -385,15 +391,19 @@ describe("End-to-End Autonomous Compliance Analyst Scenarios & Routes", () => {
         conversationId: "conv_followup_001",
         tenantId: mockTenantContext.tenantId,
         userId: mockTenantContext.userId,
-        userPrompt: "what is it you recommend we do",
+        referencedProductId: mockQuickCashProductRow.id,
+        userPrompt:
+          "Can a Nigerian bank or fintech advertise '0% interest' without disclosing management fees and total cost of credit under CBN Consumer Protection Regulations?",
       })
-    ).toBe("CONVERSATIONAL_ADVISORY");
+    ).toBe("REGULATORY_LOOKUP");
 
     const events: SSEEvent[] = [];
     for await (const ev of orchestrator.streamChat({
       conversationId: "conv_followup_001",
       tenantId: mockTenantContext.tenantId,
       userId: mockTenantContext.userId,
+      activeCampaignId: "camp_001",
+      referencedProductId: mockQuickCashProductRow.id,
       userPrompt: "This is good so what next do you recommend i do now",
     })) {
       events.push(ev);

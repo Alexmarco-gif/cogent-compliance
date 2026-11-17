@@ -402,7 +402,9 @@ export function ChatComposer({
           placeholder={
             pendingAttachments.length > 0
               ? "Add your message or instructions for the attached file, then press Send..."
-              : "Paste ad copy, attach a flyer, or ask a CBN / FCCPC compliance question..."
+              : isZeroState
+                ? "Ask any question about CBN/FCCPC/ARCON rules, brainstorm a campaign, or paste ad copy to clear..."
+                : "Ask a follow-up question, discuss recommendations, or attach new copy/flyer to clear..."
           }
           disabled={disabled}
           rows={isZeroState ? 2 : 1}

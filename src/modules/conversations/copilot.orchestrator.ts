@@ -285,17 +285,16 @@ CRITICAL OPERATIONAL RULES:
 
   /**
    * Classifies a user turn into one of 3 dynamic operational intents:
-   * - FULL_COMPLIANCE_AUDIT: Concrete flyer/asset upload, live URL, rate card selection, or ad copy/pricing audit.
+   * - FULL_COMPLIANCE_AUDIT: Concrete flyer/asset upload on this turn, live URL, or pasted ad copy/clearance request.
    * - REGULATORY_LOOKUP: Specific question about Nigerian statutes, regulators (CBN/FCCPC/ARCON/NDPC/SEC), or rules.
-   * - CONVERSATIONAL_ADVISORY: Natural conversation, follow-up ("what next do you recommend I do now?"), strategy, or rewrite tweaks.
+   * - CONVERSATIONAL_ADVISORY: Natural conversation before or after a clearance, follow-up ("what next do you recommend I do now?"), strategy, or "what if" questions.
    */
   public classifyTurnIntent(
     options: StreamCopilotOptions,
     extractedAssetTexts: string[] = []
   ): "CONVERSATIONAL_ADVISORY" | "REGULATORY_LOOKUP" | "FULL_COMPLIANCE_AUDIT" {
+    // 1. Only NEW attachments or explicit URLs sent on THIS message force an immediate clearance
     if (
-      Boolean(options.referencedProductId) ||
-      Boolean(options.activeCampaignId) ||
       (options.attachmentAssetIds && options.attachmentAssetIds.length > 0) ||
       (options.campaignUrls && options.campaignUrls.length > 0) ||
       extractedAssetTexts.length > 0
@@ -305,30 +304,31 @@ CRITICAL OPERATIONAL RULES:
 
     const prompt = options.userPrompt.trim();
 
-    // Concrete financial claims, URLs, asset filenames, or explicit creative/copy audit requests
-    const hasConcreteAuditSignal =
-      /(?:₦|NGN\s*)\d/i.test(prompt) ||
-      /\d+(?:\.\d+)?\s*%/i.test(prompt) ||
-      /https?:\/\/\S+/i.test(prompt) ||
-      /\.(?:jpg|jpeg|png|webp|pdf|docx)\b/i.test(prompt) ||
-      /\b(?:audit|review|scan|vet)\b.*\b(?:flyer|banner|copy|ad|promo|campaign|landing\s*page|play\s*store|app\s*store|creative|script|headline)\b/i.test(
-        prompt
-      ) ||
-      /\b(?:flyer|banner|ad\s*copy|promo\s*copy|landing\s*page|play\s*store|app\s*store)\b.*\b(?:sound\s+good|compliant|violat|check|look|review|audit)\b/i.test(
-        prompt
-      ) ||
-      /\b(?:does\s+this|check\s+this|audit\s+this|review\s+this)\s+(?:flyer|banner|ad|copy|promo|headline|caption|sms|post|landing\s*page)\b/i.test(
-        prompt
-      );
-
-    if (hasConcreteAuditSignal) {
+    // 2. Live URL or attached file name in the message text
+    if (/https?:\/\/\S+/i.test(prompt) || /\.(?:jpg|jpeg|png|webp|pdf|docx)\b/i.test(prompt)) {
       return "FULL_COMPLIANCE_AUDIT";
     }
 
-    // Conversational follow-ups, next-step recommendations, greetings, or meta-questions
-    // e.g. "This is good so what next do you recommend i do now", "What do I do now?", "What do you recommend we do?"
+    // 3. Explicit clearance / audit request targeting a creative, flyer, banner, or ad copy
+    const hasExplicitClearanceCommand =
+      /\b(?:audit|review|clear|scan|vet)\b.*\b(?:flyer|banner|copy|ad|promo|campaign|landing\s*page|play\s*store|app\s*store|creative|script|headline|caption|sms|post)\b/i.test(
+        prompt
+      ) ||
+      /\b(?:flyer|banner|ad\s*copy|promo\s*copy|landing\s*page|play\s*store|app\s*store)\b.*\b(?:sound\s+good|compliant|violat|check|look|review|audit|clear)\b/i.test(
+        prompt
+      ) ||
+      /\b(?:does\s+this|check\s+this|audit\s+this|review\s+this|clear\s+this)\s+(?:flyer|banner|ad|copy|promo|headline|caption|sms|post|landing\s*page)\b/i.test(
+        prompt
+      );
+
+    if (hasExplicitClearanceCommand) {
+      return "FULL_COMPLIANCE_AUDIT";
+    }
+
+    // 4. Conversational follow-ups, next-step recommendations, greetings, "what if" brainstorming, or "why/how" questions
+    // e.g. "This is good so what next do you recommend i do now", "Why did you say 182.5% APR?", "What if we change the fee to ₦1,000?"
     const isConversationalFollowUp =
-      /\b(?:what\s+(?:next|now|do\s+(?:i|we)\s+do|should\s+(?:i|we)\s+do|do\s+you\s+recommend|would\s+you\s+recommend|is\s+it\s+you\s+recommend)|recommend\s+(?:i|we)\s+do|where\s+do\s+(?:i|we)\s+start|next\s+steps?|how\s+do\s+(?:i|we)\s+(?:proceed|start|fix\s+this|fix\s+it)|which\s+one\s+should\s+(?:i|we))\b/i.test(
+      /\b(?:what\s+(?:next|now|do\s+(?:i|we)\s+do|should\s+(?:i|we)\s+do|do\s+you\s+recommend|would\s+you\s+recommend|is\s+it\s+you\s+recommend|if\s+(?:i|we))|recommend\s+(?:i|we)\s+do|where\s+do\s+(?:i|we)\s+start|next\s+steps?|how\s+do\s+(?:i|we)\s+(?:proceed|start|fix\s+this|fix\s+it|go\s+about)|which\s+one\s+should\s+(?:i|we)|why\s+(?:did|is|was|does)|can\s+you\s+explain|tell\s+me\s+more)\b/i.test(
         prompt
       ) ||
       /^(?:hi|hello|hey|good\s+(?:morning|afternoon|evening)|thanks|thank\s+you|ok|okay|got\s+it|makes\s+sense|awesome|great|nice|perfect|this\s+is\s+good|that\s+is\s+good)\b/i.test(
@@ -339,7 +339,21 @@ CRITICAL OPERATIONAL RULES:
       return "CONVERSATIONAL_ADVISORY";
     }
 
-    // Specific Nigerian regulatory/statutory lookup questions
+    // 5. Pasted promotional ad copy containing call-to-action claims + Naira/percentage figures
+    const hasPastedAdCopyWithRates =
+      (/(?:₦|NGN\s*)\d/i.test(prompt) || /\d+(?:\.\d+)?\s*%/i.test(prompt)) &&
+      /\b(?:get\s+₦|borrow|loan\s+in\s+\d+|apply\s+now|sign\s+up|instant\s+(?:loan|cash|credit)|in\s+\d+\s+minutes|no\s+collateral|zero\s+paperwork|disburse|repay\s+in)\b/i.test(
+        prompt
+      ) &&
+      !/^(?:what|why|how|when|where|who|which|can\s+(?:a|an|i|we|you)|could|should|would|do\s+(?:i|we|you)|is\s+it|explain)\b/i.test(
+        prompt
+      );
+
+    if (hasPastedAdCopyWithRates) {
+      return "FULL_COMPLIANCE_AUDIT";
+    }
+
+    // 6. Specific Nigerian regulatory/statutory lookup questions
     const hasRegulatoryLookupSignal =
       /\b(?:cbn|fccpc|arcon|ndpc|sec|fccpa|deon|ndpa|isa|asp\b|kfs\b|apr\b|pre[- ]?vetting|influencer|penalty|penalties|fine|fines|sanction|section\s+\d|clause|circular|regulation|statute|license|tier\s*[12]|mfb|psb|drip\s*pricing|cooling[- ]?off)\b/i.test(
         prompt
@@ -1104,35 +1118,79 @@ CRITICAL OPERATIONAL RULES:
       }
     } else {
       // =========================================================================
-      // MODE C: CONVERSATIONAL_ADVISORY ("What next do you recommend I do now?", Follow-Ups)
+      // MODE C: CONVERSATIONAL_ADVISORY (Chatting Before or After a Clearance)
       // Zero 5-step audit box, zero pre-LLM search latency — direct conversational stream
       // =========================================================================
+      const memory = await precedentMemoryService
+        .loadInstitutionalMemory({
+          tenantId: options.tenantId,
+          userPrompt: options.userPrompt,
+          explicitProductId: options.referencedProductId,
+        })
+        .catch(() => null);
+
+      if (memory?.autoMatchedProduct) {
+        resolvedProductName = memory.autoMatchedProduct.product_name;
+      }
+
       const lastUserTurn = contents[contents.length - 1];
-      if (lastUserTurn && lastUserTurn.role === "user" && latestPriorStructuredReport) {
-        lastUserTurn.parts.push({
-          text: `\n<active_thread_audit_context>\n${JSON.stringify(
-            {
-              verdict: latestPriorStructuredReport.pre_flight_gate?.verdict,
-              risk_score: latestPriorStructuredReport.pre_flight_gate?.risk_score,
-              product_name: latestPriorStructuredReport.campaign_context?.product_name,
-              computed_financials: latestPriorStructuredReport.computed_financials,
-              blind_spots_flagged: (
-                latestPriorStructuredReport.blind_spot_findings || []
-              ).map((b) => ({
-                code: b.finding_code,
-                severity: b.severity,
-                statute: b.violated_statute,
-                issue: b.what_you_missed,
-                fix: b.one_click_fix,
-              })),
-              canvas_deliverables_available: (
-                latestPriorStructuredReport.compliance_artifacts || []
-              ).map((a) => a.title),
-            },
-            null,
-            2
-          )}\n</active_thread_audit_context>\nRespond directly and conversationally to the user's message as their Chief Compliance Officer partner. Give concrete, practical, prioritized guidance grounded in the active thread context above without repeating a full audit template.`,
-        });
+      if (lastUserTurn && lastUserTurn.role === "user") {
+        const contextBlocks: string[] = [];
+        if (memory && (memory.activeProducts.length > 0 || memory.autoMatchedProduct)) {
+          contextBlocks.push(
+            `<workspace_product_context>\n${JSON.stringify(
+              {
+                institution_name: memory.institutionName,
+                license_tier: memory.licenseTier,
+                matched_product: memory.autoMatchedProduct
+                  ? {
+                      product_name: memory.autoMatchedProduct.product_name,
+                      product_type: memory.autoMatchedProduct.product_type,
+                      approved_terms: memory.autoMatchedProduct.approved_terms,
+                    }
+                  : null,
+                available_products: memory.activeProducts.slice(0, 5).map((p) => ({
+                  product_name: p.product_name,
+                  product_type: p.product_type,
+                  approved_terms: p.approved_terms,
+                })),
+              },
+              null,
+              2
+            )}\n</workspace_product_context>`
+          );
+        }
+        if (latestPriorStructuredReport) {
+          contextBlocks.push(
+            `<active_thread_audit_context>\n${JSON.stringify(
+              {
+                verdict: latestPriorStructuredReport.pre_flight_gate?.verdict,
+                risk_score: latestPriorStructuredReport.pre_flight_gate?.risk_score,
+                product_name: latestPriorStructuredReport.campaign_context?.product_name,
+                computed_financials: latestPriorStructuredReport.computed_financials,
+                blind_spots_flagged: (
+                  latestPriorStructuredReport.blind_spot_findings || []
+                ).map((b) => ({
+                  code: b.finding_code,
+                  severity: b.severity,
+                  statute: b.violated_statute,
+                  issue: b.what_you_missed,
+                  fix: b.one_click_fix,
+                })),
+                canvas_deliverables_available: (
+                  latestPriorStructuredReport.compliance_artifacts || []
+                ).map((a) => a.title),
+              },
+              null,
+              2
+            )}\n</active_thread_audit_context>`
+          );
+        }
+        if (contextBlocks.length > 0) {
+          lastUserTurn.parts.push({
+            text: `\n${contextBlocks.join("\n")}\nRespond directly and conversationally to the user's message as their Chief Compliance Officer partner. Give concrete, practical, prioritized guidance grounded in the context above without outputting a rigid audit checklist template.`,
+          });
+        }
       }
     }
 

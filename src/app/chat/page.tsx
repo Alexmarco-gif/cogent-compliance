@@ -721,11 +721,7 @@ function ChatWorkspaceContent() {
           body: JSON.stringify({
             content: text,
             attachment_asset_ids:
-              attachmentAssetIds.length > 0
-                ? attachmentAssetIds
-                : campaignAsset?.id
-                  ? [campaignAsset.id]
-                  : undefined,
+              attachmentAssetIds.length > 0 ? attachmentAssetIds : undefined,
             referenced_product_id: selectedProductId || undefined,
             active_campaign_id: activeCampaign?.id || undefined,
             campaign_urls: extractedUrls.length > 0 ? extractedUrls : undefined,
@@ -946,7 +942,7 @@ function ChatWorkspaceContent() {
       <div className="flex-1 flex flex-col h-screen overflow-hidden min-w-0 bg-white">
         <WorkspaceHeader
           section="Marketing Shield"
-          title={activeConversation?.title || "New Audit"}
+          title={activeConversation?.title || "Compliance Copilot"}
           onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
           rightActions={
             <>
@@ -1003,7 +999,7 @@ function ChatWorkspaceContent() {
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-[12.5px] font-medium transition-colors cursor-pointer"
               >
                 <Plus className="h-3.5 w-3.5" />
-                <span>New Audit</span>
+                <span>New Chat</span>
               </button>
             </>
           }
@@ -1064,9 +1060,12 @@ function ChatWorkspaceContent() {
         {isZeroState ? (
           <div className="flex-1 overflow-y-auto px-4 sm:px-6 flex flex-col items-center justify-center py-12">
             <div className="w-full max-w-2xl">
-              <h1 className="font-serif text-[32px] sm:text-[38px] leading-[1.15] tracking-tight text-zinc-950 text-center mb-6">
-                Verify every claim before it goes live.
+              <h1 className="font-serif text-[32px] sm:text-[38px] leading-[1.15] tracking-tight text-zinc-950 text-center mb-2">
+                Ask a compliance question or clear a campaign.
               </h1>
+              <p className="text-center text-[13.5px] text-zinc-500 mb-6">
+                Chat freely about CBN, FCCPC, ARCON, NDPC &amp; SEC rules, brainstorm product terms, or attach a flyer/URL for full pre-flight clearance.
+              </p>
 
               <ChatComposer
                 onSendMessage={handleSendMessage}
