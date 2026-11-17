@@ -6,6 +6,14 @@ import type { ComplianceFaqItem } from "@/data/marketing-scenarios";
 import { SectionHeader } from "@/components/marketing/SectionHeader";
 import { RevealOnScroll } from "@/components/marketing/RevealOnScroll";
 
+const CATEGORIES: Array<"All" | ComplianceFaqItem["category"]> = [
+  "All",
+  "Workflows",
+  "Research",
+  "Drafting",
+  "Security",
+];
+
 export function FaqExplorer({
   items,
   showHeader = false,
@@ -16,9 +24,8 @@ export function FaqExplorer({
   showFilter?: boolean;
 }) {
   const [openId, setOpenId] = useState<string>(items[0]?.id ?? "");
-  const [category, setCategory] = useState<string>("All");
+  const [category, setCategory] = useState<"All" | ComplianceFaqItem["category"]>("All");
 
-  const categories = ["All", "Workflow", "Accuracy", "Security", "Billing"];
   const visible =
     category === "All" ? items : items.filter((item) => item.category === category);
 
@@ -31,10 +38,10 @@ export function FaqExplorer({
     return (
       <div
         key={item.id}
-        className={`rounded-2xl border bg-white transition-all duration-200 ${
+        className={`rounded-lg border bg-white transition-colors ${
           isOpen
-            ? "border-blue-200 shadow-md shadow-blue-600/5"
-            : "border-slate-200/85 hover:border-slate-300"
+            ? "border-[#1D4ED8]/40"
+            : "border-slate-200 hover:border-slate-300"
         }`}
       >
         <button
@@ -43,12 +50,17 @@ export function FaqExplorer({
           aria-expanded={isOpen}
           className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left cursor-pointer"
         >
-          <span className="text-[14.5px] font-semibold text-slate-950 leading-snug">
-            {item.question}
-          </span>
+          <div className="space-y-1">
+            <span className="block font-mono text-[10px] font-medium uppercase tracking-wider text-slate-400">
+              {item.category}
+            </span>
+            <span className="block text-[14.5px] font-semibold text-[#0B1220] leading-snug">
+              {item.question}
+            </span>
+          </div>
           <ChevronDown
-            className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${
-              isOpen ? "rotate-180 text-[#1D63ED]" : ""
+            className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-150 ${
+              isOpen ? "rotate-180 text-[#1D4ED8]" : ""
             }`}
           />
         </button>
@@ -67,25 +79,25 @@ export function FaqExplorer({
       {showHeader && (
         <RevealOnScroll>
           <SectionHeader
-            badge="COMMON QUESTIONS"
-            titleLeading="Have questions?"
-            titleAccent="Straight answers here"
-            description="Everything marketing, legal, and compliance leaders ask before running their first campaign check."
+            eyebrow="COMMON QUESTIONS"
+            titleLeading="Straight answers on"
+            titleAccent="scope, research, and security."
+            description="What General Counsel, Chief Compliance Officers, and Product leaders confirm before bringing Cogent into daily workflows."
           />
         </RevealOnScroll>
       )}
 
       {showFilter && (
         <div className="flex flex-wrap gap-2">
-          {categories.map((cat) => (
+          {CATEGORIES.map((cat) => (
             <button
               key={cat}
               type="button"
               onClick={() => setCategory(cat)}
-              className={`rounded-xl px-4 py-2 text-[13px] font-medium transition-colors cursor-pointer ${
+              className={`rounded-md px-3.5 py-2 text-[12.5px] font-medium transition-colors cursor-pointer border ${
                 category === cat
-                  ? "bg-[#1D63ED] text-white shadow-sm shadow-blue-600/20"
-                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                  ? "border-[#0B1220] bg-[#0B1220] text-white"
+                  : "border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-[#0B1220]"
               }`}
             >
               {cat}
@@ -94,8 +106,7 @@ export function FaqExplorer({
         </div>
       )}
 
-      {/* 2-Column Frosted Tray Accordion matching Reference 79ff85 Panel 05 */}
-      <div className="rounded-[26px] cogent-glass-tray p-4 sm:p-6">
+      <div className="rounded-xl border border-slate-200 bg-[#FAFBFD] p-4 sm:p-6">
         <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2 lg:items-start">
           <div className="space-y-3.5">{leftColumn.map(renderCard)}</div>
           <div className="space-y-3.5">{rightColumn.map(renderCard)}</div>

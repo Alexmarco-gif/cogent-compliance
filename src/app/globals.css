@@ -14,7 +14,7 @@ html {
 
 body {
   background-color: #FFFFFF;
-  color: #0F172A;
+  color: #0B1220;
   font-family: var(--font-inter);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -39,73 +39,48 @@ body {
   background: #94A3B8;
 }
 
-/* Luminous Sky-to-Lavender Atmospheric Canvas (Reference Design System) */
-.cogent-hero-wash {
+/* Architectural Swiss Hairline Backdrop (Zero neon AI gradients) */
+.cogent-editorial-canvas {
   background-color: #FFFFFF;
   background-image:
-    radial-gradient(62% 58% at 14% 12%, rgba(29, 99, 237, 0.14) 0%, rgba(29, 99, 237, 0.04) 48%, transparent 78%),
-    radial-gradient(54% 52% at 88% 18%, rgba(139, 92, 246, 0.11) 0%, rgba(139, 92, 246, 0.03) 50%, transparent 78%),
-    radial-gradient(60% 45% at 50% 85%, rgba(219, 234, 254, 0.45) 0%, transparent 70%);
+    linear-gradient(to bottom, #F8FAFC 0%, #FFFFFF 420px);
 }
 
-/* Subtle Architectural Grid Overlay with Intersection Dots */
-.cogent-arch-grid {
+.cogent-hairline-grid {
   background-image:
-    linear-gradient(to right, rgba(29, 99, 237, 0.055) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(29, 99, 237, 0.055) 1px, transparent 1px);
-  background-size: 96px 96px;
-  mask-image: radial-gradient(ellipse 85% 75% at 50% 40%, #000 50%, transparent 100%);
+    linear-gradient(to right, rgba(15, 23, 42, 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.04) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.7) 0%, transparent 90%);
 }
 
-/* Frosted Ice-Blue Tray Surface for Feature Bentos & Accordions */
-.cogent-glass-tray {
-  background: linear-gradient(160deg, rgba(239, 246, 255, 0.85) 0%, rgba(244, 247, 254, 0.92) 55%, rgba(245, 243, 255, 0.75) 100%);
-  border: 1px solid rgba(29, 99, 237, 0.09);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 20px 50px -24px rgba(15, 23, 42, 0.08);
-}
-
-/* Crisp Glass Card Surface */
-.cogent-glass-card {
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(15, 23, 42, 0.08);
+/* Crisp Architectural Surface (Zero bubbly glassmorphism) */
+.cogent-sheet {
+  background-color: #FFFFFF;
+  border: 1px solid #E2E8F0;
   box-shadow:
     0 1px 2px rgba(15, 23, 42, 0.04),
-    0 18px 40px -20px rgba(29, 99, 237, 0.12);
+    0 18px 42px -24px rgba(15, 23, 42, 0.14);
 }
 
-/* Elevated Product Browser Window Frame */
-.cogent-browser-shadow {
+.cogent-studio-frame {
+  background-color: #FFFFFF;
+  border: 1px solid #CBD5E1;
   box-shadow:
-    0 0 0 1px rgba(15, 23, 42, 0.07),
-    0 12px 32px -12px rgba(15, 23, 42, 0.08),
-    0 36px 80px -24px rgba(29, 99, 237, 0.18);
+    0 1px 3px rgba(15, 23, 42, 0.05),
+    0 28px 64px -24px rgba(15, 23, 42, 0.16);
 }
 
-/* Signature Spark-to-Cobalt Gradient (Used for Company Leadership Spotlight) */
 .cogent-cobalt-stage {
-  background: linear-gradient(145deg, #1D63ED 0%, #1E40AF 58%, #172554 100%);
+  background-color: #1649C4;
+  background-image: linear-gradient(155deg, #1D57E3 0%, #1640B0 65%, #0F2970 100%);
 }
 
-.marketing-cobalt-wash {
-  background-color: #FFFFFF;
-  background-image:
-    radial-gradient(60% 55% at 15% 10%, rgba(29, 99, 237, 0.13) 0%, transparent 72%),
-    radial-gradient(50% 50% at 85% 20%, rgba(139, 92, 246, 0.1) 0%, transparent 72%);
-}
-
-.marketing-frame-shadow {
-  box-shadow:
-    0 1px 2px rgba(15, 23, 42, 0.04),
-    0 20px 44px -18px rgba(29, 99, 237, 0.14);
-}
-
-/* Purposeful Motion Keyframes */
-@keyframes cogentFadeUp {
+/* Restrained, Engineered Motion */
+@keyframes cogentEnter {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -113,74 +88,8 @@ body {
   }
 }
 
-@keyframes cogentFloat {
-  0%, 100% {
-    transform: translateY(0px);
-  }
-  50% {
-    transform: translateY(-6px);
-  }
-}
-
-@keyframes cogentFloatSlow {
-  0%, 100% {
-    transform: translateY(0px) translateX(0px);
-  }
-  50% {
-    transform: translateY(5px) translateX(3px);
-  }
-}
-
-@keyframes cogentScan {
-  0% {
-    transform: translateY(-100%);
-    opacity: 0;
-  }
-  20% {
-    opacity: 1;
-  }
-  80% {
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(340%);
-    opacity: 0;
-  }
-}
-
-@keyframes cogentPulseRing {
-  0% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(29, 99, 237, 0.35);
-  }
-  70% {
-    transform: scale(1);
-    box-shadow: 0 0 0 10px rgba(29, 99, 237, 0);
-  }
-  100% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(29, 99, 237, 0);
-  }
-}
-
 .animate-cogent-enter {
-  animation: cogentFadeUp 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.animate-cogent-float {
-  animation: cogentFloat 6s ease-in-out infinite;
-}
-
-.animate-cogent-float-slow {
-  animation: cogentFloatSlow 7.5s ease-in-out infinite;
-}
-
-.animate-cogent-scan {
-  animation: cogentScan 4.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-}
-
-.animate-cogent-pulse-ring {
-  animation: cogentPulseRing 2.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation: cogentEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .no-scrollbar::-webkit-scrollbar {

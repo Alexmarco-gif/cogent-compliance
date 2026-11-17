@@ -1,7 +1,7 @@
 import React from "react";
 
 interface SectionHeaderProps {
-  badge: string;
+  eyebrow: string;
   titleLeading: string;
   titleAccent?: string;
   description?: string;
@@ -10,7 +10,7 @@ interface SectionHeaderProps {
 }
 
 export function SectionHeader({
-  badge,
+  eyebrow,
   titleLeading,
   titleAccent,
   description,
@@ -20,20 +20,20 @@ export function SectionHeader({
   if (align === "center") {
     return (
       <div className={`mx-auto max-w-2xl text-center ${className}`}>
-        <span className="inline-flex items-center rounded-full bg-[#1D63ED] px-3.5 py-1 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-white shadow-sm shadow-blue-600/20">
-          {badge}
-        </span>
-        <h2 className="mt-4 text-[32px] sm:text-[42px] lg:text-[46px] font-semibold leading-[1.08] tracking-[-0.03em] text-slate-950">
+        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-[#1D4ED8]">
+          {eyebrow}
+        </p>
+        <h2 className="mt-3 text-[30px] sm:text-[40px] font-semibold leading-[1.1] tracking-[-0.03em] text-[#0B1220]">
           {titleLeading}
           {titleAccent && (
             <>
               <br className="hidden sm:inline" />{" "}
-              <span className="text-[#1D63ED]">{titleAccent}</span>
+              <span className="text-[#1D4ED8]">{titleAccent}</span>
             </>
           )}
         </h2>
         {description && (
-          <p className="mx-auto mt-4 max-w-xl text-[15.5px] sm:text-[16.5px] leading-[1.6] text-slate-600">
+          <p className="mx-auto mt-4 max-w-xl text-[15.5px] leading-[1.65] text-slate-600">
             {description}
           </p>
         )}
@@ -43,24 +43,24 @@ export function SectionHeader({
 
   return (
     <div
-      className={`flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between ${className}`}
+      className={`flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between ${className}`}
     >
       <div className="max-w-2xl">
-        <span className="inline-flex items-center rounded-full bg-[#1D63ED] px-3.5 py-1 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-white shadow-sm shadow-blue-600/20">
-          {badge}
-        </span>
-        <h2 className="mt-4 text-[32px] sm:text-[42px] lg:text-[44px] font-semibold leading-[1.08] tracking-[-0.03em] text-slate-950">
+        <p className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-[#1D4ED8]">
+          {eyebrow}
+        </p>
+        <h2 className="mt-2.5 text-[30px] sm:text-[38px] lg:text-[40px] font-semibold leading-[1.1] tracking-[-0.03em] text-[#0B1220]">
           {titleLeading}
           {titleAccent && (
             <>
-              <br />
-              <span className="text-[#1D63ED]">{titleAccent}</span>
+              {" "}
+              <span className="text-[#1D4ED8]">{titleAccent}</span>
             </>
           )}
         </h2>
       </div>
       {description && (
-        <p className="max-w-sm text-[14.5px] sm:text-[15.5px] leading-[1.6] text-slate-600 lg:pb-1">
+        <p className="max-w-md text-[14.5px] sm:text-[15px] leading-[1.6] text-slate-600 lg:pb-0.5">
           {description}
         </p>
       )}

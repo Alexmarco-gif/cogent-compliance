@@ -1,104 +1,117 @@
 import React from "react";
 import Link from "next/link";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, FileText } from "lucide-react";
 import { RevealOnScroll } from "@/components/marketing/RevealOnScroll";
+
+const QUEUE_ITEMS = [
+  {
+    title: "USD Virtual Card Structuring Memo",
+    meta: "CBN FX · NDPA §41 · FCCPC Disclosures",
+    status: "Export Ready",
+    tone: "emerald" as const,
+  },
+  {
+    title: "AML Policy v2.5 — Clause Redlines",
+    meta: "Matched against latest CBN/NFIU circulars",
+    status: "3 Clauses Updated",
+    tone: "blue" as const,
+  },
+  {
+    title: "Sponsor-Bank Due-Diligence Reply (Q1–Q40)",
+    meta: "Grounded in internal SOPs & BOFIA 2020",
+    status: "CCO Sign-Off",
+    tone: "slate" as const,
+  },
+  {
+    title: "QuickCash Flyer + Live Pricing Watcher",
+    meta: "Checked against 4.5%/mo rate card · Daily watch",
+    status: "Cleared",
+    tone: "emerald" as const,
+  },
+];
 
 export function ExecutiveCtaBanner() {
   return (
-    <section className="bg-white py-16 sm:py-20 lg:py-24">
-      <div className="mx-auto max-w-[1160px] px-5 sm:px-8">
+    <section className="bg-white py-20 lg:py-24">
+      <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
         <RevealOnScroll>
-          <div className="relative overflow-hidden rounded-[28px] cogent-hero-wash border border-blue-200/70 cogent-browser-shadow">
-            <div className="grid grid-cols-1 lg:grid-cols-12 lg:items-center">
-              {/* Left StoryBrand Final Call to Action */}
-              <div className="lg:col-span-6 p-8 sm:p-12 lg:p-14">
-                <span className="inline-flex items-center rounded-full bg-[#1D63ED] px-3.5 py-1 text-[10.5px] font-semibold uppercase tracking-[0.09em] text-white">
-                  START TODAY
-                </span>
-                <h2 className="mt-4 text-[30px] sm:text-[38px] lg:text-[42px] font-semibold leading-[1.08] tracking-[-0.03em] text-slate-950">
-                  Launch every campaign{" "}
-                  <span className="text-[#1D63ED]">with total confidence.</span>
-                </h2>
-                <p className="mt-4 max-w-md text-[15px] leading-relaxed text-slate-600">
-                  Stop guessing before every campaign goes live. Create your workspace in minutes and run your first flyer, ad, or webpage review free.
+          <div className="rounded-xl border border-slate-200 overflow-hidden grid grid-cols-1 lg:grid-cols-12">
+            {/* Left Deep Ink Action Pane */}
+            <div className="lg:col-span-6 bg-[#0B1220] p-8 sm:p-12 lg:p-14 text-white flex flex-col justify-between">
+              <div>
+                <p className="font-mono text-[11px] font-medium uppercase tracking-[0.12em] text-blue-400">
+                  GET STARTED IN MINUTES
                 </p>
-
-                <div className="mt-7 flex flex-wrap items-center gap-3">
-                  <Link
-                    href="/sign-up"
-                    className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#1D63ED] px-6 text-[14px] font-semibold text-white shadow-md shadow-blue-600/25 hover:bg-[#1552CC] transition-colors"
-                  >
-                    <span>Create Free Account</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                  <Link
-                    href="/company"
-                    className="inline-flex h-11 items-center rounded-xl border border-slate-200 bg-white px-5 text-[14px] font-medium text-slate-700 hover:bg-slate-50 transition-colors"
-                  >
-                    About Stem Systems
-                  </Link>
-                </div>
+                <h2 className="mt-4 text-[30px] sm:text-[38px] font-semibold leading-[1.08] tracking-[-0.03em] text-white">
+                  Turn week-long compliance bottlenecks into five-minute work product.
+                </h2>
+                <p className="mt-4 max-w-md text-[15px] leading-relaxed text-slate-300">
+                  Create your private workspace in minutes. Draft your first structuring memo, compare an updated CBN circular against your AML manual, or verify a launch free.
+                </p>
               </div>
 
-              {/* Right Cropped Live Workspace Preview Card matching Reference 79ff85 Panel 06 */}
-              <div className="lg:col-span-6 px-6 pb-6 pt-2 lg:py-10 lg:pr-10">
-                <div className="rounded-2xl border border-slate-200/90 bg-white/95 p-5 shadow-xl shadow-blue-900/10">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
-                      <span className="text-[12.5px] font-semibold text-slate-950">
-                        Campaign Approval Queue
-                      </span>
-                    </div>
-                    <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-[#1D63ED]">
-                      3 Active
+              <div className="mt-8 flex flex-wrap items-center gap-3">
+                <Link
+                  href="/sign-up"
+                  className="inline-flex h-11 items-center gap-2 rounded-md bg-[#1D4ED8] px-6 text-[13.5px] font-semibold text-white hover:bg-[#2563EB] transition-colors"
+                >
+                  <span>Create Free Account</span>
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link
+                  href="/company"
+                  className="inline-flex h-11 items-center rounded-md border border-slate-700 bg-transparent px-5 text-[13.5px] font-medium text-slate-200 hover:bg-slate-800/60 transition-colors"
+                >
+                  About Stem Systems
+                </Link>
+              </div>
+            </div>
+
+            {/* Right Architectural Deliverable Queue */}
+            <div className="lg:col-span-6 bg-[#FAFBFD] p-6 sm:p-10 flex flex-col justify-center">
+              <div className="rounded-lg border border-slate-200 bg-white overflow-hidden">
+                <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-3.5 w-3.5 text-[#1D4ED8]" />
+                    <span className="font-mono text-[11px] font-semibold uppercase tracking-wider text-[#0B1220]">
+                      Workspace Deliverables
                     </span>
                   </div>
+                  <span className="font-mono text-[10.5px] text-slate-500">
+                    NG &amp; Africa Scope
+                  </span>
+                </div>
 
-                  <div className="mt-4 space-y-2.5">
-                    <div className="flex items-center justify-between rounded-xl border border-emerald-200/80 bg-emerald-50/40 px-4 py-3">
-                      <div>
-                        <p className="text-[13px] font-semibold text-slate-950">
-                          SME Working Capital Promo
+                <div className="divide-y divide-slate-100">
+                  {QUEUE_ITEMS.map((item) => (
+                    <div
+                      key={item.title}
+                      className="flex items-center justify-between gap-3 px-4 py-3.5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-[13px] font-semibold text-[#0B1220]">
+                          {item.title}
                         </p>
-                        <p className="text-[11.5px] text-slate-500">
-                          Rates, fee note &amp; CBN line verified
+                        <p className="mt-0.5 truncate text-[11.5px] text-slate-500">
+                          {item.meta}
                         </p>
                       </div>
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-800">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        Cleared
+                      <span
+                        className={`inline-flex items-center gap-1 shrink-0 rounded px-2 py-0.5 font-mono text-[10.5px] font-semibold border ${
+                          item.tone === "emerald"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                            : item.tone === "blue"
+                              ? "border-blue-200 bg-blue-50 text-[#1D4ED8]"
+                              : "border-slate-200 bg-slate-50 text-slate-700"
+                        }`}
+                      >
+                        {item.tone === "emerald" && (
+                          <CheckCircle2 className="h-3 w-3" />
+                        )}
+                        {item.status}
                       </span>
                     </div>
-
-                    <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
-                      <div>
-                        <p className="text-[13px] font-semibold text-slate-950">
-                          Salary Advance Flyer
-                        </p>
-                        <p className="text-[11.5px] text-slate-500">
-                          Clean rewrite ready for CCO approval
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[11px] font-semibold text-[#1D63ED]">
-                        In Review
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3">
-                      <div>
-                        <p className="text-[13px] font-semibold text-slate-950">
-                          Live Pricing Page Watcher
-                        </p>
-                        <p className="text-[11.5px] text-slate-500">
-                          Checked daily · Zero unexpected edits
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-700">
-                        Protected
-                      </span>
-                    </div>
-                  </div>
+                  ))}
                 </div>
               </div>
             </div>

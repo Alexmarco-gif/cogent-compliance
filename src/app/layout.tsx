@@ -8,21 +8,21 @@ const siteUrl = getPublicSiteUrl();
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: {
-    default: "Cogent | Ship Financial Campaigns Without Compliance Surprises",
+    default: "Cogent | Regulatory Intelligence & Compliance Workflow Engine",
     template: "%s | Cogent",
   },
   description:
-    "Check every loan flyer, rate page, app store listing, and ad against CBN, FCCPC, ARCON, NDPC, and SEC rules before it goes live—so Nigerian financial teams launch fast and stay protected.",
+    "Know the rules in seconds. Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, regulator query responses, audit replies, and cleared launches.",
   applicationName: "Cogent",
   keywords: [
     "Cogent",
     "Stem Systems",
-    "Nigerian fintech compliance",
-    "CBN marketing compliance",
-    "FCCPC lending compliance",
-    "ARCON ad pre-vetting",
-    "NDPC marketing compliance",
-    "SEC Nigeria marketing rules",
+    "Nigerian regulatory intelligence",
+    "African fintech compliance",
+    "CBN circular research",
+    "AML policy drafting Nigeria",
+    "FCCPC SEC NDPC compliance",
+    "cross-border CBK BoG licensing",
     "stem-cogent.com",
   ],
   authors: [{ name: "Stem Systems", url: siteUrl }],
@@ -36,15 +36,15 @@ export const metadata: Metadata = {
     locale: "en_NG",
     url: siteUrl,
     siteName: "Cogent by Stem Systems",
-    title: "Cogent | Ship Financial Campaigns Without Compliance Surprises",
+    title: "Cogent | Know the Rules in Seconds",
     description:
-      "Review ads, flyers, app store descriptions, and live landing pages against Nigerian regulatory rules before launch.",
+      "Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, audit responses, and cleared launches—without the week-long wait.",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Cogent | Ship Financial Campaigns Without Compliance Surprises",
+    title: "Cogent | Know the Rules in Seconds",
     description:
-      "Review ads, flyers, app store descriptions, and live landing pages against Nigerian regulatory rules before launch.",
+      "Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, audit responses, and cleared launches.",
   },
   robots: {
     index: true,
@@ -74,7 +74,7 @@ export default function RootLayout({
             href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
           />
         </head>
-        <body className="min-h-screen bg-white text-slate-950 antialiased">
+        <body className="min-h-screen bg-white text-[#0B1220] antialiased">
           {children}
         </body>
       </html>
