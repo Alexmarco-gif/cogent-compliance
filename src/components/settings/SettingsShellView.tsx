@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import {
@@ -10,6 +11,7 @@ import {
   ShieldCheck,
   CreditCard,
   RefreshCw,
+  ArrowLeft,
 } from "lucide-react";
 import { WorkspaceShell } from "@/components/shell/WorkspaceShell";
 import { ProfileTab } from "./ProfileTab";
@@ -95,7 +97,19 @@ export function SettingsShellView({ defaultTab = "organization" }: SettingsShell
     SETTINGS_TABS.find((t) => t.id === activeTab)?.label || "Settings";
 
   return (
-    <WorkspaceShell section="Settings" title={activeTabLabel}>
+    <WorkspaceShell
+      section="Settings"
+      title={activeTabLabel}
+      rightActions={
+        <Link
+          href="/chat?new=1"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 text-[12.5px] font-medium text-zinc-800 transition-colors"
+        >
+          <ArrowLeft className="h-3.5 w-3.5" />
+          <span>Back to New Audit</span>
+        </Link>
+      }
+    >
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
           <div className="space-y-1">

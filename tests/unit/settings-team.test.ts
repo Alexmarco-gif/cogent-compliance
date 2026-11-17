@@ -233,4 +233,136 @@ describe("SettingsService & Functional Team RBAC Governance", () => {
     expect(res.role).toBe("LEGAL_COUNSEL");
     expect(updatedPayload.role).toBe("LEGAL_COUNSEL");
   });
+
+  it("invites 5+ team members in a single batch and persists all distinct roles", async () => {
+    let savedSettings: any = null;
+
+    vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue({
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === "tenants") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: tenantId,
+                clerk_org_id: "org_test_1",
+                settings: {},
+              },
+              error: null,
+            }),
+            update: vi.fn().mockImplementation((payload: any) => {
+              savedSettings = payload.settings;
+              return { eq: vi.fn().mockResolvedValue({ error: null }) };
+            }),
+          };
+        }
+        return {};
+      }),
+    } as any);
+
+    const res = await settingsService.inviteTeamMembers(adminTenant, {
+      invitations: [
+        { email: "cco2@zenith.ng", role: "CHIEF_COMPLIANCE_OFFICER" },
+        { email: "legal1@zenith.ng", role: "LEGAL_COUNSEL" },
+        { email: "pm1@zenith.ng", role: "MARKETING_GROWTH" },
+        { email: "analyst1@zenith.ng", role: "COMPLIANCE_ANALYST" },
+        { email: "admin2@zenith.ng", role: "WORKSPACE_ADMIN" },
+      ],
+    });
+
+    expect(res.invited).toHaveLength(5);
+    expect(res.failed).toHaveLength(0);
+    expect(res.skipped).toHaveLength(0);
+    expect(savedSettings.pending_role_assignments).toEqual({
+      "cco2@zenith.ng": "CHIEF_COMPLIANCE_OFFICER",
+      "legal1@zenith.ng": "LEGAL_COUNSEL",
+      "pm1@zenith.ng": "MARKETING_GROWTH",
+      "analyst1@zenith.ng": "COMPLIANCE_ANALYST",
+      "admin2@zenith.ng": "WORKSPACE_ADMIN",
+    });
+  });
+
+  it("handles partial Clerk batch failures cleanly, skips active/pending duplicates, and persists succeeded invites", async () => {
+    let savedSettings: any = null;
+
+    vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue({
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === "tenants") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({
+              data: {
+                id: tenantId,
+                clerk_org_id: "org_live_batch",
+                settings: {},
+              },
+              error: null,
+            }),
+            update: vi.fn().mockImplementation((payload: any) => {
+              savedSettings = payload.settings;
+              return { eq: vi.fn().mockResolvedValue({ error: null }) };
+            }),
+          };
+        }
+        return {};
+      }),
+    } as any);
+
+    const clerkModule = await import("@clerk/nextjs/server");
+    const createInvitationMock = vi.fn().mockImplementation(async ({ emailAddress }: { emailAddress: string }) => {
+      if (emailAddress === "quota@zenith.ng") {
+        throw {
+          errors: [
+            {
+              code: "organization_membership_limit_exceeded",
+              longMessage: "You have reached the maximum number of allowed members (5).",
+            },
+          ],
+        };
+      }
+      return { id: `inv_${emailAddress}` };
+    });
+
+    vi.spyOn(clerkModule, "clerkClient").mockResolvedValue({
+      organizations: {
+        getOrganizationMembershipList: vi.fn().mockResolvedValue({
+          data: [{ publicUserData: { identifier: "existing@zenith.ng" } }],
+          totalCount: 1,
+        }),
+        getOrganizationInvitationList: vi.fn().mockResolvedValue({
+          data: [{ emailAddress: "already.pending@zenith.ng" }],
+          totalCount: 1,
+        }),
+        createOrganizationInvitation: createInvitationMock,
+      },
+    } as any);
+
+    vi.stubEnv("NODE_ENV", "production");
+    try {
+      const res = await settingsService.inviteTeamMembers(adminTenant, {
+        invitations: [
+          { email: "existing@zenith.ng", role: "LEGAL_COUNSEL" },
+          { email: "already.pending@zenith.ng", role: "COMPLIANCE_ANALYST" },
+          { email: "member3@zenith.ng", role: "MARKETING_GROWTH" },
+          { email: "member4@zenith.ng", role: "LEGAL_COUNSEL" },
+          { email: "quota@zenith.ng", role: "COMPLIANCE_ANALYST" },
+        ],
+      });
+
+      expect(res.invited).toHaveLength(2);
+      expect(res.skipped).toHaveLength(2);
+      expect(res.failed).toHaveLength(1);
+      expect(res.failed[0]?.email).toBe("quota@zenith.ng");
+      expect(res.failed[0]?.message).toMatch(/Clerk organization membership limit/i);
+      expect(savedSettings.pending_role_assignments).toEqual({
+        "already.pending@zenith.ng": "COMPLIANCE_ANALYST",
+        "member3@zenith.ng": "MARKETING_GROWTH",
+        "member4@zenith.ng": "LEGAL_COUNSEL",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });

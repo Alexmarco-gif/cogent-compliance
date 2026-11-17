@@ -3,8 +3,8 @@
  * Document Reference: Document 04 (Section 3.3), Document 08 (Phase 6)
  */
 
-import { createApiHandler } from "@/lib/api-handler";
-import { conversationService } from "@/modules/conversations/conversation.service";
+import { AppApiError, createApiHandler } from "@/lib/api-handler";
+import { canAccessConversation, conversationService } from "@/modules/conversations/conversation.service";
 import { z } from "zod";
 
 const listMessagesQuerySchema = z.object({
@@ -24,7 +24,23 @@ export const GET = createApiHandler(
   async (_req, { tenant, query, params }) => {
     const conversationId = Array.isArray(params.id) ? params.id[0] : params.id;
     if (!conversationId) {
-      throw new Error("Conversation ID is required");
+      throw new AppApiError("VALIDATION_FAILED", "Conversation ID is required", 400);
+    }
+
+    const conversation = await conversationService.getConversation(
+      tenant.tenantId,
+      conversationId
+    );
+    if (!conversation) {
+      throw new AppApiError("NOT_FOUND", "Conversation not found", 404);
+    }
+
+    if (!canAccessConversation(conversation, [tenant.userId, tenant.clerkUserId])) {
+      throw new AppApiError(
+        "FORBIDDEN",
+        "You do not have access to messages in another user's private compliance thread.",
+        403,
+      );
     }
 
     return conversationService.listMessages(tenant.tenantId, conversationId, {

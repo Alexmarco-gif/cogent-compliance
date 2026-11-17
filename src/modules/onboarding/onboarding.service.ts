@@ -5,7 +5,9 @@
  */
 
 import { createAdminSupabaseClient } from "@/lib/supabase";
+import { AppApiError } from "@/lib/api-handler";
 import { logger } from "@/lib/logger";
+import type { CanonicalRole } from "@/modules/auth-tenancy/types";
 import {
   OnboardingProductTruthRequest,
   OnboardingScopeRequest,
@@ -100,6 +102,7 @@ export class OnboardingService {
     payload: OnboardingScopeRequest,
     clerkUserId?: string,
     clerkOrgId?: string,
+    callerContext?: { role: CanonicalRole; isAdmin: boolean },
   ): Promise<{ success: boolean; scopes: RegulatoryScopeKey[]; role?: string }> {
     const supabase = createAdminSupabaseClient();
 
@@ -111,6 +114,46 @@ export class OnboardingService {
       .single();
 
     const existingSettings = (tenant?.settings || {}) as Record<string, unknown>;
+    const isOnboardingCompleted = Boolean(existingSettings.onboarding_completed_at);
+
+    if (isOnboardingCompleted && callerContext && !callerContext.isAdmin) {
+      throw new AppApiError(
+        "FORBIDDEN",
+        "Only workspace administrators can update institution scope after onboarding.",
+        403,
+      );
+    }
+
+    if (
+      !isOnboardingCompleted &&
+      payload.creator_role &&
+      callerContext &&
+      !callerContext.isAdmin &&
+      payload.creator_role !== callerContext.role
+    ) {
+      // Allow self-selecting initial functional role only in a single-member workspace;
+      // otherwise block non-admin privilege escalation during onboarding.
+      let memberCount = 2;
+      try {
+        const { count } = await supabase
+          .from("tenant_memberships")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", tenantId);
+        if (typeof count === "number") {
+          memberCount = count;
+        }
+      } catch {
+        // Fail closed when member count cannot be verified
+      }
+      if (memberCount > 1) {
+        throw new AppApiError(
+          "FORBIDDEN",
+          "Only workspace administrators can change workspace roles.",
+          403,
+        );
+      }
+    }
+
     const updatedSettings = {
       ...existingSettings,
       active_regulatory_scopes: payload.scopes,
@@ -136,8 +179,9 @@ export class OnboardingService {
       throw new Error("Failed to save regulatory scope configuration");
     }
 
-    // Persist chosen functional role for the onboarding user when provided
-    if (payload.creator_role && clerkUserId) {
+    // Persist chosen functional role for the initial onboarding user when provided (never overwrite after onboarding completes)
+    let persistedRole: string | undefined;
+    if (!isOnboardingCompleted && payload.creator_role && clerkUserId) {
       try {
         await supabase
           .from("tenant_memberships")
@@ -151,6 +195,7 @@ export class OnboardingService {
             },
             { onConflict: "tenant_id,user_id" },
           );
+        persistedRole = payload.creator_role;
 
         if (clerkOrgId && process.env.NODE_ENV !== "test") {
           try {
@@ -194,13 +239,13 @@ export class OnboardingService {
     logger.info("Configured tenant regulatory scopes", {
       tenantId,
       scopes: payload.scopes,
-      creatorRole: payload.creator_role,
+      creatorRole: persistedRole,
     });
 
     return {
       success: true,
       scopes: payload.scopes,
-      role: payload.creator_role,
+      role: persistedRole,
     };
   }
 

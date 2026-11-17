@@ -235,9 +235,46 @@ export async function syncClerkMembershipCreated(data: ClerkMembershipEventData)
   }
 
   const tenantSettings = (tenant.settings || {}) as Record<string, unknown>;
-  const pendingRoles = (tenantSettings.pending_role_assignments || {}) as Record<string, unknown>;
-  const userEmail = data.public_user_data.identifier?.toLowerCase().trim();
-  const pendingRole = userEmail ? pendingRoles[userEmail] : undefined;
+  const pendingRoles = {
+    ...((tenantSettings.pending_role_assignments || {}) as Record<string, unknown>),
+  };
+  const candidateEmails = new Set<string>();
+  if (data.public_user_data.identifier) {
+    candidateEmails.add(data.public_user_data.identifier.toLowerCase().trim());
+  }
+
+  let matchedPendingEmail: string | undefined;
+  let pendingRole: unknown;
+  for (const email of candidateEmails) {
+    if (isCanonicalRole(pendingRoles[email])) {
+      matchedPendingEmail = email;
+      pendingRole = pendingRoles[email];
+      break;
+    }
+  }
+
+  if (
+    !isCanonicalRole(data.public_metadata?.canonicalRole) &&
+    !isCanonicalRole(pendingRole) &&
+    process.env.NODE_ENV !== "test" &&
+    Object.keys(pendingRoles).length > 0
+  ) {
+    try {
+      const { clerkClient } = await import("@clerk/nextjs/server");
+      const client = await clerkClient();
+      const clerkUser = await client.users.getUser(data.public_user_data.user_id);
+      for (const addr of clerkUser.emailAddresses || []) {
+        const lower = addr.emailAddress?.toLowerCase().trim();
+        if (lower && isCanonicalRole(pendingRoles[lower])) {
+          matchedPendingEmail = lower;
+          pendingRole = pendingRoles[lower];
+          break;
+        }
+      }
+    } catch {
+      // Non-blocking fallback
+    }
+  }
 
   let canonicalRole: CanonicalRole;
   if (isCanonicalRole(data.public_metadata?.canonicalRole)) {
@@ -271,6 +308,43 @@ export async function syncClerkMembershipCreated(data: ClerkMembershipEventData)
       error: memError?.message,
     });
     throw new Error(`Failed to upsert tenant membership: ${memError?.message}`);
+  }
+
+  // Consume pending assignment & keep Clerk membership metadata in sync
+  if (matchedPendingEmail) {
+    delete pendingRoles[matchedPendingEmail];
+    try {
+      await supabase
+        .from("tenants")
+        .update({
+          settings: {
+            ...tenantSettings,
+            pending_role_assignments: pendingRoles,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", tenant.id);
+    } catch {
+      // Non-blocking cleanup
+    }
+  }
+
+  if (
+    process.env.NODE_ENV !== "test" &&
+    data.public_metadata?.canonicalRole !== canonicalRole &&
+    data.organization.id !== "org_demo_1111"
+  ) {
+    try {
+      const { clerkClient } = await import("@clerk/nextjs/server");
+      const client = await clerkClient();
+      await client.organizations.updateOrganizationMembershipMetadata({
+        organizationId: data.organization.id,
+        userId: data.public_user_data.user_id,
+        publicMetadata: { canonicalRole },
+      });
+    } catch {
+      // Non-blocking metadata sync
+    }
   }
 
   logger.info("Synchronized Clerk membership to Supabase tenant_memberships", {

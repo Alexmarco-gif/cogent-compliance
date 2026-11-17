@@ -27,6 +27,80 @@ function isCanonicalRole(value: unknown): value is CanonicalRole {
   return typeof value === "string" && (CANONICAL_ROLES as readonly string[]).includes(value);
 }
 
+function extractClerkErrorMessage(err: unknown, fallback: string): string {
+  if (err && typeof err === "object" && "errors" in err) {
+    const errors = (err as { errors?: Array<{ message?: string; longMessage?: string; code?: string }> }).errors;
+    if (Array.isArray(errors) && errors.length > 0) {
+      const first = errors[0];
+      const detail = first?.longMessage || first?.message;
+      const code = first?.code || "";
+      if (detail) {
+        if (
+          code.includes("limit") ||
+          code.includes("quota") ||
+          /maximum|allowed.*members|membership limit|upgrade.*clerk/i.test(detail)
+        ) {
+          return `${detail} Increase your Clerk organization membership limit in the Clerk Dashboard (Configure -> Organizations -> Settings -> Membership limit).`;
+        }
+        return detail;
+      }
+    }
+  }
+  if (err instanceof Error && err.message) {
+    return err.message;
+  }
+  return fallback;
+}
+
+type ClerkServerClient = Awaited<ReturnType<typeof clerkClient>>;
+
+async function fetchAllOrganizationMemberships(
+  client: ClerkServerClient,
+  organizationId: string,
+) {
+  const all = [];
+  let offset = 0;
+  const pageSize = 100;
+  for (let page = 0; page < 20; page += 1) {
+    const res = await client.organizations.getOrganizationMembershipList({
+      organizationId,
+      limit: pageSize,
+      offset,
+    });
+    const rows = res.data || [];
+    all.push(...rows);
+    if (rows.length < pageSize || all.length >= (res.totalCount ?? Number.MAX_SAFE_INTEGER)) {
+      break;
+    }
+    offset += pageSize;
+  }
+  return all;
+}
+
+async function fetchAllPendingInvitations(
+  client: ClerkServerClient,
+  organizationId: string,
+) {
+  const all = [];
+  let offset = 0;
+  const pageSize = 100;
+  for (let page = 0; page < 20; page += 1) {
+    const res = await client.organizations.getOrganizationInvitationList({
+      organizationId,
+      status: ["pending"],
+      limit: pageSize,
+      offset,
+    });
+    const rows = res.data || [];
+    all.push(...rows);
+    if (rows.length < pageSize || all.length >= (res.totalCount ?? Number.MAX_SAFE_INTEGER)) {
+      break;
+    }
+    offset += pageSize;
+  }
+  return all;
+}
+
 export interface WorkspaceSettingsSnapshot {
   tenantId: string;
   organizationName: string;
@@ -326,19 +400,12 @@ export class SettingsService {
     ) {
       try {
         const client = await clerkClient();
-        const [memList, invList] = await Promise.all([
-          client.organizations.getOrganizationMembershipList({
-            organizationId: tenant.clerkOrgId,
-            limit: 100,
-          }),
-          client.organizations.getOrganizationInvitationList({
-            organizationId: tenant.clerkOrgId,
-            status: ["pending"],
-            limit: 100,
-          }),
+        const [memData, invData] = await Promise.all([
+          fetchAllOrganizationMemberships(client, tenant.clerkOrgId),
+          fetchAllPendingInvitations(client, tenant.clerkOrgId),
         ]);
 
-        for (const clerkMem of memList.data) {
+        for (const clerkMem of memData) {
           const pub = clerkMem.publicUserData;
           if (!pub?.userId) continue;
           const first = pub.firstName || null;
@@ -354,15 +421,16 @@ export class SettingsService {
           });
         }
 
-        // Enrich any Supabase user IDs missing from organizationMembershipList
+        // Enrich any Supabase user IDs missing from organizationMembershipList in batches of 100
         const missingUserIds = (membershipRows || [])
           .map((m) => m.user_id)
           .filter((uid) => !clerkUserMap.has(uid) && uid.startsWith("user_"));
 
-        if (missingUserIds.length > 0) {
+        for (let i = 0; i < missingUserIds.length; i += 100) {
+          const chunk = missingUserIds.slice(i, i + 100);
           try {
             const usersPage = await client.users.getUserList({
-              userId: missingUserIds.slice(0, 100),
+              userId: chunk,
               limit: 100,
             });
             for (const u of usersPage.data) {
@@ -387,7 +455,7 @@ export class SettingsService {
           }
         }
 
-        for (const inv of invList.data) {
+        for (const inv of invData) {
           const emailLower = inv.emailAddress.toLowerCase().trim();
           const metaRole = (inv.publicMetadata as Record<string, unknown> | undefined)?.canonicalRole;
           const mappedRole: CanonicalRole = isCanonicalRole(metaRole)
@@ -467,7 +535,11 @@ export class SettingsService {
   public async inviteTeamMembers(
     tenant: TenantContext,
     input: InviteTeamMembersInput,
-  ): Promise<{ invited: Array<{ email: string; role: CanonicalRole; invitationId?: string }> }> {
+  ): Promise<{
+    invited: Array<{ email: string; role: CanonicalRole; invitationId?: string }>;
+    skipped: Array<{ email: string; role: CanonicalRole; reason: string }>;
+    failed: Array<{ email: string; role: CanonicalRole; message: string }>;
+  }> {
     const supabase = createAdminSupabaseClient();
 
     const { data: tenantRow, error: fetchErr } = await supabase
@@ -492,17 +564,65 @@ export class SettingsService {
     }
 
     const invited: Array<{ email: string; role: CanonicalRole; invitationId?: string }> = [];
+    const skipped: Array<{ email: string; role: CanonicalRole; reason: string }> = [];
+    const failed: Array<{ email: string; role: CanonicalRole; message: string }> = [];
+
+    const useClerk =
+      Boolean(tenantRow.clerk_org_id) &&
+      tenantRow.clerk_org_id !== "org_demo_1111" &&
+      process.env.NODE_ENV !== "test";
+
+    let client: ClerkServerClient | null = null;
+    const activeMemberEmails = new Set<string>();
+    const pendingInvitationEmails = new Set<string>();
+
+    if (useClerk && tenantRow.clerk_org_id) {
+      client = await clerkClient();
+      try {
+        const [memData, invData] = await Promise.all([
+          fetchAllOrganizationMemberships(client, tenantRow.clerk_org_id),
+          fetchAllPendingInvitations(client, tenantRow.clerk_org_id),
+        ]);
+        for (const m of memData) {
+          const email = m.publicUserData?.identifier?.toLowerCase().trim();
+          if (email) activeMemberEmails.add(email);
+        }
+        for (const inv of invData) {
+          const email = inv.emailAddress?.toLowerCase().trim();
+          if (email) pendingInvitationEmails.add(email);
+        }
+      } catch {
+        // Non-blocking: fall back to direct per-email invitation dispatch
+      }
+    }
+
+    let pendingRolesChanged = false;
 
     for (const [email, role] of dedupedMap.entries()) {
+      if (activeMemberEmails.has(email)) {
+        skipped.push({
+          email,
+          role,
+          reason: "Already an active workspace member — update their role in Current Team below.",
+        });
+        continue;
+      }
+
+      if (pendingInvitationEmails.has(email)) {
+        existingPendingRoles[email] = role;
+        pendingRolesChanged = true;
+        skipped.push({
+          email,
+          role,
+          reason: "Pending invitation already exists; assigned role updated.",
+        });
+        continue;
+      }
+
       let invitationId: string | undefined;
 
-      if (
-        tenantRow.clerk_org_id &&
-        tenantRow.clerk_org_id !== "org_demo_1111" &&
-        process.env.NODE_ENV !== "test"
-      ) {
+      if (useClerk && client && tenantRow.clerk_org_id) {
         try {
-          const client = await clerkClient();
           const created = await client.organizations.createOrganizationInvitation({
             organizationId: tenantRow.clerk_org_id,
             emailAddress: email,
@@ -512,46 +632,55 @@ export class SettingsService {
           });
           invitationId = created.id;
         } catch (clerkErr: unknown) {
-          const msg =
-            clerkErr instanceof Error ? clerkErr.message : "Failed to dispatch Clerk invitation";
-          throw new AppApiError(
-            "CONFLICT",
-            `Unable to invite ${email}: ${msg}`,
-            409,
-          );
+          const detail = extractClerkErrorMessage(clerkErr, "Failed to dispatch Clerk invitation");
+          failed.push({ email, role, message: detail });
+          continue;
         }
       }
 
       existingPendingRoles[email] = role;
+      pendingRolesChanged = true;
       invited.push({ email, role, invitationId });
     }
 
-    await supabase
-      .from("tenants")
-      .update({
-        settings: {
-          ...existingSettings,
-          pending_role_assignments: existingPendingRoles,
-        },
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", tenant.tenantId);
-
-    try {
-      await auditService.appendEvent({
-        tenantId: tenant.tenantId,
-        actorId: tenant.clerkUserId,
-        actorType: "USER",
-        action: "TEAM_MEMBER_INVITED",
-        entityType: "TENANT",
-        entityId: tenant.tenantId,
-        eventData: { invited },
-      });
-    } catch {
-      // Non-blocking audit logging
+    if (pendingRolesChanged) {
+      await supabase
+        .from("tenants")
+        .update({
+          settings: {
+            ...existingSettings,
+            pending_role_assignments: existingPendingRoles,
+          },
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", tenant.tenantId);
     }
 
-    return { invited };
+    if (invited.length === 0 && skipped.length === 0 && failed.length > 0) {
+      throw new AppApiError(
+        "CONFLICT",
+        failed.map((f) => `${f.email}: ${f.message}`).join(" | "),
+        409,
+      );
+    }
+
+    if (invited.length > 0 || skipped.length > 0) {
+      try {
+        await auditService.appendEvent({
+          tenantId: tenant.tenantId,
+          actorId: tenant.clerkUserId,
+          actorType: "USER",
+          action: "TEAM_MEMBER_INVITED",
+          entityType: "TENANT",
+          entityId: tenant.tenantId,
+          eventData: { invited, skipped, failedCount: failed.length },
+        });
+      } catch {
+        // Non-blocking audit logging
+      }
+    }
+
+    return { invited, skipped, failed };
   }
 
   public async revokeInvitation(

@@ -234,5 +234,80 @@ describe("OnboardingService & 60-Second Progressive Engine", () => {
       expect(updatedSettings?.onboarding_step).toBe(3);
       expect(updatedSettings?.onboarding_completed_at).toBeDefined();
     });
+
+    it("rejects non-admin post-onboarding scope edits and blocks creator_role privilege escalation", async () => {
+      vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue({
+        from: vi.fn().mockImplementation((table: string) => {
+          if (table === "tenants") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              single: vi.fn().mockResolvedValue({
+                data: {
+                  name: "Acme Bank",
+                  settings: { onboarding_step: 3, onboarding_completed_at: "2026-11-12T00:00:00Z" },
+                },
+              }),
+            };
+          }
+          return { select: vi.fn().mockReturnThis() };
+        }),
+      } as any);
+
+      await expect(
+        onboardingService.saveInstitutionScope(
+          tenantId,
+          {
+            scopes: ["DIGITAL_LENDING"],
+            organization_name: "Acme Bank",
+            creator_role: "CHIEF_COMPLIANCE_OFFICER",
+          },
+          "user_invited_1",
+          "org_1",
+          { role: "MARKETING_GROWTH", isAdmin: false },
+        ),
+      ).rejects.toThrow(/Only workspace administrators/i);
+    });
+
+    it("blocks non-admin creator_role escalation in multi-member workspaces even before onboarding completes", async () => {
+      vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue({
+        from: vi.fn().mockImplementation((table: string) => {
+          if (table === "tenants") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              single: vi.fn().mockResolvedValue({
+                data: {
+                  name: "Acme Bank",
+                  settings: { onboarding_step: 1 },
+                },
+              }),
+            };
+          }
+          if (table === "tenant_memberships") {
+            return {
+              select: vi.fn().mockReturnValue({
+                eq: vi.fn().mockResolvedValue({ count: 3, error: null }),
+              }),
+            };
+          }
+          return { select: vi.fn().mockReturnThis() };
+        }),
+      } as any);
+
+      await expect(
+        onboardingService.saveInstitutionScope(
+          tenantId,
+          {
+            scopes: ["DIGITAL_LENDING"],
+            organization_name: "Acme Bank",
+            creator_role: "CHIEF_COMPLIANCE_OFFICER",
+          },
+          "user_invited_2",
+          "org_1",
+          { role: "MARKETING_GROWTH", isAdmin: false },
+        ),
+      ).rejects.toThrow(/Only workspace administrators can change workspace roles/i);
+    });
   });
 });

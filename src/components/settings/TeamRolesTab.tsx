@@ -139,11 +139,52 @@ export function TeamRolesTab() {
         return;
       }
 
-      setInviteRows([{ key: `row-${Date.now()}`, email: "", role: "MARKETING_GROWTH" }]);
-      setFeedback({
-        type: "success",
-        text: `Sent ${validEntries.length} ${validEntries.length === 1 ? "invitation" : "invitations"} with functional role permissions bound.`,
-      });
+      const invitedList: Array<{ email: string; role: CanonicalRole }> = json.data?.invited || [];
+      const skippedList: Array<{ email: string; reason: string }> = json.data?.skipped || [];
+      const failedList: Array<{ email: string; role: CanonicalRole; message: string }> =
+        json.data?.failed || [];
+
+      if (failedList.length > 0) {
+        setInviteRows(
+          failedList.map((f, idx) => ({
+            key: `retry-${Date.now()}-${idx}`,
+            email: f.email,
+            role: f.role,
+          })),
+        );
+        const parts: string[] = [];
+        if (invitedList.length > 0) {
+          parts.push(`Sent ${invitedList.length} invitation(s).`);
+        }
+        if (skippedList.length > 0) {
+          parts.push(`Skipped ${skippedList.length} existing member/invite(s).`);
+        }
+        parts.push(
+          `Failed (${failedList.length}): ${failedList
+            .map((f) => `${f.email} — ${f.message}`)
+            .join("; ")}`,
+        );
+        setFeedback({ type: "error", text: parts.join(" ") });
+      } else {
+        setInviteRows([{ key: `row-${Date.now()}`, email: "", role: "MARKETING_GROWTH" }]);
+        const parts: string[] = [];
+        if (invitedList.length > 0) {
+          parts.push(
+            `Sent ${invitedList.length} ${invitedList.length === 1 ? "invitation" : "invitations"} with functional role permissions bound.`,
+          );
+        }
+        if (skippedList.length > 0) {
+          parts.push(
+            `Updated/skipped ${skippedList.length}: ${skippedList
+              .map((s) => `${s.email} (${s.reason})`)
+              .join("; ")}`,
+          );
+        }
+        setFeedback({
+          type: "success",
+          text: parts.join(" ") || "Team invitations processed.",
+        });
+      }
       await loadTeam();
     } catch {
       setFeedback({ type: "error", text: "Network error dispatching invitations." });

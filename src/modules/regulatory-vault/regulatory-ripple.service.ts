@@ -131,6 +131,11 @@ export class RegulatoryRippleService {
             context_type: "REGULATORY",
             active_campaign_id: linkedCampaign?.id || null,
             status: "ACTIVE",
+            metadata: {
+              zero_prompt_source: "REGULATORY_RIPPLE_SENTINEL",
+              regulator,
+              impacted_product_id: product.id,
+            },
           })
           .select("id")
           .single();

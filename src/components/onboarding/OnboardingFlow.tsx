@@ -129,6 +129,9 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
         }
         if (status.onboardingCompleted) {
           setAlreadyCompleted(true);
+          if (!stepParam) {
+            router.replace("/chat");
+          }
         } else if (!stepParam && typeof status.stepCompleted === "number") {
           const nextStep = Math.min(3, Math.max(1, status.stepCompleted + 1));
           setCurrentStep(nextStep);
@@ -357,7 +360,7 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
           <div className="flex justify-center">
             <OrganizationList
               hidePersonal
-              afterSelectOrganizationUrl="/onboarding"
+              afterSelectOrganizationUrl="/"
               afterCreateOrganizationUrl="/onboarding"
             />
           </div>

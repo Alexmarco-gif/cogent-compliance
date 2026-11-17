@@ -24,6 +24,7 @@ export const GET = createApiHandler(
       status: query.status,
       limit: query.limit,
       cursor: query.cursor,
+      allowedCreatorIds: [tenant.userId, tenant.clerkUserId],
     });
   }
 );

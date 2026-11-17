@@ -35,6 +35,34 @@ export interface MessageRecord {
   created_at: string;
 }
 
+export const SHARED_INCIDENT_CREATORS = [
+  "system_drift_sentinel",
+  "system_ripple_sentinel",
+] as const;
+
+export function isSharedIncidentConversation(
+  conv: Pick<ConversationRecord, "created_by" | "title" | "metadata">,
+): boolean {
+  return (
+    conv.created_by === "system_drift_sentinel" ||
+    conv.created_by === "system_ripple_sentinel" ||
+    Boolean(conv.metadata?.zero_prompt_source) ||
+    conv.title.startsWith("[Drift Sentinel Alert]") ||
+    conv.title.startsWith("[Regulatory Ripple Alert]")
+  );
+}
+
+export function canAccessConversation(
+  conv: Pick<ConversationRecord, "created_by" | "title" | "metadata">,
+  allowedCreatorIds: string[],
+): boolean {
+  if (isSharedIncidentConversation(conv)) {
+    return true;
+  }
+  const normalized = new Set(allowedCreatorIds.filter(Boolean));
+  return normalized.has(conv.created_by);
+}
+
 export class ConversationService {
   /**
    * Creates a new conversation scoped strictly by tenant.
@@ -79,6 +107,7 @@ export class ConversationService {
 
   /**
    * Lists conversations for a tenant ordered by last_message_at DESC.
+   * When allowedCreatorIds is passed, isolates private threads to the creator while keeping shared sentinel incident threads visible.
    */
   public async listConversations(
     tenantId: string,
@@ -86,6 +115,7 @@ export class ConversationService {
       status?: "ACTIVE" | "ARCHIVED" | "CLOSED";
       limit?: number;
       cursor?: string;
+      allowedCreatorIds?: string[];
     }
   ): Promise<{ conversations: ConversationRecord[]; nextCursor?: string }> {
     const supabase = createAdminSupabaseClient();
@@ -99,6 +129,13 @@ export class ConversationService {
       .eq("status", status)
       .order("last_message_at", { ascending: false })
       .limit(limit + 1);
+
+    if (options?.allowedCreatorIds && options.allowedCreatorIds.length > 0) {
+      const creatorAllowList = Array.from(
+        new Set([...options.allowedCreatorIds.filter(Boolean), ...SHARED_INCIDENT_CREATORS]),
+      );
+      query = query.in("created_by", creatorAllowList);
+    }
 
     if (options?.cursor) {
       query = query.lt("last_message_at", options.cursor);
@@ -260,41 +297,58 @@ export class ConversationService {
   }): Promise<MessageRecord> {
     const supabase = createAdminSupabaseClient();
 
-    // Determine the highest existing sequence number
-    const { data: latestMsg } = await supabase
-      .from("marketing_messages")
-      .select("sequence_number")
-      .eq("tenant_id", params.tenantId)
-      .eq("conversation_id", params.conversationId)
-      .order("sequence_number", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    let msg: unknown = null;
+    let lastError: { code?: string; message?: string } | null = null;
 
-    const nextSeq = (latestMsg?.sequence_number || 0) + 1;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      // Determine the highest existing sequence number
+      const { data: latestMsg } = await supabase
+        .from("marketing_messages")
+        .select("sequence_number")
+        .eq("tenant_id", params.tenantId)
+        .eq("conversation_id", params.conversationId)
+        .order("sequence_number", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-    const { data: msg, error } = await supabase
-      .from("marketing_messages")
-      .insert({
-        tenant_id: params.tenantId,
-        conversation_id: params.conversationId,
-        role: params.role,
-        content: params.content,
-        content_type: params.contentType || "TEXT",
-        status: params.status || "COMPLETED",
-        sequence_number: nextSeq,
-        model_run_id: params.modelRunId || null,
-        metadata: params.metadata || {},
-      })
-      .select("*")
-      .single();
+      const nextSeq = (latestMsg?.sequence_number || 0) + 1;
 
-    if (error || !msg) {
+      const { data: inserted, error } = await supabase
+        .from("marketing_messages")
+        .insert({
+          tenant_id: params.tenantId,
+          conversation_id: params.conversationId,
+          role: params.role,
+          content: params.content,
+          content_type: params.contentType || "TEXT",
+          status: params.status || "COMPLETED",
+          sequence_number: nextSeq,
+          model_run_id: params.modelRunId || null,
+          metadata: params.metadata || {},
+        })
+        .select("*")
+        .single();
+
+      if (!error && inserted) {
+        msg = inserted;
+        lastError = null;
+        break;
+      }
+
+      lastError = error;
+      if (attempt === 0 && (error?.code === "23505" || /duplicate key/i.test(error?.message || ""))) {
+        continue;
+      }
+      break;
+    }
+
+    if (lastError || !msg) {
       logger.error("Failed to insert marketing message", {
         tenantId: params.tenantId,
         conversationId: params.conversationId,
-        error: error?.message,
+        error: lastError?.message,
       });
-      throw new Error(`Failed to insert message: ${error?.message || "Unknown error"}`);
+      throw new Error(`Failed to insert message: ${lastError?.message || "Unknown error"}`);
     }
 
     // Touch last_message_at on the conversation

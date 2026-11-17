@@ -9,6 +9,7 @@ import { resolveTenantContext } from "@/modules/auth-tenancy/tenant.resolver";
 import { requirePermission } from "@/modules/auth-tenancy/rbac.guard";
 import { AuthTenancyError } from "@/modules/auth-tenancy/types";
 import { sendMessageStreamSchema } from "@/contracts/conversation.contracts";
+import { canAccessConversation, conversationService } from "@/modules/conversations/conversation.service";
 import { copilotOrchestrator } from "@/modules/conversations/copilot.orchestrator";
 import { entitlementsService } from "@/modules/billing/entitlements.service";
 import { logger } from "@/lib/logger";
@@ -28,6 +29,38 @@ export async function POST(
     // 1. Resolve and verify tenant context & RBAC
     const tenant = await resolveTenantContext(req);
     requirePermission(tenant, "conversation.create");
+
+    // 1a. Verify conversation exists and caller owns it (or it is a shared sentinel incident thread)
+    const conversation = await conversationService.getConversation(
+      tenant.tenantId,
+      conversationId
+    );
+    if (!conversation) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "NOT_FOUND",
+            message: "Conversation not found.",
+            request_id: requestId,
+          },
+        },
+        { status: 404 },
+      );
+    }
+    if (!canAccessConversation(conversation, [tenant.userId, tenant.clerkUserId])) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: {
+            code: "FORBIDDEN",
+            message: "You do not have access to stream into another user's private thread.",
+            request_id: requestId,
+          },
+        },
+        { status: 403 },
+      );
+    }
 
     // 1b. Enforce 7-day evaluation trial expiration
     const subInfo = await entitlementsService.getTenantSubscriptionInfo(tenant.tenantId);

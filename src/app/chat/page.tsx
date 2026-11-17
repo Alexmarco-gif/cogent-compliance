@@ -79,7 +79,7 @@ function ChatWorkspaceContent() {
   const requestedConvId = searchParams.get("conversationId");
   const isExplicitNewAudit = searchParams.get("new") === "1";
 
-  const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
+  const { isLoaded: clerkLoaded, isSignedIn, orgId, userId } = useAuth();
   const [onboardingReady, setOnboardingReady] = useState(false);
   const [conversations, setConversations] = useState<ConversationRecord[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
@@ -123,6 +123,54 @@ function ChatWorkspaceContent() {
   const explicitNewRef = useRef<boolean>(isExplicitNewAudit);
   const requestedConvIdRef = useRef<string | null>(requestedConvId);
   requestedConvIdRef.current = requestedConvId;
+  const activeScopeKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("cogent:sidebar-collapsed") === "true") {
+        setSidebarCollapsed(true);
+      }
+    } catch {
+      // Ignore storage access failures
+    }
+  }, []);
+
+  const handleToggleSidebar = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem("cogent:sidebar-collapsed", String(next));
+      } catch {
+        // Ignore storage access failures
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const nextScope = userId && orgId ? `${userId}::${orgId}` : null;
+    if (activeScopeKeyRef.current && activeScopeKeyRef.current !== nextScope) {
+      activeConvIdRef.current = null;
+      explicitNewRef.current = false;
+      setActiveConvId(null);
+      setConversations([]);
+      setMessages([]);
+      setProducts([]);
+      setSelectedProductId(null);
+      setActiveCampaign(null);
+      setActiveAssessment(null);
+      setCampaignFindings([]);
+      setCampaignAsset(null);
+      setAssetExtraction(null);
+      setShowInspector(false);
+      setCanvasReport(null);
+      setShowArtifactCanvas(false);
+      setInspectClauseId(null);
+      setChatError(null);
+      setAuthIssue(null);
+    }
+    activeScopeKeyRef.current = nextScope;
+  }, [userId, orgId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -167,14 +215,12 @@ function ChatWorkspaceContent() {
       }
 
       const targetFromUrl = requestedConvIdRef.current;
-      if (targetFromUrl && list.some((c) => c.id === targetFromUrl)) {
-        setActiveConvId(targetFromUrl);
-        return;
-      }
-
-      const firstConv = list[0];
-      if (firstConv && !activeConvIdRef.current) {
-        setActiveConvId(firstConv.id);
+      if (targetFromUrl) {
+        if (list.some((c) => c.id === targetFromUrl)) {
+          setActiveConvId(targetFromUrl);
+        } else {
+          setActiveConvId(null);
+        }
       }
     } catch (err) {
       console.error("Failed to load conversations", err);
@@ -250,15 +296,25 @@ function ChatWorkspaceContent() {
   useEffect(() => {
     if (isExplicitNewAudit) {
       explicitNewRef.current = true;
+      activeConvIdRef.current = null;
       setActiveConvId(null);
       setMessages([]);
       setActiveCampaign(null);
+      setActiveAssessment(null);
+      setCampaignFindings([]);
+      setCampaignAsset(null);
+      setAssetExtraction(null);
       setShowInspector(false);
+      setCanvasReport(null);
+      setShowArtifactCanvas(false);
+      router.replace("/chat", { scroll: false });
     } else if (requestedConvId) {
       explicitNewRef.current = false;
+      activeConvIdRef.current = requestedConvId;
       setActiveConvId(requestedConvId);
+      router.replace("/chat", { scroll: false });
     }
-  }, [isExplicitNewAudit, requestedConvId]);
+  }, [isExplicitNewAudit, requestedConvId, router]);
 
   const loadCampaignData = useCallback(async (campaignId: string) => {
     try {
@@ -311,24 +367,32 @@ function ChatWorkspaceContent() {
     setLoadingMessages(true);
 
     fetch(`/api/marketing-shield/v1/conversations/${activeConvId}/messages`)
-      .then((res) => res.json())
-      .then((json) => {
-        if (isMounted && json.success && json.data) {
-          const loaded: DisplayMessage[] = (json.data.messages || []).map((m: MessageRecord) => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            citations: (m.metadata?.citations as CitationItem[]) || [],
-            structuredReport:
-              (m.metadata?.structured_report as StructuredComplianceReport) || undefined,
-            isStreaming: false,
-          }));
-          setMessages(loaded);
-          const lastWithReport = [...loaded]
-            .reverse()
-            .find((m) => Boolean(m.structuredReport))?.structuredReport;
-          setCanvasReport(lastWithReport || null);
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        if (!isMounted) return;
+        if (!res.ok || !json.success || !json.data) {
+          applyApiFailure(res.status, json, "Unable to open this compliance thread.");
+          if (res.status === 403 || res.status === 404) {
+            activeConvIdRef.current = null;
+            setActiveConvId(null);
+            setMessages([]);
+          }
+          return;
         }
+        const loaded: DisplayMessage[] = (json.data.messages || []).map((m: MessageRecord) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          citations: (m.metadata?.citations as CitationItem[]) || [],
+          structuredReport:
+            (m.metadata?.structured_report as StructuredComplianceReport) || undefined,
+          isStreaming: false,
+        }));
+        setMessages(loaded);
+        const lastWithReport = [...loaded]
+          .reverse()
+          .find((m) => Boolean(m.structuredReport))?.structuredReport;
+        setCanvasReport(lastWithReport || null);
       })
       .catch((err) => console.error("Failed to load messages", err))
       .finally(() => {
@@ -346,14 +410,14 @@ function ChatWorkspaceContent() {
     return () => {
       isMounted = false;
     };
-  }, [activeConvId, loadCampaignData]);
+  }, [activeConvId, loadCampaignData, applyApiFailure]);
 
   const handleSelectConversation = (id: string) => {
     explicitNewRef.current = false;
+    activeConvIdRef.current = id;
     setActiveConvId(id);
     setShowArtifactCanvas(false);
     setChatError(null);
-    router.replace(`/chat?conversationId=${id}`, { scroll: false });
   };
 
   const handleNewConversation = () => {
@@ -371,7 +435,9 @@ function ChatWorkspaceContent() {
     setShowArtifactCanvas(false);
     setChatError(null);
     setAuthIssue(null);
-    router.replace("/chat?new=1", { scroll: false });
+    if (requestedConvId || isExplicitNewAudit) {
+      router.replace("/chat", { scroll: false });
+    }
   };
 
   const handleRename = async (id: string, newTitle: string) => {
@@ -408,12 +474,7 @@ function ChatWorkspaceContent() {
       const remaining = conversations.filter((c) => c.id !== id);
       setConversations(remaining);
       if (activeConvId === id) {
-        const nextId = remaining[0]?.id || null;
-        explicitNewRef.current = !nextId;
-        setActiveConvId(nextId);
-        router.replace(nextId ? `/chat?conversationId=${nextId}` : "/chat?new=1", {
-          scroll: false,
-        });
+        handleNewConversation();
       }
     } catch (err) {
       console.error("Failed to archive conversation", err);
@@ -578,7 +639,6 @@ function ChatWorkspaceContent() {
         setAuthIssue(null);
         setActiveConvId(currentConvId);
         setConversations((prev) => [createJson.data, ...prev]);
-        router.replace(`/chat?conversationId=${currentConvId}`, { scroll: false });
       } catch (err) {
         console.error("Failed to create initial conversation", err);
         setChatError("Unable to reach the workspace server. Check your connection and try again.");
@@ -877,7 +937,7 @@ function ChatWorkspaceContent() {
         onArchiveConversation={handleArchive}
         loadingConversations={loadingConversations}
         collapsed={sidebarCollapsed}
-        onToggleCollapse={() => setSidebarCollapsed(true)}
+        onToggleCollapse={handleToggleSidebar}
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
       />
@@ -887,8 +947,6 @@ function ChatWorkspaceContent() {
         <WorkspaceHeader
           section="Marketing Shield"
           title={activeConversation?.title || "New Audit"}
-          sidebarCollapsed={sidebarCollapsed}
-          onExpandSidebar={() => setSidebarCollapsed(false)}
           onOpenMobileSidebar={() => setMobileSidebarOpen(true)}
           rightActions={
             <>

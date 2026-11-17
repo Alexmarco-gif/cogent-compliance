@@ -225,18 +225,39 @@ export async function resolveTenantContext(
     if (process.env.NODE_ENV !== "test") {
       try {
         const client = await clerkClient();
-        const memList = await client.organizations.getOrganizationMembershipList({
-          organizationId: orgId,
-          limit: 100,
-        });
-        orgMemberCount = memList.data.length;
-        const clerkMem = memList.data.find((m) => m.publicUserData?.userId === userId);
-        if (clerkMem) {
-          clerkMembershipId = clerkMem.id;
-          clerkMetadataCanonicalRole = (clerkMem.publicMetadata as Record<string, unknown> | undefined)?.canonicalRole;
-          memberEmail = clerkMem.publicUserData?.identifier?.toLowerCase().trim();
-          if (!effectiveOrgRole && clerkMem.role) {
-            effectiveOrgRole = clerkMem.role;
+        let offset = 0;
+        const pageSize = 100;
+        let foundMember = null as
+          | Awaited<ReturnType<typeof client.organizations.getOrganizationMembershipList>>["data"][number]
+          | null;
+
+        for (let page = 0; page < 20; page += 1) {
+          const memList = await client.organizations.getOrganizationMembershipList({
+            organizationId: orgId,
+            limit: pageSize,
+            offset,
+          });
+          if (page === 0) {
+            orgMemberCount = memList.totalCount ?? memList.data.length;
+          }
+          const match = memList.data.find((m) => m.publicUserData?.userId === userId);
+          if (match) {
+            foundMember = match;
+            break;
+          }
+          if (memList.data.length < pageSize) {
+            break;
+          }
+          offset += pageSize;
+        }
+
+        if (foundMember) {
+          clerkMembershipId = foundMember.id;
+          clerkMetadataCanonicalRole = (foundMember.publicMetadata as Record<string, unknown> | undefined)
+            ?.canonicalRole;
+          memberEmail = foundMember.publicUserData?.identifier?.toLowerCase().trim();
+          if (!effectiveOrgRole && foundMember.role) {
+            effectiveOrgRole = foundMember.role;
           }
         }
       } catch (memErr) {
@@ -253,8 +274,34 @@ export async function resolveTenantContext(
         string,
         unknown
       >;
-      const pendingRoles = (tenantSettings.pending_role_assignments || {}) as Record<string, unknown>;
-      const pendingRole = memberEmail ? pendingRoles[memberEmail] : undefined;
+      const pendingRoles = {
+        ...((tenantSettings.pending_role_assignments || {}) as Record<string, unknown>),
+      };
+      let matchedPendingEmail: string | undefined =
+        memberEmail && isCanonicalRole(pendingRoles[memberEmail]) ? memberEmail : undefined;
+      let pendingRole = matchedPendingEmail ? pendingRoles[matchedPendingEmail] : undefined;
+
+      if (
+        !isCanonicalRole(clerkMetadataCanonicalRole) &&
+        !isCanonicalRole(pendingRole) &&
+        process.env.NODE_ENV !== "test" &&
+        Object.keys(pendingRoles).length > 0
+      ) {
+        try {
+          const client = await clerkClient();
+          const clerkUser = await client.users.getUser(userId);
+          for (const addr of clerkUser.emailAddresses || []) {
+            const lower = addr.emailAddress?.toLowerCase().trim();
+            if (lower && isCanonicalRole(pendingRoles[lower])) {
+              matchedPendingEmail = lower;
+              pendingRole = pendingRoles[lower];
+              break;
+            }
+          }
+        } catch {
+          // Non-blocking fallback
+        }
+      }
 
       if (isCanonicalRole(clerkMetadataCanonicalRole)) {
         resolvedRole = clerkMetadataCanonicalRole;
@@ -290,6 +337,38 @@ export async function resolveTenantContext(
         if (reconciled?.id) {
           resolvedMembershipId = reconciled.id;
         }
+
+        if (matchedPendingEmail) {
+          delete pendingRoles[matchedPendingEmail];
+          await supabase
+            .from("tenants")
+            .update({
+              settings: {
+                ...tenantSettings,
+                pending_role_assignments: pendingRoles,
+              },
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", tenant.id);
+        }
+
+        if (
+          process.env.NODE_ENV !== "test" &&
+          clerkMetadataCanonicalRole !== resolvedRole &&
+          orgId !== "org_demo_1111"
+        ) {
+          try {
+            const client = await clerkClient();
+            await client.organizations.updateOrganizationMembershipMetadata({
+              organizationId: orgId,
+              userId,
+              publicMetadata: { canonicalRole: resolvedRole },
+            });
+          } catch {
+            // Non-blocking metadata sync
+          }
+        }
+
         logger.info("Auto-reconciled missing membership row", {
           userId,
           tenantId: tenant.id,

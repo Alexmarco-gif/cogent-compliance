@@ -12,6 +12,7 @@ import {
   Activity,
   Settings,
   PanelLeftClose,
+  PanelLeftOpen,
   MessageSquare,
   MoreHorizontal,
   Edit2,
@@ -88,7 +89,7 @@ export function WorkspaceSidebar({
   const router = useRouter();
   const searchParams = useSearchParams();
   const activeKbTab = searchParams.get("tab") || "products";
-  const { isLoaded, isSignedIn, orgId } = useAuth();
+  const { isLoaded, isSignedIn, orgId, userId } = useAuth();
   const { signOut } = useClerk();
   const { user } = useUser();
 
@@ -102,7 +103,7 @@ export function WorkspaceSidebar({
   const [selfConversations, setSelfConversations] = useState<ConversationRecord[]>([]);
   const [loadingSelfConversations, setLoadingSelfConversations] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const userMenuRef = useRef<HTMLDivElement>(null);
+  const focusSearchAfterExpandRef = useRef(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const managesOwnThreads = conversations === undefined;
@@ -127,20 +128,35 @@ export function WorkspaceSidebar({
     const onKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        searchInputRef.current?.focus();
+        if (collapsed && onToggleCollapse) {
+          focusSearchAfterExpandRef.current = true;
+          onToggleCollapse();
+        } else {
+          searchInputRef.current?.focus();
+        }
       } else if (e.key === "Escape") {
         setUserMenuOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [collapsed, onToggleCollapse]);
+
+  useEffect(() => {
+    if (!collapsed && focusSearchAfterExpandRef.current) {
+      focusSearchAfterExpandRef.current = false;
+      requestAnimationFrame(() => {
+        searchInputRef.current?.focus();
+      });
+    }
+  }, [collapsed]);
 
   // Close user menu on outside click
   useEffect(() => {
     if (!userMenuOpen) return;
     const onMouseDown = (e: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest("[data-user-menu-root]")) {
         setUserMenuOpen(false);
       }
     };
@@ -178,6 +194,7 @@ export function WorkspaceSidebar({
 
   // Load saved threads on non-chat pages (e.g. /knowledge-base, /drift-monitors) so history stays accessible
   useEffect(() => {
+    setSelfConversations([]);
     if (!managesOwnThreads || !isLoaded || !isSignedIn || !orgId) return;
     let active = true;
     setLoadingSelfConversations(true);
@@ -196,10 +213,11 @@ export function WorkspaceSidebar({
     return () => {
       active = false;
     };
-  }, [managesOwnThreads, isLoaded, isSignedIn, orgId]);
+  }, [managesOwnThreads, isLoaded, isSignedIn, orgId, userId]);
 
   // Load current plan summary quietly when authenticated with an active org
   useEffect(() => {
+    setSubSummary(null);
     if (!isLoaded || !isSignedIn || !orgId) return;
     let active = true;
 
@@ -240,7 +258,7 @@ export function WorkspaceSidebar({
       active = false;
       window.removeEventListener("cogent:billing-updated", loadSummary);
     };
-  }, [isLoaded, isSignedIn, orgId]);
+  }, [isLoaded, isSignedIn, orgId, userId]);
 
   const filteredConversations = resolvedConversations.filter((c) =>
     c.title.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -290,9 +308,79 @@ export function WorkspaceSidebar({
         : "text-zinc-600 hover:bg-zinc-200/40 hover:text-zinc-950"
     }`;
 
-  if (collapsed) {
-    return null;
-  }
+  const iconNavClass = (active: boolean) =>
+    `h-9 w-9 flex items-center justify-center rounded-md transition-colors cursor-pointer ${
+      active
+        ? "bg-zinc-200/80 text-zinc-950"
+        : "text-zinc-500 hover:bg-zinc-200/50 hover:text-zinc-950"
+    }`;
+
+  const userMenuPopover = (collapsedPlacement: boolean) =>
+    userMenuOpen ? (
+      <div
+        className={`absolute bg-white border border-zinc-200 rounded-lg shadow-lg py-1.5 z-40 text-[12px] ${
+          collapsedPlacement
+            ? "left-full bottom-0 ml-2 w-52"
+            : "bottom-full left-0 right-0 mb-2"
+        }`}
+      >
+        <button
+          type="button"
+          disabled={updatingAvatar}
+          onClick={() => avatarInputRef.current?.click()}
+          className="w-full text-left px-3 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+        >
+          <Camera className="h-3.5 w-3.5 text-zinc-500" />
+          <span>{user?.hasImage ? "Change Photo" : "Upload Photo"}</span>
+        </button>
+        {user?.hasImage && (
+          <button
+            type="button"
+            disabled={updatingAvatar}
+            onClick={handleRemoveAvatar}
+            className="w-full text-left px-3 py-1.5 text-rose-700 hover:bg-rose-50 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+            <span>Remove Photo</span>
+          </button>
+        )}
+        <div className="my-1 border-t border-zinc-100" />
+        <Link
+          href="/settings?tab=profile"
+          onClick={() => {
+            setUserMenuOpen(false);
+            onCloseMobile?.();
+          }}
+          className="w-full px-3 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2"
+        >
+          <UserIcon className="h-3.5 w-3.5 text-zinc-500" />
+          <span>Profile Settings</span>
+        </Link>
+        <Link
+          href="/settings?tab=organization"
+          onClick={() => {
+            setUserMenuOpen(false);
+            onCloseMobile?.();
+          }}
+          className="w-full px-3 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2"
+        >
+          <Building2 className="h-3.5 w-3.5 text-zinc-500" />
+          <span>Switch Organization</span>
+        </Link>
+        <div className="my-1 border-t border-zinc-100" />
+        <button
+          type="button"
+          onClick={() => {
+            setUserMenuOpen(false);
+            void signOut({ redirectUrl: "/sign-in" });
+          }}
+          className="w-full text-left px-3 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2 cursor-pointer"
+        >
+          <LogOut className="h-3.5 w-3.5 text-zinc-500" />
+          <span>Sign Out</span>
+        </button>
+      </div>
+    ) : null;
 
   const sidebarContent = (
     <aside className="w-[240px] shrink-0 bg-zinc-50 border-r border-zinc-200 flex flex-col justify-between h-screen select-none">
@@ -300,7 +388,14 @@ export function WorkspaceSidebar({
       <div className="flex flex-col min-h-0 flex-1">
         {/* Brand Row */}
         <div className="h-[52px] px-3.5 flex items-center justify-between shrink-0">
-          <Link href="/chat" className="inline-flex items-center">
+          <Link
+            href="/chat"
+            onClick={() => {
+              onNewAudit?.();
+              onCloseMobile?.();
+            }}
+            className="inline-flex items-center"
+          >
             <CogentLogo variant="dark" size="sm" />
           </Link>
           {onToggleCollapse && (
@@ -541,7 +636,7 @@ export function WorkspaceSidebar({
         </div>
       </div>
 
-      {/* Bottom Rail: Monochrome Plan Card, Utility Links, Org Switcher */}
+      {/* Bottom Rail: Monochrome Plan Card, Utility Links, User Footer */}
       <div className="p-3 border-t border-zinc-200 space-y-2.5 shrink-0">
         {isLoaded && isSignedIn && subSummary && (
           <div
@@ -595,74 +690,8 @@ export function WorkspaceSidebar({
 
         {/* User Avatar & Name Footer (no Org icon, no email) */}
         {isLoaded && isSignedIn && (
-          <div ref={userMenuRef} className="relative pt-1.5 border-t border-zinc-200">
-            <input
-              ref={avatarInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleAvatarFileSelected}
-              className="hidden"
-            />
-
-            {userMenuOpen && (
-              <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-zinc-200 rounded-lg shadow-lg py-1.5 z-40 text-[12px]">
-                <button
-                  type="button"
-                  disabled={updatingAvatar}
-                  onClick={() => avatarInputRef.current?.click()}
-                  className="w-full text-left px-3 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  <Camera className="h-3.5 w-3.5 text-zinc-500" />
-                  <span>{user?.hasImage ? "Change Photo" : "Upload Photo"}</span>
-                </button>
-                {user?.hasImage && (
-                  <button
-                    type="button"
-                    disabled={updatingAvatar}
-                    onClick={handleRemoveAvatar}
-                    className="w-full text-left px-3 py-1.5 text-rose-700 hover:bg-rose-50 flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                    <span>Remove Photo</span>
-                  </button>
-                )}
-                <div className="my-1 border-t border-zinc-100" />
-                <Link
-                  href="/settings?tab=profile"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    onCloseMobile?.();
-                  }}
-                  className="w-full px-3 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2"
-                >
-                  <UserIcon className="h-3.5 w-3.5 text-zinc-500" />
-                  <span>Profile Settings</span>
-                </Link>
-                <Link
-                  href="/settings?tab=organization"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    onCloseMobile?.();
-                  }}
-                  className="w-full px-3 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2"
-                >
-                  <Building2 className="h-3.5 w-3.5 text-zinc-500" />
-                  <span>Switch Organization</span>
-                </Link>
-                <div className="my-1 border-t border-zinc-100" />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setUserMenuOpen(false);
-                    void signOut({ redirectUrl: "/sign-in" });
-                  }}
-                  className="w-full text-left px-3 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2 cursor-pointer"
-                >
-                  <LogOut className="h-3.5 w-3.5 text-zinc-500" />
-                  <span>Sign Out</span>
-                </button>
-              </div>
-            )}
+          <div data-user-menu-root className="relative pt-1.5 border-t border-zinc-200">
+            {userMenuPopover(false)}
 
             <button
               type="button"
@@ -706,12 +735,168 @@ export function WorkspaceSidebar({
     </aside>
   );
 
+  const collapsedRailContent = (
+    <aside className="w-[60px] shrink-0 bg-zinc-50 border-r border-zinc-200 flex flex-col justify-between items-center h-screen select-none py-2">
+      {/* Top: Expand + Search + Primary Icon Navigation */}
+      <div className="flex flex-col items-center gap-1.5 w-full px-2">
+        <div className="h-[44px] flex items-center justify-center w-full">
+          {onToggleCollapse && (
+            <button
+              type="button"
+              onClick={onToggleCollapse}
+              className="h-9 w-9 flex items-center justify-center rounded-md text-zinc-500 hover:text-zinc-950 hover:bg-zinc-200/50 transition-colors cursor-pointer"
+              title="Expand sidebar"
+              aria-label="Expand sidebar"
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            if (onToggleCollapse) {
+              focusSearchAfterExpandRef.current = true;
+              onToggleCollapse();
+            }
+          }}
+          className="h-9 w-9 flex items-center justify-center rounded-md text-zinc-500 hover:text-zinc-950 hover:bg-zinc-200/50 transition-colors cursor-pointer"
+          title="Search threads (⌘K)"
+          aria-label="Search threads"
+        >
+          <Search className="h-4 w-4" />
+        </button>
+
+        <div className="w-6 h-px bg-zinc-200 my-1" />
+
+        {onNewAudit ? (
+          <button
+            type="button"
+            onClick={onNewAudit}
+            className={iconNavClass(pathname === "/chat" && !activeConversationId)}
+            title="New Audit"
+            aria-label="New Audit"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        ) : (
+          <Link
+            href="/chat?new=1"
+            className={iconNavClass(pathname === "/chat")}
+            title="New Audit"
+            aria-label="New Audit"
+          >
+            <Plus className="h-4 w-4" />
+          </Link>
+        )}
+
+        <Link
+          href="/knowledge-base?tab=playbooks"
+          className={iconNavClass(pathname === "/knowledge-base" && activeKbTab === "playbooks")}
+          title="Knowledge & Playbooks"
+          aria-label="Knowledge and Playbooks"
+        >
+          <BookOpen className="h-4 w-4" />
+        </Link>
+
+        <Link
+          href="/knowledge-base?tab=products"
+          className={iconNavClass(pathname === "/knowledge-base" && activeKbTab === "products")}
+          title="Product Rate Cards"
+          aria-label="Product Rate Cards"
+        >
+          <Percent className="h-4 w-4" />
+        </Link>
+
+        <div className="w-6 h-px bg-zinc-200 my-1" />
+
+        <Link
+          href="/knowledge-base?tab=rules"
+          className={iconNavClass(pathname === "/knowledge-base" && activeKbTab === "rules")}
+          title="Compliance Rules"
+          aria-label="Compliance Rules"
+        >
+          <CheckSquare className="h-4 w-4" />
+        </Link>
+
+        <Link
+          href="/drift-monitors"
+          className={iconNavClass(pathname.startsWith("/drift-monitors"))}
+          title="URL Drift Monitors"
+          aria-label="URL Drift Monitors"
+        >
+          <Activity className="h-4 w-4" />
+        </Link>
+      </div>
+
+      {/* Bottom: Settings + User Avatar (no Org icon, no email) */}
+      <div className="flex flex-col items-center gap-2 w-full px-2 pt-2 border-t border-zinc-200">
+        <Link
+          href="/settings"
+          className={iconNavClass(pathname.startsWith("/settings"))}
+          title="Settings"
+          aria-label="Settings"
+        >
+          <Settings className="h-4 w-4" />
+        </Link>
+
+        {isLoaded && isSignedIn && (
+          <div data-user-menu-root className="relative">
+            {userMenuPopover(true)}
+
+            <button
+              type="button"
+              onClick={() => setUserMenuOpen((prev) => !prev)}
+              className="h-9 w-9 flex items-center justify-center rounded-md hover:bg-zinc-200/50 transition-colors cursor-pointer"
+              title={displayName}
+              aria-label="User profile and account options"
+            >
+              {user?.hasImage && user.imageUrl ? (
+                <img
+                  src={user.imageUrl}
+                  alt={displayName}
+                  className="h-7 w-7 rounded-full object-cover border border-zinc-200"
+                />
+              ) : (
+                <div className="h-7 w-7 rounded-full bg-zinc-900 text-white text-[11px] font-semibold flex items-center justify-center">
+                  {userInitials}
+                </div>
+              )}
+            </button>
+          </div>
+        )}
+
+        {isLoaded && !isSignedIn && (
+          <Link
+            href="/sign-in"
+            className="h-9 w-9 flex items-center justify-center rounded-md bg-zinc-900 hover:bg-zinc-800 text-white transition-colors"
+            title="Sign in"
+            aria-label="Sign in"
+          >
+            <LogIn className="h-4 w-4" />
+          </Link>
+        )}
+      </div>
+    </aside>
+  );
+
   return (
     <>
-      {/* Desktop Fixed Sidebar */}
-      <div className="hidden md:block">{sidebarContent}</div>
+      <input
+        ref={avatarInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleAvatarFileSelected}
+        className="hidden"
+      />
 
-      {/* Mobile Slide-Over Sidebar */}
+      {/* Desktop Fixed Sidebar (expanded or icon-only collapsed rail) */}
+      <div className="hidden md:block">
+        {collapsed ? collapsedRailContent : sidebarContent}
+      </div>
+
+      {/* Mobile Slide-Over Sidebar (always expanded) */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden flex">
           <div

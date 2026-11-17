@@ -451,11 +451,16 @@ export class DriftService {
           const { data: incidentConv } = await convQuery
             .insert({
               tenant_id: tenantId,
-              created_by: actorId || "system_drift_sentinel",
+              created_by: "system_drift_sentinel",
               title: `[Drift Sentinel Alert] ${monitor.campaign_title || monitor.published_url}`,
               context_type: "CAMPAIGN",
               active_campaign_id: monitor.campaign_id,
               status: "ACTIVE",
+              metadata: {
+                zero_prompt_source: "DRIFT_SENTINEL",
+                monitor_id: monitor.id,
+                triggered_by: actorId,
+              },
             })
             .select("id")
             .single();

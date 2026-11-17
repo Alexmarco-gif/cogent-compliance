@@ -3,8 +3,8 @@
  * Document Reference: Document 04 (Section 3.3, 3.4), Document 08 (Phase 6)
  */
 
-import { createApiHandler } from "@/lib/api-handler";
-import { conversationService } from "@/modules/conversations/conversation.service";
+import { AppApiError, createApiHandler } from "@/lib/api-handler";
+import { canAccessConversation, conversationService } from "@/modules/conversations/conversation.service";
 import { updateConversationSchema } from "@/contracts/conversation.contracts";
 
 /**
@@ -17,7 +17,7 @@ export const GET = createApiHandler(
   async (_req, { tenant, params }) => {
     const conversationId = Array.isArray(params.id) ? params.id[0] : params.id;
     if (!conversationId) {
-      throw new Error("Conversation ID is required");
+      throw new AppApiError("VALIDATION_FAILED", "Conversation ID is required", 400);
     }
 
     const conversation = await conversationService.getConversation(
@@ -25,7 +25,15 @@ export const GET = createApiHandler(
       conversationId
     );
     if (!conversation) {
-      throw new Error("Conversation not found");
+      throw new AppApiError("NOT_FOUND", "Conversation not found", 404);
+    }
+
+    if (!canAccessConversation(conversation, [tenant.userId, tenant.clerkUserId])) {
+      throw new AppApiError(
+        "FORBIDDEN",
+        "You do not have access to this private compliance thread.",
+        403,
+      );
     }
 
     return conversation;
@@ -44,7 +52,23 @@ export const PATCH = createApiHandler(
   async (_req, { tenant, body, params }) => {
     const conversationId = Array.isArray(params.id) ? params.id[0] : params.id;
     if (!conversationId) {
-      throw new Error("Conversation ID is required");
+      throw new AppApiError("VALIDATION_FAILED", "Conversation ID is required", 400);
+    }
+
+    const conversation = await conversationService.getConversation(
+      tenant.tenantId,
+      conversationId
+    );
+    if (!conversation) {
+      throw new AppApiError("NOT_FOUND", "Conversation not found", 404);
+    }
+
+    if (!canAccessConversation(conversation, [tenant.userId, tenant.clerkUserId])) {
+      throw new AppApiError(
+        "FORBIDDEN",
+        "You do not have permission to rename another user's private compliance thread.",
+        403,
+      );
     }
 
     return conversationService.updateConversation(tenant.tenantId, conversationId, {

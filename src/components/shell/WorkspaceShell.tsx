@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { WorkspaceHeader } from "./WorkspaceHeader";
 
@@ -20,6 +20,28 @@ export function WorkspaceShell({
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem("cogent:sidebar-collapsed") === "true") {
+        setSidebarCollapsed(true);
+      }
+    } catch {
+      // Ignore storage access failures
+    }
+  }, []);
+
+  const handleToggleCollapse = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem("cogent:sidebar-collapsed", String(next));
+      } catch {
+        // Ignore storage access failures
+      }
+      return next;
+    });
+  }, []);
+
   return (
     <div className="flex h-screen bg-white text-zinc-950 overflow-hidden">
       <Suspense
@@ -29,7 +51,7 @@ export function WorkspaceShell({
       >
         <WorkspaceSidebar
           collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed(true)}
+          onToggleCollapse={handleToggleCollapse}
           mobileOpen={mobileOpen}
           onCloseMobile={() => setMobileOpen(false)}
         />
@@ -39,8 +61,6 @@ export function WorkspaceShell({
         <WorkspaceHeader
           section={section}
           title={title}
-          sidebarCollapsed={sidebarCollapsed}
-          onExpandSidebar={() => setSidebarCollapsed(false)}
           onOpenMobileSidebar={() => setMobileOpen(true)}
           rightActions={rightActions}
         />

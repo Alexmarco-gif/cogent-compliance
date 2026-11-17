@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveTenantContext } from "@/modules/auth-tenancy/tenant.resolver";
 import { AuthTenancyError } from "@/modules/auth-tenancy/types";
+import { AppApiError } from "@/lib/api-handler";
 import { OnboardingScopeRequestSchema } from "@/contracts/billing.contracts";
 import { onboardingService } from "@/modules/onboarding/onboarding.service";
 import { logger } from "@/lib/logger";
@@ -23,11 +24,15 @@ export async function POST(req: NextRequest) {
       parseResult.data,
       tenantContext.clerkUserId,
       tenantContext.clerkOrgId,
+      {
+        role: tenantContext.role,
+        isAdmin: tenantContext.permissions.has("tenant.admin"),
+      },
     );
 
     return NextResponse.json(result, { status: 200 });
   } catch (err: unknown) {
-    if (err instanceof AuthTenancyError) {
+    if (err instanceof AuthTenancyError || err instanceof AppApiError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: err.statusCode });
     }
     const message = err instanceof Error ? err.message : "Internal server error";
