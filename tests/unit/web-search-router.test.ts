@@ -30,7 +30,7 @@ vi.mock("@/lib/supabase", () => {
 });
 
 describe("Two-Step Live Web Search Router (WebSearchRouter)", () => {
-  let mockGenAi: any;
+  let mockGenAi: { models: { generateContent: ReturnType<typeof vi.fn> } };
 
   beforeEach(() => {
     mockGenAi = {
@@ -204,5 +204,46 @@ describe("Two-Step Live Web Search Router (WebSearchRouter)", () => {
         router.fetchLiveUrlContent({ url }, "11111111-1111-1111-1111-111111111111")
       ).rejects.toThrow(/URL_FETCH_BLOCKED/);
     }
+  });
+
+  it("should default prioritize_official_regulators to false and search general blogs and websites without .gov.ng restriction", async () => {
+    mockGenAi.models.generateContent.mockResolvedValueOnce({
+      text: "TechCabal and Paystack blog covered fintech onboarding trends.",
+      candidates: [
+        {
+          groundingMetadata: {
+            groundingChunks: [
+              {
+                web: {
+                  uri: "https://techcabal.com/2026/05/fintech-onboarding-trends",
+                  title: "TechCabal Fintech Onboarding Report",
+                },
+              },
+              {
+                web: {
+                  uri: "https://paystack.com/blog/engineering/compliance-guide",
+                  title: "Paystack Blog Compliance Guide",
+                },
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    const router = new WebSearchRouter({
+      customClient: mockGenAi as unknown as GoogleGenAI,
+    });
+
+    const result = await router.searchLiveWeb(
+      { query: "fintech onboarding blog insights" } as Parameters<typeof router.searchLiveWeb>[0],
+      "11111111-1111-1111-1111-111111111111"
+    );
+
+    expect(result.results).toHaveLength(2);
+    expect(result.results[0]!.retrieved_url).toBe("https://techcabal.com/2026/05/fintech-onboarding-trends");
+    expect(result.results[1]!.retrieved_url).toBe("https://paystack.com/blog/engineering/compliance-guide");
+    const promptSent = mockGenAi.models.generateContent.mock.calls[0]?.[0]?.contents as string;
+    expect(promptSent).toContain("Do NOT restrict results to .gov.ng");
   });
 });

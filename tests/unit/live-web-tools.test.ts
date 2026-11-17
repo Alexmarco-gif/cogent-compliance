@@ -67,6 +67,21 @@ describe("Gemini Copilot Tools 9 & 10: Live Web Intelligence & URL Fetcher", () 
     );
   });
 
+  it("Tool 9: search_live_web defaults to general open web search (prioritize_official_regulators=false) when omitted", async () => {
+    await statutoryToolExecutor.searchLiveWeb(
+      { query: "TechCabal Nigerian fintech lending news" },
+      { tenantId }
+    );
+
+    expect(webSearchRouter.searchLiveWeb).toHaveBeenCalledWith(
+      {
+        query: "TechCabal Nigerian fintech lending news",
+        prioritize_official_regulators: false,
+      },
+      tenantId
+    );
+  });
+
   it("Tool 10: fetch_live_url_content executes SSRF-safe URL fetcher and returns sanitized snapshot", async () => {
     const result = await statutoryToolExecutor.fetchLiveUrlContent(
       { url: "https://bank.com.ng/promos/quickcash", campaign_id: "camp_123" },

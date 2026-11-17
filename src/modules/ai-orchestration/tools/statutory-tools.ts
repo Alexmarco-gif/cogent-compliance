@@ -203,19 +203,19 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "search_live_web",
     description:
-      "Performs real-time live web search and intelligence retrieval across the Nigerian internet, covering official CBN/FCCPC/ARCON/NDPC/SEC circulars and enforcement news.",
+      "Performs a general real-time open web search across the entire internet — including blogs, company websites, news portals, industry articles, forums, documentation, and official publications — for live information on any topic.",
     parameters: {
       type: Type.OBJECT,
       properties: {
         query: {
           type: Type.STRING,
           description:
-            "Search query for live intelligence, market news, corporate actions, or regulatory circulars.",
+            "General live web search query for any website, blog, article, news, company info, market update, or regulatory topic.",
         },
         prioritize_official_regulators: {
           type: Type.BOOLEAN,
           description:
-            "Optional flag to highlight official regulator perspectives (.gov.ng) alongside broader intelligence.",
+            "Optional flag (defaults to false). Leave false for general web search across all blogs and websites; set true only if official regulator publications should also be highlighted.",
         },
       },
       required: ["query"],
@@ -1141,7 +1141,7 @@ export class StatutoryToolExecutor {
     return webSearchRouter.searchLiveWeb(
       {
         query: args.query,
-        prioritize_official_regulators: args.prioritize_official_regulators !== false,
+        prioritize_official_regulators: args.prioritize_official_regulators === true,
       },
       ctx.tenantId
     );

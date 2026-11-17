@@ -114,6 +114,7 @@ CRITICAL OPERATIONAL RULES:
    - NEVER recalculate, round differently, or invent an alternative APR, fee, or tenor.
 3. DUAL STATUTORY VAULT + LIVE WEB GROUNDING:
    - Synthesize both verified Statutory Vault provisions and Live Web Intelligence from '<dual_grounding_context>' when present.
+   - Use 'search_live_web' as a general open web search across any public website, blog, news site, documentation, or official publication (never restrict queries to .gov.ng only).
    - Do NOT repeat 'search_regulatory_evidence' if '<dual_grounding_context>' already contains relevant Vault clauses.
    - Never invent or fabricate clause numbers, circular dates, URLs, or penalty amounts.
 4. CLEAN EDITORIAL MARKDOWN & TYPOGRAPHY:
@@ -229,10 +230,7 @@ CRITICAL OPERATIONAL RULES:
         .replace(/\s+/g, " ")
         .trim();
       if (sanitizedPrompt.length > 0) {
-        const hasNigeriaContext = /(nigeria|cbn|fccpc|arcon|ndpc|sec|naira|₦)/i.test(sanitizedPrompt);
-        webQuery = hasNigeriaContext
-          ? sanitizedPrompt.slice(0, 160)
-          : `${sanitizedPrompt.slice(0, 120)} Nigeria CBN FCCPC ARCON`.trim();
+        webQuery = sanitizedPrompt.slice(0, 180);
       }
     }
 
@@ -954,7 +952,7 @@ CRITICAL OPERATIONAL RULES:
           canSearchWeb
             ? this.withTimeout(
                 statutoryToolExecutor.searchLiveWeb(
-                  { query: webQuery, prioritize_official_regulators: true },
+                  { query: webQuery, prioritize_official_regulators: false },
                   ctx
                 ),
                 15000,
@@ -1048,7 +1046,7 @@ CRITICAL OPERATIONAL RULES:
       const canSearchVault =
         typeof statutoryToolExecutor.searchRegulatoryEvidence === "function";
       const wantsLiveWeb =
-        /\b(?:latest|recent|new|2025|2026|today|current|update|circular)\b/i.test(
+        /\b(?:latest|recent|new|2025|2026|2027|today|current|update|circular|search|web|online|blog|website|news|article)\b/i.test(
           options.userPrompt
         ) && typeof statutoryToolExecutor.searchLiveWeb === "function";
 
@@ -1071,7 +1069,7 @@ CRITICAL OPERATIONAL RULES:
           wantsLiveWeb
             ? this.withTimeout(
                 statutoryToolExecutor.searchLiveWeb(
-                  { query: webQuery, prioritize_official_regulators: true },
+                  { query: webQuery, prioritize_official_regulators: false },
                   ctx
                 ),
                 8000,
@@ -1348,7 +1346,7 @@ CRITICAL OPERATIONAL RULES:
             } else if (toolName === "get_regulatory_provision") {
               displayLabel = "Retrieving verbatim statutory provision and SHA-256 hash...";
             } else if (toolName === "search_live_web") {
-              displayLabel = `Searching official Nigerian regulatory circulars: "${toolArgs.query || ""}"...`;
+              displayLabel = `Searching the live web for: "${toolArgs.query || ""}"...`;
             } else if (toolName === "fetch_live_url_content") {
               displayLabel = `Fetching & auditing live URL: "${toolArgs.url || ""}"...`;
             } else if (toolName === "search_institutional_knowledge") {

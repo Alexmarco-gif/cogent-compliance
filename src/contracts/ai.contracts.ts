@@ -43,7 +43,7 @@ export type AiModelRun = z.infer<typeof aiModelRunSchema>;
 
 export const liveWebSearchArgsSchema = z.object({
   query: z.string().min(2, "Search query must be at least 2 characters"),
-  prioritize_official_regulators: z.boolean().default(true),
+  prioritize_official_regulators: z.boolean().default(false),
   tenant_id: z.string().uuid().optional(),
 });
 

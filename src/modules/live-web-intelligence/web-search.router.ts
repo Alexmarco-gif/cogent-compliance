@@ -73,8 +73,8 @@ export class WebSearchRouter {
     const todayIso = new Date().toISOString().split("T")[0];
 
     const prompt = prioritize_official_regulators
-      ? `Today's date is ${todayIso}. Use Google Search to find current live web information, official Nigerian regulatory circulars (CBN, FCCPC, ARCON, NDPC, SEC), enforcement updates, financial news, and authoritative public sources on: ${query}. Return a concise, factual, grounded summary.`
-      : `Today's date is ${todayIso}. Use Google Search to find current live web information, news, updates, and authoritative sources on: ${query}. Return a concise, factual, grounded summary.`;
+      ? `Today's date is ${todayIso}. Use Google Search to run an open web search across all public websites, blogs, news outlets, industry publications, and official regulatory portals (e.g. CBN, FCCPC, ARCON, NDPC, SEC) on: ${query}. Include non-government sites as well as official ones. Return a concise, factual, grounded summary.`
+      : `Today's date is ${todayIso}. Use Google Search to run a general open web search across any public website, blog, news outlet, documentation page, forum, or publication on: ${query}. Do NOT restrict results to .gov.ng or government domains. Return a concise, factual, grounded summary.`;
 
     logger.info("Executing Dynamic Live Web Search Router", {
       query,
