@@ -16,7 +16,6 @@ import {
 } from "lucide-react";
 import {
   DAILY_WORKFLOW_LEDGER,
-  REGULATOR_METRICS,
   type WorkflowCompressionRow,
 } from "@/data/marketing-scenarios";
 import { RevealOnScroll } from "@/components/marketing/RevealOnScroll";
@@ -63,8 +62,23 @@ export function DailyWorkflowsSection() {
       className="border-y border-slate-200 bg-[#FAFBFD] py-20 lg:py-24 scroll-mt-16"
     >
       <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
-        {/* Split Interactive Stage Inspired by asdo.JPG */}
+        {/* Centered Section Header per delete.JPG (red-marked text removed) */}
         <RevealOnScroll>
+          <div className="mx-auto max-w-3xl text-center mb-10 sm:mb-12">
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[#1D4ED8]">
+              THE DAILY BOTTLENECK
+            </p>
+            <h2 className="mt-3 text-[30px] sm:text-[40px] font-semibold leading-[1.12] tracking-[-0.03em] text-[#0B1220]">
+              Why compliance work takes 3 to 10 days—{" "}
+              <span className="text-[#1D4ED8] block sm:inline">
+                and how Cogent compresses it to minutes.
+              </span>
+            </h2>
+          </div>
+        </RevealOnScroll>
+
+        {/* Split Interactive Stage Inspired by asdo.JPG */}
+        <RevealOnScroll delayMs={80}>
           <div
             className="grid grid-cols-1 overflow-hidden rounded-2xl border border-slate-900/10 bg-[#0B1220] shadow-2xl lg:grid-cols-12"
             onMouseEnter={() => setIsPaused(true)}
@@ -75,7 +89,7 @@ export function DailyWorkflowsSection() {
               <div>
                 <div className="flex items-center justify-between">
                   <span className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.14em] text-[#38BDF8]">
-                    THE DAILY BOTTLENECK · COMPRESSION
+                    BENCHMARKS · WORKFLOW COMPRESSION
                   </span>
                   <span className="flex items-center gap-1.5 font-mono text-[10.5px] text-blue-300">
                     <span className="relative flex h-2 w-2">
@@ -89,12 +103,12 @@ export function DailyWorkflowsSection() {
                 </div>
 
                 <h3 className="mt-4 font-serif text-[26px] sm:text-[32px] font-normal leading-tight text-white">
-                  Why compliance takes 3 to 10 days—<br />
-                  <span className="italic text-slate-400">and how Cogent compresses it to minutes.</span>
+                  Five daily workflows. <br />
+                  <span className="italic text-slate-400">Compressed to minutes.</span>
                 </h3>
 
                 <p className="mt-3 text-[13.5px] leading-relaxed text-slate-300">
-                  Nigerian financial regulation spans 7 overlapping agencies and hundreds of unindexed PDF circulars. Select a workflow or watch the live line-to-line comparison.
+                  Select a workflow or watch the live line-to-line comparison of how financial teams operate today versus with Cogent.
                 </p>
 
                 {/* Animated Line-by-Line List */}
@@ -289,49 +303,6 @@ export function DailyWorkflowsSection() {
                   <span>Test this workflow in 5 minutes</span>
                   <ArrowRight className="h-4 w-4" />
                 </Link>
-              </div>
-            </div>
-          </div>
-        </RevealOnScroll>
-
-        {/* Unified Statutory Scope Bar (Inspired by da.JPG & scrool.JPG ticker) */}
-        <RevealOnScroll delayMs={120}>
-          <div className="mt-8 overflow-hidden rounded-xl border border-slate-200 bg-white p-4 sm:p-5 shadow-xs">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="h-2 w-2 rounded-full bg-[#1D4ED8]" />
-                <p className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#0B1220]">
-                  Unified Statutory Scope Across Nigeria &amp; Pan-African Regulators
-                </p>
-              </div>
-
-              <Link
-                href="/resources/faq"
-                className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-[#1D4ED8] hover:underline shrink-0"
-              >
-                <span>See FAQ on regulatory search</span>
-                <ArrowRight className="h-3.5 w-3.5" />
-              </Link>
-            </div>
-
-            {/* Seamless Marquee Ticker per scrool.JPG */}
-            <div className="relative mt-3 overflow-hidden">
-              <div className="animate-cogent-marquee gap-3 py-1">
-                {[...REGULATOR_METRICS, ...REGULATOR_METRICS].map((reg, idx) => (
-                  <span
-                    key={`${reg.acronym}-${idx}`}
-                    title={reg.focus}
-                    className="inline-flex items-center gap-2 rounded-lg border border-slate-200/90 bg-[#FAFBFD] px-3 py-1.5 text-[12.5px] font-medium text-[#0B1220] shadow-2xs hover:border-[#1D4ED8]/40 hover:bg-white transition-colors shrink-0"
-                  >
-                    <span className="font-bold text-[#1D4ED8]">{reg.acronym}</span>
-                    <span className="text-slate-500 font-normal">
-                      · {reg.name}
-                    </span>
-                    <span className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600">
-                      {reg.focus}
-                    </span>
-                  </span>
-                ))}
               </div>
             </div>
           </div>

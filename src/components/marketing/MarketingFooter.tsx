@@ -14,27 +14,10 @@ export function MarketingFooter() {
           </h2>
         </div>
 
-        {/* 4-Column Grid matching footer.JPG */}
+        {/* 3-Column Grid per foot.JPG with red-marked items removed */}
         <div className="grid grid-cols-1 gap-12 sm:grid-cols-2 lg:grid-cols-12 lg:gap-8 pb-14 border-b border-white/10">
-          {/* Column 1: Certifications & Brand Info */}
-          <div className="lg:col-span-4 space-y-6">
-            {/* 3 Circular Badges from footer.JPG */}
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-12 w-12 flex-col items-center justify-center rounded-full border border-dashed border-white/40 text-center font-mono text-[8px] uppercase tracking-tighter text-slate-300 leading-tight">
-                <span>CBN</span>
-                <span className="text-[7.5px] text-blue-400">141+</span>
-              </div>
-              <div className="flex h-12 w-12 flex-col items-center justify-center rounded-full border border-dashed border-white/40 text-center font-mono text-[8px] uppercase tracking-tighter text-slate-300 leading-tight">
-                <span>NDPA</span>
-                <span className="text-[7.5px] text-blue-400">2023</span>
-              </div>
-              <div className="flex h-12 w-12 flex-col items-center justify-center rounded-full border border-dashed border-white/40 text-center font-mono text-[8px] uppercase tracking-tighter text-slate-300 leading-tight">
-                <span>AES</span>
-                <span className="text-[7.5px] text-blue-400">256-BIT</span>
-              </div>
-            </div>
-
-            {/* Wordmark */}
+          {/* Column 1: Brand Info */}
+          <div className="lg:col-span-6 space-y-4">
             <div>
               <Link href="/" className="inline-block focus:outline-none">
                 <CogentLogo
@@ -44,8 +27,8 @@ export function MarketingFooter() {
                   subtitle="by Stem Systems"
                 />
               </Link>
-              <p className="mt-3 max-w-xs text-[13px] leading-relaxed text-slate-400">
-                The AI compliance layer for financial institutions in Nigeria and Africa.
+              <p className="mt-4 max-w-sm text-[13.5px] leading-relaxed text-slate-400">
+                The regulatory intelligence and compliance workflow engine for financial institutions across Nigeria and Africa.
               </p>
             </div>
           </div>
@@ -114,21 +97,6 @@ export function MarketingFooter() {
                 <Link href="/legal" className="hover:text-white transition-colors">
                   DPA (Data Processing)
                 </Link>
-              </li>
-            </ul>
-          </div>
-
-          {/* Column 4: Locations */}
-          <div className="lg:col-span-2 space-y-3.5">
-            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-white">
-              Locations
-            </p>
-            <ul className="space-y-2 text-[13px] text-slate-400">
-              <li className="font-medium text-slate-300">Lagos, Nigeria</li>
-              <li className="font-medium text-slate-300">Abuja, Nigeria</li>
-              <li className="font-medium text-slate-300">Nairobi, Kenya</li>
-              <li className="pt-2 font-mono text-[11px] text-blue-400">
-                Pan-African Scope
               </li>
             </ul>
           </div>

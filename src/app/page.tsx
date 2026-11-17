@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { MarketingHeader } from "@/components/marketing/MarketingHeader";
-import { HeroIntelligenceStudio } from "@/components/marketing/HeroIntelligenceStudio";
+import { RegulatoryScrollTicker } from "@/components/marketing/RegulatoryScrollTicker";
 import { DailyWorkflowsSection } from "@/components/marketing/DailyWorkflowsSection";
 import { DualSearchArchitecture } from "@/components/marketing/DualSearchArchitecture";
 import { ThreeStepPlan } from "@/components/marketing/ThreeStepPlan";
@@ -114,19 +114,11 @@ export default function HomePage() {
               </a>
             </div>
 
-            <p
-              style={{ animationDelay: "220ms" }}
-              className="animate-cogent-enter mt-4 font-mono text-[11.5px] text-slate-500"
-            >
-              CBN · NDPC · FCCPC · SEC · NFIU · NDIC · ARCON + Pan-African Central Banks
-            </p>
-
-            {/* 50/50 Split-Screen Intelligence & Document Studio */}
-            <div style={{ animationDelay: "260ms" }} className="animate-cogent-enter">
-              <HeroIntelligenceStudio />
-            </div>
           </div>
         </section>
+
+        {/* Full-width dark marquee ticker styled per scrool.JPG */}
+        <RegulatoryScrollTicker />
       </div>
 
       <main className="flex-1">
