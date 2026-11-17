@@ -97,6 +97,25 @@ body {
   }
 }
 
+@keyframes cogentMarquee {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-cogent-marquee {
+  display: flex;
+  width: max-content;
+  animation: cogentMarquee 35s linear infinite;
+}
+
+.animate-cogent-marquee:hover {
+  animation-play-state: paused;
+}
+
 .animate-cogent-enter {
   animation: cogentEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
