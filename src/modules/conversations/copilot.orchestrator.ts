@@ -19,6 +19,7 @@ import {
   createStreamingOutputSanitizer,
   sanitizeAssistantOutput,
 } from "@/lib/ai/output-sanitizer";
+import { deduplicateCitations } from "@/lib/ai/citation-formatter";
 import { logger } from "@/lib/logger";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import {
@@ -27,6 +28,7 @@ import {
   type ToolExecutionContext,
 } from "@/modules/ai-orchestration/tools/statutory-tools";
 import { conversationService } from "@/modules/conversations/conversation.service";
+import { generateContextualFollowUps } from "@/modules/conversations/follow-up.generator";
 import { deriveConversationTopicTitle } from "@/modules/conversations/topic-title";
 import { productService } from "@/modules/knowledge-base/product.service";
 import {
@@ -477,74 +479,7 @@ CRITICAL OPERATIONAL RULES:
    * by semantic identity (regulator + instrument + normalized section/clause).
    */
   private sanitizeAndDeduplicateCitations(rawCitations: CitationItem[]): CitationItem[] {
-    const cleanSectionRef = (raw?: string): string | undefined => {
-      if (!raw) return undefined;
-      let s = raw.replace(/\s+/g, " ").trim();
-      // Remove bracketed page markers like "[P..." or "[Page 12]"
-      s = s.replace(/\[P(?:age)?[^\]]*\]?/gi, "").replace(/\[[^\]]*$/g, "").trim();
-      // Collapse OCR stutter like "35.35.AnAn advertiser,advertiser, pr..." -> "Section 35"
-      const stutterMatch = s.match(/^(\d+(?:\.\d+)*)\.\1\.?(?:\s+|(?=[A-Za-z]))/);
-      if (stutterMatch?.[1]) {
-        return `Section ${stutterMatch[1]}`;
-      }
-      // Collapse repeated words like "AnAn" or "advertiser,advertiser"
-      s = s
-        .replace(/\b([A-Za-z]{2,})\1\b/g, "$1")
-        .replace(/\b([A-Za-z]{2,})\s*,\s*\1\b/gi, "$1");
-      // If it's a long OCR sentence starting with a number, extract the section number
-      const leadingNumMatch = s.match(/^(\d+(?:\.\d+)*)\.?\s*[A-Za-z]/);
-      if (leadingNumMatch?.[1] && s.length > 42) {
-        return `Section ${leadingNumMatch[1]}`;
-      }
-      // Clean ALL-CAPS PART headers e.g. "PART II—REGISTRATION AND APPROVAL..."
-      const partMatch = s.match(/^(PART\s+[IVXLC0-9]+)\s*[—–-]\s*(.+)$/i);
-      if (partMatch?.[1] && partMatch[2]) {
-        const partLabel = partMatch[1].toUpperCase();
-        const partTitle = partMatch[2]
-          .toLowerCase()
-          .replace(/\b\w/g, (c) => c.toUpperCase())
-          .slice(0, 44)
-          .trim();
-        return `${partLabel} — ${partTitle}`;
-      }
-      return s.length > 56 ? `${s.slice(0, 53).trim()}...` : s;
-    };
-
-    const unique: CitationItem[] = [];
-    const seenSemanticKeys = new Set<string>();
-    const seenIds = new Set<string>();
-
-    for (const cit of rawCitations) {
-      const cleanedClause = cleanSectionRef(cit.clause_reference);
-      const cleanedTitle = cleanSectionRef(cit.instrument_title) || cit.instrument_title;
-      const cleanedRule = cleanSectionRef(cit.rule_title) || cit.rule_title;
-
-      const idKey = cit.regulatory_clause_id || cit.retrieved_url || "";
-      const hasSemanticLabel = Boolean(cleanedTitle || cleanedRule || cit.page_title || cleanedClause);
-      const semanticKey = hasSemanticLabel
-        ? [
-            cit.source_class,
-            (cit.regulator || "").toUpperCase(),
-            (cleanedTitle || cleanedRule || cit.page_title || "").toLowerCase(),
-            (cleanedClause || "").toLowerCase(),
-          ].join("::")
-        : `${cit.source_class}::${idKey}`;
-
-      if ((idKey && seenIds.has(idKey)) || seenSemanticKeys.has(semanticKey)) {
-        continue;
-      }
-      if (idKey) seenIds.add(idKey);
-      seenSemanticKeys.add(semanticKey);
-
-      unique.push({
-        ...cit,
-        ...(cleanedClause ? { clause_reference: cleanedClause } : {}),
-        ...(cleanedTitle ? { instrument_title: cleanedTitle } : {}),
-        ...(cleanedRule ? { rule_title: cleanedRule } : {}),
-      });
-    }
-
-    return unique;
+    return deduplicateCitations(rawCitations);
   }
 
   /**
@@ -2887,6 +2822,18 @@ CRITICAL OPERATIONAL RULES:
         };
       }
 
+      // 3c. Generate concise Perplexity-style follow-up workflows & drill-down questions
+      const followUps = await generateContextualFollowUps({
+        userPrompt: options.userPrompt,
+        responseText: fullResponseText,
+        jurisdictions: options.searchJurisdictions,
+        citations: uniqueCitations,
+        productName: resolvedProductName,
+        structuredReport,
+        workProductWorkflowType: persistedWorkProduct?.workflow_type ?? null,
+        hasCustomAiClient: this.hasCustomClient,
+      }).catch(() => []);
+
       // 4. Finalize Assistant Message in DB
       await conversationService.updateMessage({
         tenantId: options.tenantId,
@@ -2895,6 +2842,7 @@ CRITICAL OPERATIONAL RULES:
         status: "COMPLETED",
         metadata: {
           citations: uniqueCitations,
+          ...(followUps.length > 0 ? { follow_ups: followUps } : {}),
           toolRounds,
           ...(structuredReport ? { structured_report: structuredReport } : {}),
           ...(persistedWorkProduct ? { work_product_id: persistedWorkProduct.work_product_id, work_product: persistedWorkProduct } : {}),
@@ -2934,6 +2882,7 @@ CRITICAL OPERATIONAL RULES:
           assistant_message_id: asstMsg.id,
           finish_reason: "STOP",
           citations: uniqueCitations,
+          ...(followUps.length > 0 ? { follow_ups: followUps } : {}),
           ...(refinedTitle ? { conversation_title: refinedTitle } : {}),
           ...(structuredReport ? { structured_report: structuredReport } : {}),
           ...(persistedWorkProduct ? { work_product_id: persistedWorkProduct.work_product_id } : {}),

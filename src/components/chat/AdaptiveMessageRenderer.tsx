@@ -7,18 +7,22 @@ import {
   FileText,
   BookOpen,
   Globe,
-  ExternalLink,
   Paperclip,
   Sparkles,
   Table2,
   Stamp,
   Scale,
   ArrowUpRight,
+  CornerDownRight,
   ShieldAlert,
   ShieldCheck,
   AlertTriangle,
   FileCheck2,
   Lock,
+  Copy,
+  Check,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
 import Link from "next/link";
 import type {
@@ -26,12 +30,14 @@ import type {
   ComplianceArtifactItem,
   ComplianceArtifactType,
   ExecutionPlanStep,
+  FollowUpSuggestion,
   StructuredComplianceReport,
 } from "@/contracts/conversation.contracts";
 import {
   ThinkingTraceHeader,
   type SearchTraceItem,
 } from "@/components/chat/ThinkingTraceHeader";
+import { deduplicateCitations } from "@/lib/ai/citation-formatter";
 import { sanitizeAssistantOutput } from "@/lib/ai/output-sanitizer";
 
 export interface MessageAttachmentChip {
@@ -65,6 +71,9 @@ export interface AdaptiveMessageRendererProps {
   content: string;
   role: "USER" | "ASSISTANT" | "SYSTEM" | "TOOL";
   citations?: CitationItem[];
+  followUps?: FollowUpSuggestion[];
+  feedback?: "up" | "down" | null;
+  isLatestAssistantMessage?: boolean;
   planSteps?: ExecutionPlanStep[];
   structuredReport?: StructuredComplianceReport;
   attachments?: MessageAttachmentChip[];
@@ -76,6 +85,9 @@ export interface AdaptiveMessageRendererProps {
   workProductRef?: WorkProductBannerRef;
   wideRail?: boolean;
   onInspectEvidence?: (clauseId: string) => void;
+  onOpenSources?: (citations: CitationItem[]) => void;
+  onSelectFollowUp?: (suggestion: FollowUpSuggestion) => void;
+  onFeedback?: (rating: "up" | "down" | null) => void;
   onOpenArtifactCanvas?: (
     artifactType: ComplianceArtifactType,
     report: StructuredComplianceReport
@@ -115,69 +127,7 @@ export function sanitizeEditorialMarkdown(raw: string): string {
  * and collapses duplicate chunks from the same statutory provision.
  */
 export function cleanAndDeduplicateCitations(rawCitations: CitationItem[]): CitationItem[] {
-  const cleanLabel = (raw?: string): string | undefined => {
-    if (!raw) return undefined;
-    let s = raw.replace(/\s+/g, " ").trim();
-    s = s.replace(/\[P(?:age)?[^\]]*\]?/gi, "").replace(/\[[^\]]*$/g, "").trim();
-    const stutterMatch = s.match(/^(\d+(?:\.\d+)*)\.\1\.?(?:\s+|(?=[A-Za-z]))/);
-    if (stutterMatch?.[1]) {
-      return `Section ${stutterMatch[1]}`;
-    }
-    s = s
-      .replace(/\b([A-Za-z]{2,})\1\b/g, "$1")
-      .replace(/\b([A-Za-z]{2,})\s*,\s*\1\b/gi, "$1");
-    const leadingNumMatch = s.match(/^(\d+(?:\.\d+)*)\.?\s*[A-Za-z]/);
-    if (leadingNumMatch?.[1] && s.length > 42) {
-      return `Section ${leadingNumMatch[1]}`;
-    }
-    const partMatch = s.match(/^(PART\s+[IVXLC0-9]+)\s*[—–-]\s*(.+)$/i);
-    if (partMatch?.[1] && partMatch[2]) {
-      const partLabel = partMatch[1].toUpperCase();
-      const partTitle = partMatch[2]
-        .toLowerCase()
-        .replace(/\b\w/g, (c) => c.toUpperCase())
-        .slice(0, 44)
-        .trim();
-      return `${partLabel} — ${partTitle}`;
-    }
-    return s.length > 56 ? `${s.slice(0, 53).trim()}...` : s;
-  };
-
-  const unique: CitationItem[] = [];
-  const seenKeys = new Set<string>();
-
-  for (const cit of rawCitations) {
-    const cleanedClause = cleanLabel(cit.clause_reference);
-    const cleanedTitle = cleanLabel(cit.instrument_title) || cit.instrument_title;
-    const cleanedRule = cleanLabel(cit.rule_title) || cit.rule_title;
-
-    const idKey = cit.regulatory_clause_id || cit.retrieved_url || "";
-    const hasSemanticLabel = Boolean(
-      cleanedTitle || cleanedRule || cit.page_title || cleanedClause
-    );
-    const semanticKey = hasSemanticLabel
-      ? [
-          cit.source_class,
-          (cit.regulator || "").toUpperCase(),
-          (cleanedTitle || cleanedRule || cit.page_title || "").toLowerCase(),
-          (cleanedClause || "").toLowerCase(),
-        ].join("::")
-      : `${cit.source_class}::${idKey}`;
-
-    if (seenKeys.has(semanticKey)) {
-      continue;
-    }
-    seenKeys.add(semanticKey);
-
-    unique.push({
-      ...cit,
-      ...(cleanedClause ? { clause_reference: cleanedClause } : {}),
-      ...(cleanedTitle ? { instrument_title: cleanedTitle } : {}),
-      ...(cleanedRule ? { rule_title: cleanedRule } : {}),
-    });
-  }
-
-  return unique;
+  return deduplicateCitations(rawCitations);
 }
 
 /**
@@ -247,6 +197,11 @@ function resolveDeliverableCards(
  * Decorates inline text children to turn bracketed statutory references like
  * [FCCPA §115], [CBN CPF §3.2.1], [ARCON Act §54] into interactive citation pills.
  */
+const INLINE_CITATION_SPLIT_RE =
+  /(\[(?:CBN|FCCPC|FCCPA|ARCON|NDPC|NDPA|NDIC|SEC|BOFIA|ISA|CBK|ODPC|BoG|BOG|DPC|SARB|FSCA|BNR|CBE)[^\]]{1,48}\])/g;
+const INLINE_CITATION_MATCH_RE =
+  /^\[(?:CBN|FCCPC|FCCPA|ARCON|NDPC|NDPA|NDIC|SEC|BOFIA|ISA|CBK|ODPC|BoG|BOG|DPC|SARB|FSCA|BNR|CBE)[^\]]{1,48}\]$/i;
+
 function renderChildrenWithInlineCitations(
   children: React.ReactNode,
   citations: CitationItem[],
@@ -258,12 +213,11 @@ function renderChildrenWithInlineCitations(
 
   return React.Children.map(children, (child) => {
     if (typeof child !== "string") return child;
-    const regex = /(\[(?:CBN|FCCPC|FCCPA|ARCON|NDPC|NDPA|SEC|BOFIA|ISA)[^\]]{1,42}\])/g;
-    const parts = child.split(regex);
+    const parts = child.split(INLINE_CITATION_SPLIT_RE);
     if (parts.length === 1) return child;
 
     return parts.map((part, i) => {
-      if (regex.test(part)) {
+      if (INLINE_CITATION_MATCH_RE.test(part)) {
         const cleanRef = part.slice(1, -1).trim();
         const matchedCit = citations.find(
           (c) =>
@@ -281,7 +235,7 @@ function renderChildrenWithInlineCitations(
             title={
               matchedCit
                 ? `${matchedCit.regulator} — ${matchedCit.instrument_title || ""} (${matchedCit.clause_reference || cleanRef})`
-                : `${cleanRef} — Verified Nigerian Statutory Provision`
+                : `${cleanRef} — Regulatory Citation`
             }
             className="inline-flex items-center mx-0.5 px-1.5 py-0.5 rounded border border-zinc-200 bg-zinc-100/90 hover:bg-zinc-200/80 font-mono text-[11px] font-medium text-zinc-800 align-baseline transition-colors cursor-pointer"
           >
@@ -298,6 +252,9 @@ export function AdaptiveMessageRenderer({
   content,
   role,
   citations = [],
+  followUps = [],
+  feedback = null,
+  isLatestAssistantMessage = false,
   planSteps = [],
   structuredReport,
   attachments = [],
@@ -308,10 +265,15 @@ export function AdaptiveMessageRenderer({
   entitlementBlocked,
   workProductRef,
   onInspectEvidence,
+  onOpenSources,
+  onSelectFollowUp,
+  onFeedback,
   onOpenArtifactCanvas,
   onOpenWorkProduct,
   isStreaming,
 }: AdaptiveMessageRendererProps) {
+  const [copiedAnswer, setCopiedAnswer] = React.useState(false);
+
   const dedupedCitations = React.useMemo(
     () => cleanAndDeduplicateCitations(citations),
     [citations]
@@ -326,6 +288,24 @@ export function AdaptiveMessageRenderer({
     () => resolveDeliverableCards(structuredReport),
     [structuredReport]
   );
+
+  const sourceBuckets = React.useMemo(() => {
+    const hasVault = dedupedCitations.some((c) => c.source_class === "VERIFIED_OFFICIAL_SOURCE");
+    const hasPlaybook = dedupedCitations.some((c) => c.source_class === "INTERNAL_PLAYBOOK");
+    const hasWeb = dedupedCitations.some((c) => c.source_class === "LIVE_WEB_INTELLIGENCE");
+    return { hasVault, hasPlaybook, hasWeb };
+  }, [dedupedCitations]);
+
+  const handleCopyAnswer = React.useCallback(async () => {
+    if (!sanitizedMarkdown) return;
+    try {
+      await navigator.clipboard.writeText(sanitizedMarkdown);
+      setCopiedAnswer(true);
+      setTimeout(() => setCopiedAnswer(false), 1800);
+    } catch {
+      // Ignore clipboard failures
+    }
+  }, [sanitizedMarkdown]);
 
   // Strictly single-column centered editorial reading stream (Claude / ChatGPT Canvas style)
   if (role === "USER") {
@@ -748,105 +728,150 @@ export function AdaptiveMessageRenderer({
         </div>
       )}
 
-      {/* 5. Clean, Deduplicated Statutory & Institutional Source Chips */}
-      {dedupedCitations.length > 0 && (
-        <div className="pt-3 border-t border-zinc-200/80 space-y-2">
-          <div className="flex items-center justify-between text-[11px] text-zinc-400">
-            <span className="font-semibold uppercase tracking-wider text-zinc-500">
-              Verified Sources & Statutory Grounding
-            </span>
-            <span className="font-mono text-zinc-500">
-              {dedupedCitations.length}
-            </span>
+      {/* 5. Compact Action Bar + Clickable "N sources" Pill (Perplexity-style) */}
+      {!isStreaming && (sanitizedMarkdown || dedupedCitations.length > 0) && (
+        <div className="pt-2 flex flex-wrap items-center justify-between gap-2 text-zinc-500">
+          <div className="flex flex-wrap items-center gap-1">
+            {sanitizedMarkdown && (
+              <button
+                type="button"
+                onClick={handleCopyAnswer}
+                className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11.5px] font-medium text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors cursor-pointer"
+                title="Copy response"
+                aria-label="Copy response"
+              >
+                {copiedAnswer ? (
+                  <>
+                    <Check className="h-3.5 w-3.5 text-emerald-600" />
+                    <span className="text-emerald-700">Copied</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-3.5 w-3.5" />
+                  </>
+                )}
+              </button>
+            )}
+
+            {onFeedback && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onFeedback(feedback === "up" ? null : "up")}
+                  className={`inline-flex items-center justify-center p-1.5 rounded-md transition-colors cursor-pointer ${
+                    feedback === "up"
+                      ? "text-emerald-700 bg-emerald-50"
+                      : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
+                  }`}
+                  title="Helpful response"
+                  aria-label="Helpful response"
+                  aria-pressed={feedback === "up"}
+                >
+                  <ThumbsUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onFeedback(feedback === "down" ? null : "down")}
+                  className={`inline-flex items-center justify-center p-1.5 rounded-md transition-colors cursor-pointer ${
+                    feedback === "down"
+                      ? "text-rose-700 bg-rose-50"
+                      : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
+                  }`}
+                  title="Needs improvement"
+                  aria-label="Needs improvement"
+                  aria-pressed={feedback === "down"}
+                >
+                  <ThumbsDown className="h-3.5 w-3.5" />
+                </button>
+              </>
+            )}
+
+            {dedupedCitations.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (onOpenSources) {
+                    onOpenSources(dedupedCitations);
+                  } else {
+                    const firstVaultId = dedupedCitations.find(
+                      (c) => c.source_class === "VERIFIED_OFFICIAL_SOURCE" && c.regulatory_clause_id
+                    )?.regulatory_clause_id;
+                    if (firstVaultId) onInspectEvidence?.(firstVaultId);
+                  }
+                }}
+                className="ml-1 inline-flex items-center gap-2 rounded-full border border-zinc-200/90 bg-white hover:bg-zinc-50 hover:border-zinc-300 px-2.5 py-1 text-[11.5px] font-medium text-zinc-700 transition-colors cursor-pointer"
+                title="View all verified statutes, playbooks, and regulatory sources"
+              >
+                <span className="flex items-center -space-x-1">
+                  {sourceBuckets.hasVault && (
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-zinc-900 text-white ring-1 ring-white">
+                      <FileText className="h-2.5 w-2.5" />
+                    </span>
+                  )}
+                  {sourceBuckets.hasPlaybook && (
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-zinc-200 text-zinc-800 ring-1 ring-white">
+                      <BookOpen className="h-2.5 w-2.5" />
+                    </span>
+                  )}
+                  {sourceBuckets.hasWeb && (
+                    <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-600 text-white ring-1 ring-white">
+                      <Globe className="h-2.5 w-2.5" />
+                    </span>
+                  )}
+                </span>
+                <span>
+                  {dedupedCitations.length}{" "}
+                  {dedupedCitations.length === 1 ? "source" : "sources"}
+                </span>
+              </button>
+            )}
           </div>
 
-          <div className="flex flex-wrap gap-1.5">
-            {dedupedCitations.map((citation, index) => {
-              if (citation.source_class === "VERIFIED_OFFICIAL_SOURCE") {
-                return (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() =>
-                      citation.regulatory_clause_id &&
-                      onInspectEvidence?.(citation.regulatory_clause_id)
-                    }
-                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 hover:border-zinc-300 px-2.5 py-1 text-[11.5px] text-zinc-800 transition-colors cursor-pointer shadow-sm"
-                    title={`${citation.regulator || "STATUTE"} — ${citation.instrument_title || ""} (${citation.clause_reference || "Click to inspect statutory provision"})`}
-                  >
-                    <FileText className="h-3 w-3 text-zinc-500 shrink-0" />
-                    <span className="font-mono text-[10.5px] font-semibold text-zinc-900">
-                      {citation.regulator || "STATUTE"}
-                    </span>
-                    <span className="truncate max-w-[220px] text-zinc-600">
-                      {citation.clause_reference || citation.instrument_title}
-                    </span>
-                  </button>
-                );
+          {workProductRef && onOpenWorkProduct && (
+            <button
+              type="button"
+              onClick={() =>
+                onOpenWorkProduct(workProductRef.work_product_id, workProductRef.artifact_type)
               }
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11.5px] font-medium text-zinc-500 hover:text-zinc-950 hover:bg-zinc-100 transition-colors cursor-pointer"
+            >
+              <span>Open Work Product</span>
+              <ArrowUpRight className="h-3.5 w-3.5" />
+            </button>
+          )}
+        </div>
+      )}
 
-              if (citation.source_class === "INTERNAL_PLAYBOOK") {
-                return (
-                  <span
-                    key={index}
-                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50/80 px-2.5 py-1 text-[11.5px] text-zinc-700"
-                  >
-                    <BookOpen className="h-3 w-3 text-zinc-500 shrink-0" />
-                    <span className="font-mono text-[10.5px] font-semibold text-zinc-900">
-                      PLAYBOOK
-                    </span>
-                    <span className="truncate max-w-[220px] text-zinc-600">
-                      {citation.rule_title ||
-                        citation.instrument_title ||
-                        "Approved Schedule"}
-                    </span>
+      {/* 6. Contextual Follow-Up Actions & Drill-Down Questions (latest message only) */}
+      {!isStreaming && isLatestAssistantMessage && followUps.length > 0 && onSelectFollowUp && (
+        <div className="pt-3 border-t border-zinc-200/70 space-y-1">
+          {followUps.map((item) => {
+            const isWorkflow = item.kind === "workflow";
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onSelectFollowUp(item)}
+                className="w-full group flex items-start justify-between gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-zinc-100/80 transition-colors cursor-pointer"
+              >
+                <div className="flex items-start gap-2.5 min-w-0">
+                  {isWorkflow ? (
+                    <ArrowUpRight className="h-4 w-4 text-zinc-500 group-hover:text-zinc-950 mt-0.5 shrink-0 transition-colors" />
+                  ) : (
+                    <CornerDownRight className="h-4 w-4 text-zinc-400 group-hover:text-zinc-900 mt-0.5 shrink-0 transition-colors" />
+                  )}
+                  <span className="text-[13.5px] leading-snug text-zinc-700 group-hover:text-zinc-950 transition-colors">
+                    {item.label}
                   </span>
-                );
-              }
-
-              if (citation.source_class === "LIVE_WEB_INTELLIGENCE") {
-                const isOfficial = citation.trust_tier === "OFFICIAL_REGULATOR_WEB";
-                const isLegalPress = citation.trust_tier === "VERIFIED_AFRICAN_LEGAL_MEDIA";
-                return (
-                  <a
-                    key={index}
-                    href={citation.retrieved_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 px-2.5 py-1 text-[11.5px] text-zinc-700 transition-colors shadow-sm"
-                    title="Open live web source"
-                  >
-                    <Globe
-                      className={`h-3 w-3 shrink-0 ${
-                        isOfficial ? "text-emerald-600" : "text-zinc-500"
-                      }`}
-                    />
-                    <span
-                      className={`font-mono text-[10.5px] font-semibold ${
-                        isOfficial
-                          ? "text-emerald-700"
-                          : isLegalPress
-                            ? "text-zinc-900"
-                            : "text-zinc-700"
-                      }`}
-                    >
-                      {isOfficial
-                        ? "OFFICIAL WEB"
-                        : isLegalPress
-                          ? "LEGAL / PRESS"
-                          : "LIVE WEB"}
-                    </span>
-                    <span className="truncate max-w-[220px] text-zinc-700">
-                      {citation.page_title || citation.retrieved_url}
-                    </span>
-                    <ExternalLink className="h-3 w-3 text-zinc-400 shrink-0" />
-                  </a>
-                );
-              }
-
-              return null;
-            })}
-          </div>
+                </div>
+                {isWorkflow && item.badge_label && (
+                  <span className="shrink-0 mt-0.5 inline-flex items-center rounded-md border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-[10.5px] font-medium text-zinc-600 group-hover:border-zinc-300 group-hover:text-zinc-900">
+                    {item.badge_label}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

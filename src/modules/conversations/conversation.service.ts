@@ -431,6 +431,55 @@ export class ConversationService {
 
     return updated as MessageRecord;
   }
+
+  /**
+   * Persists helpful/not-helpful feedback onto an assistant message's metadata.
+   */
+  public async setMessageFeedback(params: {
+    tenantId: string;
+    conversationId: string;
+    messageId: string;
+    userId: string;
+    rating: "up" | "down" | null;
+  }): Promise<MessageRecord> {
+    const supabase = createAdminSupabaseClient();
+    const { data: existing, error: fetchError } = await supabase
+      .from("marketing_messages")
+      .select("*")
+      .eq("tenant_id", params.tenantId)
+      .eq("conversation_id", params.conversationId)
+      .eq("id", params.messageId)
+      .maybeSingle();
+
+    if (fetchError || !existing) {
+      logger.warn("Message not found for feedback update", {
+        tenantId: params.tenantId,
+        conversationId: params.conversationId,
+        messageId: params.messageId,
+        error: fetchError?.message,
+      });
+      throw new Error("Message not found");
+    }
+
+    const currentMeta = ((existing as MessageRecord).metadata || {}) as Record<string, unknown>;
+    const nextMeta: Record<string, unknown> = { ...currentMeta };
+
+    if (params.rating === null) {
+      delete nextMeta.feedback;
+      delete nextMeta.feedback_by;
+      delete nextMeta.feedback_at;
+    } else {
+      nextMeta.feedback = params.rating;
+      nextMeta.feedback_by = params.userId;
+      nextMeta.feedback_at = new Date().toISOString();
+    }
+
+    return this.updateMessage({
+      tenantId: params.tenantId,
+      messageId: params.messageId,
+      metadata: nextMeta,
+    });
+  }
 }
 
 export const conversationService = new ConversationService();

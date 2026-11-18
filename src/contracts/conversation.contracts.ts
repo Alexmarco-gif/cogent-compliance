@@ -108,6 +108,15 @@ export interface CitationItem {
   retrieved_at?: string;
 }
 
+export interface FollowUpSuggestion {
+  id: string;
+  kind: "workflow" | "question";
+  label: string;
+  prompt: string;
+  workflow_hint?: (typeof WORKFLOW_TYPES)[number];
+  badge_label?: string;
+}
+
 export interface ExecutionPlanStep {
   step_id: string;
   step_number: number;
@@ -327,8 +336,10 @@ export type SSEEvent =
         assistant_message_id: string;
         finish_reason: string;
         citations: CitationItem[];
+        follow_ups?: FollowUpSuggestion[];
         conversation_title?: string;
         structured_report?: StructuredComplianceReport;
+        work_product_id?: string;
       };
     }
   | {

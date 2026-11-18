@@ -21,6 +21,7 @@ import {
 } from "@/components/chat/ChatComposer";
 import { type SearchTraceItem } from "@/components/chat/ThinkingTraceHeader";
 import { EvidenceDrawer } from "@/components/chat/EvidenceDrawer";
+import { SourcesDrawer } from "@/components/chat/SourcesDrawer";
 import { ArtifactCanvasDrawer } from "@/components/chat/ArtifactCanvasDrawer";
 import { TypewriterHeadline } from "@/components/chat/TypewriterHeadline";
 import { ContextualCampaignInspector } from "@/components/campaign/ContextualCampaignInspector";
@@ -33,6 +34,7 @@ import type {
   CitationItem,
   ComplianceArtifactType,
   ExecutionPlanStep,
+  FollowUpSuggestion,
   SSEEvent,
   StructuredComplianceReport,
 } from "@/contracts/conversation.contracts";
@@ -47,6 +49,8 @@ interface DisplayMessage {
   role: "USER" | "ASSISTANT" | "SYSTEM" | "TOOL";
   content: string;
   citations?: CitationItem[];
+  followUps?: FollowUpSuggestion[];
+  feedback?: "up" | "down" | null;
   planSteps?: ExecutionPlanStep[];
   structuredReport?: StructuredComplianceReport;
   attachments?: MessageAttachmentChip[];
@@ -130,6 +134,7 @@ function ChatWorkspaceContent() {
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [inspectClauseId, setInspectClauseId] = useState<string | null>(null);
+  const [sourcesDrawerCitations, setSourcesDrawerCitations] = useState<CitationItem[] | null>(null);
   const [authIssue, setAuthIssue] = useState<"UNAUTHENTICATED" | "NO_ORG" | null>(null);
   const [chatError, setChatError] = useState<string | null>(null);
 
@@ -223,6 +228,7 @@ function ChatWorkspaceContent() {
       setEnableLiveWebSearch(false);
       setWorkflowHint(null);
       setInspectClauseId(null);
+      setSourcesDrawerCitations(null);
       setChatError(null);
       setAuthIssue(null);
     }
@@ -526,6 +532,8 @@ function ChatWorkspaceContent() {
             role: m.role,
             content: describeStoredMessageContent(m),
             citations: (m.metadata?.citations as CitationItem[]) || [],
+            followUps: (m.metadata?.follow_ups as FollowUpSuggestion[]) || [],
+            feedback: (m.metadata?.feedback as "up" | "down" | undefined) ?? null,
             structuredReport: reportMeta,
             workProductRef,
             isStreaming: false,
@@ -570,6 +578,7 @@ function ChatWorkspaceContent() {
     setActiveConvId(id);
     setActiveWorkProductId(null);
     setShowArtifactCanvas(false);
+    setSourcesDrawerCitations(null);
     setWorkflowHint(null);
     setChatError(null);
   };
@@ -588,6 +597,7 @@ function ChatWorkspaceContent() {
     setCanvasReport(null);
     setActiveWorkProductId(null);
     setShowArtifactCanvas(false);
+    setSourcesDrawerCitations(null);
     setWorkflowHint(null);
     setSelectedKnowledgeDocId(null);
     setChatError(null);
@@ -1135,6 +1145,7 @@ function ChatWorkspaceContent() {
                       ...m,
                       id: event.data.assistant_message_id || m.id,
                       citations: event.data.citations || m.citations,
+                      followUps: event.data.follow_ups || m.followUps,
                       structuredReport:
                         event.data.structured_report || m.structuredReport,
                       searchTraces: (m.searchTraces || []).map((t) =>
@@ -1259,10 +1270,43 @@ function ChatWorkspaceContent() {
 
   const activeConversation = conversations.find((c) => c.id === activeConvId);
   const isZeroState = !loadingMessages && messages.length === 0;
+  const lastAssistantMsgId = [...messages]
+    .reverse()
+    .find((m) => m.role === "ASSISTANT")?.id;
   const latestReportInThread =
     canvasReport ||
     [...messages].reverse().find((m) => Boolean(m.structuredReport))?.structuredReport ||
     null;
+
+  const handleMessageFeedback = async (
+    messageId: string,
+    rating: "up" | "down" | null
+  ) => {
+    setMessages((prev) =>
+      prev.map((m) => (m.id === messageId ? { ...m, feedback: rating } : m))
+    );
+    const convId = activeConvId ?? activeConvIdRef.current;
+    if (!convId || messageId.startsWith("assistant_")) return;
+    try {
+      await fetch(
+        `/api/marketing-shield/v1/conversations/${convId}/messages/${messageId}/feedback`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rating }),
+        }
+      );
+    } catch (err) {
+      console.warn("Failed to persist message feedback", err);
+    }
+  };
+
+  const handleSelectFollowUp = async (suggestion: FollowUpSuggestion) => {
+    if (isStreaming) return;
+    await handleSendMessage(suggestion.prompt, {
+      ...(suggestion.workflow_hint ? { workflowHint: suggestion.workflow_hint } : {}),
+    });
+  };
 
   const handleOpenArtifactCanvas = (
     artifactType: ComplianceArtifactType,
@@ -1483,6 +1527,11 @@ function ChatWorkspaceContent() {
                   role={msg.role}
                   content={msg.content}
                   citations={msg.citations}
+                  followUps={msg.followUps}
+                  feedback={msg.feedback}
+                  isLatestAssistantMessage={
+                    msg.role === "ASSISTANT" && msg.id === lastAssistantMsgId
+                  }
                   planSteps={msg.planSteps}
                   structuredReport={msg.structuredReport}
                   attachments={msg.attachments}
@@ -1494,6 +1543,13 @@ function ChatWorkspaceContent() {
                   workProductRef={msg.workProductRef}
                   isStreaming={msg.isStreaming}
                   onInspectEvidence={(clauseId) => setInspectClauseId(clauseId)}
+                  onOpenSources={(cits) => setSourcesDrawerCitations(cits)}
+                  onSelectFollowUp={(suggestion) => {
+                    void handleSelectFollowUp(suggestion);
+                  }}
+                  onFeedback={(rating) => {
+                    void handleMessageFeedback(msg.id, rating);
+                  }}
                   onOpenArtifactCanvas={handleOpenArtifactCanvas}
                   onOpenWorkProduct={handleOpenWorkProduct}
                   onApplyCompliantRewrite={handleApplyCompliantRewrite}
@@ -1560,7 +1616,18 @@ function ChatWorkspaceContent() {
         />
       )}
 
-      {/* 5. Slide-Over Statutory Source Drawer */}
+      {/* 5. Slide-Over Sources Drawer */}
+      <SourcesDrawer
+        citations={sourcesDrawerCitations || []}
+        isOpen={Boolean(sourcesDrawerCitations)}
+        onClose={() => setSourcesDrawerCitations(null)}
+        onInspectEvidence={(clauseId) => {
+          setSourcesDrawerCitations(null);
+          setInspectClauseId(clauseId);
+        }}
+      />
+
+      {/* 6. Slide-Over Statutory Provision Drawer */}
       <EvidenceDrawer
         clauseId={inspectClauseId}
         isOpen={Boolean(inspectClauseId)}
