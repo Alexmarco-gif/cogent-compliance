@@ -44,7 +44,7 @@ export function parseInternalEnterpriseEmails(
   return new Set(
     raw
       .split(",")
-      .map((entry) => entry.trim().toLowerCase())
+      .map((entry) => entry.trim().replace(/^['"]+|['"]+$/g, "").trim().toLowerCase())
       .filter((entry) => entry.length > 0 && entry.includes("@")),
   );
 }
@@ -62,7 +62,7 @@ export function parseInternalEnterpriseOrgIds(
   return new Set(
     raw
       .split(",")
-      .map((entry) => entry.trim())
+      .map((entry) => entry.trim().replace(/^['"]+|['"]+$/g, "").trim())
       .filter((entry) => entry.length > 0),
   );
 }
@@ -116,6 +116,10 @@ export async function findVerifiedAllowlistedEmail(
     if (addr.verification?.status === "verified") {
       return normalized;
     }
+    logger.warn("Allowlisted email matched Clerk user but verification status is not verified", {
+      clerkUserId,
+      verificationStatus: addr.verification?.status || "unknown",
+    });
   }
 
   return null;
@@ -453,15 +457,41 @@ export async function provisionEnterpriseForAllowlistedCreator(params: {
     // 5. Enforce FIRST ACTIVE ORG ONLY for this user/email (excluding INACTIVE/deleted test orgs)
     const { data: priorComps } = await supabase
       .from("tenants")
-      .select("id")
+      .select("id, clerk_org_id")
       .neq("id", tenantId)
       .neq("status", "INACTIVE")
       .or(
         `settings->>enterprise_comp_owner_user_id.eq."${clerkUserId}",settings->>enterprise_comp_email.eq."${matchedEmail}"`,
       )
-      .limit(1);
+      .limit(5);
 
-    if (priorComps && priorComps.length > 0) {
+    const activePriorComps: Array<{ id: string; clerk_org_id?: string | null }> = [];
+    for (const prior of priorComps || []) {
+      if (prior.clerk_org_id && process.env.NODE_ENV !== "test") {
+        try {
+          const client = await clerkClient();
+          await client.organizations.getOrganization({ organizationId: prior.clerk_org_id });
+          activePriorComps.push(prior);
+        } catch (orgLookupErr: unknown) {
+          const status =
+            (orgLookupErr as { status?: number })?.status ??
+            (orgLookupErr as { statusCode?: number })?.statusCode;
+          if (status === 404) {
+            // Prior org was deleted in Clerk without webhook cleanup; mark stale row INACTIVE
+            await supabase
+              .from("tenants")
+              .update({ status: "INACTIVE", updated_at: new Date().toISOString() })
+              .eq("id", prior.id);
+          } else {
+            activePriorComps.push(prior);
+          }
+        }
+      } else {
+        activePriorComps.push(prior);
+      }
+    }
+
+    if (activePriorComps.length > 0) {
       await supabase
         .from("tenants")
         .update({
@@ -495,4 +525,108 @@ export async function provisionEnterpriseForAllowlistedCreator(params: {
     });
     return { granted: false, reason: "ERROR", tenantId };
   }
+}
+
+export interface EnterpriseAllowlistDiagnostic {
+  isDemoTenant: boolean;
+  emailAllowlistConfigured: boolean;
+  emailAllowlistCount: number;
+  orgAllowlistConfigured: boolean;
+  clerkOrgId: string;
+  userEmails: Array<{
+    email: string;
+    verified: boolean;
+    matchesAllowlist: boolean;
+  }>;
+  orgCreatedByMatchesUser: boolean | null;
+  priorCompedCount: number;
+  skipReason: string | null;
+  provisionAttempt: EnterpriseAllowlistResult;
+}
+
+/**
+ * Runs a non-secret diagnostic + re-evaluation for an active tenant session
+ * (strictly exposed in Clerk Development mode only; never returns allowlist values).
+ */
+export async function diagnoseEnterpriseAllowlistForSession(params: {
+  tenantId: string;
+  clerkUserId: string;
+  clerkOrgId: string;
+}): Promise<EnterpriseAllowlistDiagnostic> {
+  const { tenantId, clerkUserId, clerkOrgId } = params;
+  const emailAllowlist = parseInternalEnterpriseEmails();
+  const orgAllowlist = parseInternalEnterpriseOrgIds();
+  const isDemoTenant =
+    tenantId === "11111111-1111-1111-1111-111111111111" || clerkOrgId === "org_demo_1111";
+
+  const userEmails: EnterpriseAllowlistDiagnostic["userEmails"] = [];
+  let orgCreatedByMatchesUser: boolean | null = null;
+
+  if (process.env.NODE_ENV !== "test" && clerkUserId && clerkOrgId && !isDemoTenant) {
+    try {
+      const client = await clerkClient();
+      const [user, org] = await Promise.all([
+        client.users.getUser(clerkUserId),
+        client.organizations.getOrganization({ organizationId: clerkOrgId }),
+      ]);
+
+      for (const addr of user.emailAddresses || []) {
+        const normalized = (addr.emailAddress || "").trim().toLowerCase();
+        userEmails.push({
+          email: normalized,
+          verified: addr.verification?.status === "verified",
+          matchesAllowlist: emailAllowlist.has(normalized),
+        });
+      }
+      orgCreatedByMatchesUser = org?.createdBy ? org.createdBy === clerkUserId : null;
+    } catch {
+      // Non-blocking Clerk lookup
+    }
+  }
+
+  const provisionAttempt = await provisionEnterpriseForAllowlistedCreator({
+    tenantId,
+    clerkUserId,
+    clerkOrgId,
+  });
+
+  const supabase = createAdminSupabaseClient();
+  const { data: tenantRow } = await supabase
+    .from("tenants")
+    .select("settings")
+    .eq("id", tenantId)
+    .maybeSingle();
+  const settings = (tenantRow?.settings || {}) as Record<string, unknown>;
+  const skipReason =
+    typeof settings.enterprise_comp_skip_reason === "string"
+      ? settings.enterprise_comp_skip_reason
+      : null;
+
+  let priorCompedCount = 0;
+  const matchedVerified = userEmails.find((e) => e.verified && e.matchesAllowlist)?.email;
+  if (matchedVerified && !isDemoTenant) {
+    const { data: priors } = await supabase
+      .from("tenants")
+      .select("id")
+      .neq("id", tenantId)
+      .neq("status", "INACTIVE")
+      .or(
+        `settings->>enterprise_comp_owner_user_id.eq."${clerkUserId}",settings->>enterprise_comp_email.eq."${matchedVerified}"`,
+      )
+      .limit(5);
+    priorCompedCount = priors?.length || 0;
+  }
+
+  return {
+    isDemoTenant,
+    emailAllowlistConfigured: emailAllowlist.size > 0,
+    emailAllowlistCount: emailAllowlist.size,
+    orgAllowlistConfigured: orgAllowlist.size > 0,
+    clerkOrgId,
+    userEmails,
+    orgCreatedByMatchesUser,
+    priorCompedCount,
+    skipReason,
+    provisionAttempt,
+  };
 }

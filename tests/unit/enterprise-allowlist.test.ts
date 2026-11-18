@@ -53,8 +53,10 @@ describe("Internal Enterprise Allowlist Provisioning", () => {
     }
   });
 
-  it("parses comma-separated emails and normalizes case/whitespace", () => {
-    const parsed = parseInternalEnterpriseEmails(" MarcoAlex201804@gmail.com , team@cogent.ng ");
+  it("parses comma-separated emails and normalizes case/whitespace/quotes", () => {
+    const parsed = parseInternalEnterpriseEmails(
+      ' "MarcoAlex201804@gmail.com" , \'team@cogent.ng\' ',
+    );
     expect(parsed.has("marcoalex201804@gmail.com")).toBe(true);
     expect(parsed.has("team@cogent.ng")).toBe(true);
     expect(parsed.size).toBe(2);

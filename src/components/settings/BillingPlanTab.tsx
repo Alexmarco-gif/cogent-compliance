@@ -84,6 +84,22 @@ function formatDetailedTrialRemaining(sub: SubscriptionData): string {
     : `7-day evaluation active: ${remainingLabel}.`;
 }
 
+interface EnterpriseDevDiagnostic {
+  isDemoTenant: boolean;
+  emailAllowlistConfigured: boolean;
+  emailAllowlistCount: number;
+  orgAllowlistConfigured: boolean;
+  clerkOrgId: string;
+  userEmails: Array<{ email: string; verified: boolean; matchesAllowlist: boolean }>;
+  orgCreatedByMatchesUser: boolean | null;
+  priorCompedCount: number;
+  skipReason: string | null;
+  provisionAttempt?: { granted: boolean; reason: string };
+}
+
+const IS_CLERK_DEV_RUNTIME =
+  (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "").startsWith("pk_test_");
+
 export function BillingPlanTab() {
   const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
   const searchParams = useSearchParams();
@@ -93,6 +109,7 @@ export function BillingPlanTab() {
   const [subData, setSubData] = useState<SubscriptionData | null>(null);
   const [searchQuota, setSearchQuota] = useState<SearchQuotaData | null>(null);
   const [loadingSub, setLoadingSub] = useState(true);
+  const [devDiagnostic, setDevDiagnostic] = useState<EnterpriseDevDiagnostic | null>(null);
   const [verifyState, setVerifyState] = useState<{
     status: "idle" | "verifying" | "verified" | "failed";
     message?: string;
@@ -132,6 +149,34 @@ export function BillingPlanTab() {
     }
     loadBilling();
   }, [clerkLoaded, isSignedIn, orgId, loadBilling]);
+
+  // In Clerk Development mode (pk_test_), if still on Trial, run non-secret diagnostic & retry allowlist
+  useEffect(() => {
+    if (!IS_CLERK_DEV_RUNTIME || !clerkLoaded || !isSignedIn || !orgId) return;
+    if (!subData?.isTrial) {
+      setDevDiagnostic(null);
+      return;
+    }
+    let cancelled = false;
+    fetch("/api/marketing-shield/v1/billing/enterprise-diagnostic", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled || !json?.success || !json.data) return;
+        const diag = json.data as EnterpriseDevDiagnostic;
+        if (diag.provisionAttempt?.granted) {
+          loadBilling();
+          window.dispatchEvent(new Event("cogent:billing-updated"));
+          return;
+        }
+        setDevDiagnostic(diag);
+      })
+      .catch(() => {
+        // Non-blocking dev diagnostic
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clerkLoaded, isSignedIn, orgId, subData?.isTrial, loadBilling]);
 
   // Verify Paystack transaction automatically whenever returning with a Paystack reference
   useEffect(() => {
@@ -202,8 +247,47 @@ export function BillingPlanTab() {
     plan?.features.work_product_docx_export ?? plan?.features.export_unwatermarked,
   );
 
+  const devDiagHint = (() => {
+    if (!devDiagnostic) return null;
+    if (devDiagnostic.isDemoTenant) {
+      return "You are viewing the Demo Tenant (org_demo_1111), which stays on Trial. Create or select a real organization.";
+    }
+    if (!devDiagnostic.emailAllowlistConfigured && !devDiagnostic.orgAllowlistConfigured) {
+      return "INTERNAL_ENTERPRISE_EMAILS is NOT set (empty) in this running server environment. Add INTERNAL_ENTERPRISE_EMAILS=your@email.com to your Development/Preview env vars (or .env.local) and restart/redeploy.";
+    }
+    const matchedUnverified = devDiagnostic.userEmails.find(
+      (e) => e.matchesAllowlist && !e.verified,
+    );
+    if (matchedUnverified) {
+      return `Your email (${matchedUnverified.email}) matches INTERNAL_ENTERPRISE_EMAILS, but Clerk verification status is unverified. Verify this email in Clerk.`;
+    }
+    const matchedVerified = devDiagnostic.userEmails.find((e) => e.matchesAllowlist && e.verified);
+    if (!matchedVerified) {
+      const signedInEmails = devDiagnostic.userEmails.map((e) => e.email).join(", ") || "none";
+      return `Your signed-in email (${signedInEmails}) does not match INTERNAL_ENTERPRISE_EMAILS on this server (allowlist has ${devDiagnostic.emailAllowlistCount} address${devDiagnostic.emailAllowlistCount === 1 ? "" : "es"}).`;
+    }
+    const reason = devDiagnostic.provisionAttempt?.reason || devDiagnostic.skipReason;
+    if (reason === "FIRST_ORG_ALREADY_COMPED") {
+      return `Another active workspace in the database (${devDiagnostic.priorCompedCount} found) already used your Enterprise allowance.`;
+    }
+    if (reason === "NOT_ORG_CREATOR") {
+      return "This account did not create the active Clerk organization (org.createdBy mismatch).";
+    }
+    return `Enterprise check returned: ${reason || "unknown"} (org: ${devDiagnostic.clerkOrgId}).`;
+  })();
+
   return (
     <div className="space-y-6">
+      {devDiagHint && (
+        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-xs space-y-1">
+            <div className="font-semibold">Development Mode Enterprise Check</div>
+            <div className="text-amber-900 leading-relaxed">{devDiagHint}</div>
+          </div>
+        </div>
+      )}
+
       {verifyState.status === "verifying" && (
         <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-800 flex items-center gap-3">
           <Loader2 className="h-5 w-5 text-zinc-600 animate-spin shrink-0" />

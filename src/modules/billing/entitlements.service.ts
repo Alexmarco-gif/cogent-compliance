@@ -162,15 +162,33 @@ export class EntitlementsService {
 
     if (shouldPersistTrialStart && process.env.NODE_ENV !== "test") {
       try {
-        await supabase
+        const { data: freshTenant } = await supabase
           .from("tenants")
-          .update({
-            settings: {
-              ...tenantSettings,
-              trial_started_at: trialStart.toISOString(),
-            },
-          })
-          .eq("id", tenantId);
+          .select("settings")
+          .eq("id", tenantId)
+          .maybeSingle();
+        const latestSettings =
+          freshTenant?.settings && typeof freshTenant.settings === "object"
+            ? (freshTenant.settings as Record<string, unknown>)
+            : tenantSettings;
+        if (typeof latestSettings.trial_started_at !== "string") {
+          await supabase
+            .from("tenants")
+            .update({
+              settings: {
+                ...latestSettings,
+                trial_started_at: trialStart.toISOString(),
+              },
+            })
+            .eq("id", tenantId);
+        }
+        tenantSettings = {
+          ...latestSettings,
+          trial_started_at:
+            typeof latestSettings.trial_started_at === "string"
+              ? latestSettings.trial_started_at
+              : trialStart.toISOString(),
+        };
       } catch {
         // Non-blocking persistence of trial anchor
       }
