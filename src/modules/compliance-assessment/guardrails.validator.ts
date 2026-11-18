@@ -366,7 +366,7 @@ export class GuardrailValidator {
       return true;
     });
 
-    // 3. DDQ Evidence Honesty Check
+    // 3. DDQ Evidence Honesty & Supervisory Statutory Accuracy Check
     if (candidate.workflow_type === "SUPERVISORY_DDQ_RESPONSE") {
       const hasInternalCitation = sanitizedCitations.some(
         (c) => c.source_class === "INTERNAL_PLAYBOOK"
@@ -375,24 +375,66 @@ export class GuardrailValidator {
         Boolean(context.hasInternalKnowledgeRefs) || hasInternalCitation;
 
       const affirmativeInternalClaimPattern =
-        /\b(?:we\s+(?:enforce|maintain|conduct|store|encrypt|verify|retain|have\s+implemented)|our\s+(?:aml|kyc|data\s+protection|security|compliance)\s+(?:policy|framework|control|program)\s+(?:ensures|requires|states|mandates))\b/i;
+        /\b(?:we\s+(?:enforce|maintain|conduct|store|encrypt|verify|retain|have\s+implemented|have\s+credited|have\s+initiated|logged|filed)|our\s+(?:aml|kyc|data\s+protection|security|compliance)\s+(?:policy|framework|control|program)\s+(?:ensures|requires|states|mandates)|(?:maintains|submits|enforces|operates|deployed|credited|restored|traced\s+to)\b[^.\n]{0,80}(?:dpo|car\b|vapt|str\b|goaml|deadlock|database\s+migration|credential[- ]stuffing|refunded|restitution|ticket|escrow))\b/i;
 
-      if (!hasInternalSupport && affirmativeInternalClaimPattern.test(sanitizedMarkdown)) {
+      const fabricatedIncidentFactPattern =
+        /\b(?:was\s+traced\s+to|anomalous\s+deadlock|database\s+migration\s+on|credential[- ]stuffing\s+api\s+vector|has\s+been\s+credited\s+directly|tickets?\s+(?:were|was)\s+logged\s+within|have\s+been\s+filed\s+on\s+the\s+goaml|is\s+conducted\s+biannually)\b/i;
+
+      if (!hasInternalSupport && (affirmativeInternalClaimPattern.test(sanitizedMarkdown) || fabricatedIncidentFactPattern.test(sanitizedMarkdown))) {
         const alreadyMarked = sanitizedMarkdown.includes("[NEEDS_INTERNAL_EVIDENCE]");
         if (!alreadyMarked) {
-          sanitizedMarkdown = `${sanitizedMarkdown}\n\n> **[NEEDS_INTERNAL_EVIDENCE]**: Internal operational claims above lack cited internal institutional policy or product records in the workspace.`;
+          sanitizedMarkdown = `${sanitizedMarkdown}\n\n> **[NEEDS_INTERNAL_EVIDENCE]**: Internal operational claims, past certifications, or incident/restitution figures above lack verified institutional records or engineering logs in the workspace. Under BOFIA 2020 and CBN Consumer Protection Regulations 2019 Regulation 7, replace unverified assertions with verified records or bracketed \`[insert ...]\` fields before submission.`;
         }
         if (!evidenceGaps.some((g) => g.gap_code === "DDQ_UNVERIFIED_INTERNAL_CONTROL")) {
           evidenceGaps.push({
             gap_code: "DDQ_UNVERIFIED_INTERNAL_CONTROL",
-            section_or_question: "Internal Control Assertions",
+            section_or_question: "Internal Control & Operational Assertions",
             description:
-              "Affirmative operational claims were generated without matching internal institutional policy documents or playbook rules.",
+              "Affirmative operational claims, certifications, or incident details were stated without matching internal institutional policy documents, filing receipts, or verified engineering/reconciliation logs.",
             severity: "HIGH",
             remediation_prompt:
-              "Upload your approved internal AML/KYC or Infosec SOP in Knowledge Base and re-run this DDQ response.",
+              "Upload your approved internal AML/KYC/Infosec SOPs, DPO/CAR/VAPT receipts, or verified engineering & reconciliation logs before signing.",
           });
         }
+      }
+
+      if (!hasInternalSupport && fabricatedIncidentFactPattern.test(sanitizedMarkdown)) {
+        legalFloorWarnings.push(
+          "BOFIA_2020_FACTUAL_INTEGRITY_RISK: Draft asserts unverified incident root causes, restitution counts, or regulatory filing completions without supplied operational logs. Verify and replace with actual logs or [insert ...] placeholders prior to CBN/sponsor bank submission."
+        );
+      }
+
+      // Catch stale NDPR 15 March CAR deadline when NDPC GAID 2025 Article 10 sets 31 March
+      const mentionsMarch15 = /\b(?:march\s*15|15\s*march)\b/i.test(sanitizedMarkdown);
+      const mentionsMarch31 = /\b(?:march\s*31|31\s*march)\b/i.test(sanitizedMarkdown);
+      const affirmsMarch15Deadline =
+        /(?:on\s+or\s+before|by|before|due(?:\s+date)?(?:\s+is)?|deadline(?:\s+is)?|filed\s+by)\s+(?:march\s*15|15\s*march)\b/i.test(
+          sanitizedMarkdown
+        );
+      if (
+        mentionsMarch15 &&
+        /\b(?:car|compliance\s+audit|ndpc|ndpa)\b/i.test(sanitizedMarkdown) &&
+        (affirmsMarch15Deadline || !mentionsMarch31)
+      ) {
+        legalFloorWarnings.push(
+          "STATUTORY_ACCURACY_NDPC_CAR_DEADLINE: References 15 March (repealed NDPR 2019 deadline). Under NDPC GAID 2025 Article 10, the baseline annual CAR deadline is 31 March (with an initial 15-month period for entities established after 12 June 2023)."
+        );
+      }
+
+      // Catch unauthorized debit responses omitting Cybercrimes Act Section 37(3)
+      if (
+        /\bunauthori[sz]ed\s+(?:wallet\s+)?debit/i.test(sanitizedMarkdown) &&
+        !/37\s*\(\s*3\s*\)|cybercrimes/i.test(sanitizedMarkdown)
+      ) {
+        legalFloorWarnings.push(
+          "STATUTORY_OMISSION_CYBERCRIMES_S37_3: Response discusses unauthorised debits without citing Section 37(3) of the Cybercrimes (Prohibition, Prevention, etc.) Act 2015 (72-hour legal-authorisation or reversal rule from written customer notice; ₦5,000,000 fine)."
+        );
+      }
+
+      if (legalFloorWarnings.length > 0) {
+        sanitizedMarkdown = `${sanitizedMarkdown}\n\n> **REGULATORY INTEGRITY & ACCURACY WARNING**:\n${legalFloorWarnings
+          .map((w) => `> - ${w}`)
+          .join("\n")}`;
       }
     }
 

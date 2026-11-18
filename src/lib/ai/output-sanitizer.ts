@@ -8,6 +8,7 @@
 export const INTERNAL_CONTEXT_TAG_NAMES = [
   "canonical_computed_financials",
   "verified_statutory_vault",
+  "statutory_reference_matrix",
   "internal_institutional_truth",
   "dual_grounding_context",
   "untrusted_live_web_evidence",
@@ -30,9 +31,13 @@ const STANDALONE_INTERNAL_TAG_RE = new RegExp(
   "gi"
 );
 
+/** Matches leaked raw database UUIDs in brackets, e.g. [d156429b-ccea-4032-bbee-36dc67599a96] */
+const BRACKETED_UUID_RE =
+  /\s*\[[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\]/gi;
+
 /**
  * Sanitizes assistant-authored Markdown (chat replies & work products):
- * 1. Strips leaked internal XML prompt delimiters and empty wrapper parens.
+ * 1. Strips leaked internal XML prompt delimiters, empty wrapper parens, and raw bracketed UUIDs.
  * 2. Replaces leaked "canonical computation engine" backend phrasing.
  * 3. Normalizes double/single section symbols (§§ / §) into plain legal text
  *    ("Sections" / "Section") while leaving URLs untouched.
@@ -43,6 +48,7 @@ export function sanitizeAssistantOutput(raw: string): string {
   let cleaned = raw
     .replace(PAREN_WRAPPED_INTERNAL_TAG_RE, "")
     .replace(STANDALONE_INTERNAL_TAG_RE, "")
+    .replace(BRACKETED_UUID_RE, "")
     .replace(/\bPer the canonical computation engine\b/g, "Based on the verified loan schedule")
     .replace(/\bper the canonical computation engine\b/g, "based on the verified loan schedule")
     .replace(/\bthe canonical computation engine\b/gi, "the verified loan schedule");
@@ -88,6 +94,14 @@ export function createStreamingOutputSanitizer(): {
     if (trailingParenMatch?.[1] && !buffer.includes("<")) {
       const ready = buffer.slice(0, buffer.length - trailingParenMatch[1].length);
       buffer = trailingParenMatch[1];
+      return ready ? sanitizeAssistantOutput(ready) : "";
+    }
+
+    // Hold back if the tail looks like an unfinished bracketed UUID ` [d156429b-...`
+    const trailingUuidPrefix = buffer.match(/(\s*\[[0-9a-f-]{0,36})$/i);
+    if (trailingUuidPrefix?.[1] && !trailingUuidPrefix[1].includes("]")) {
+      const ready = buffer.slice(0, buffer.length - trailingUuidPrefix[1].length);
+      buffer = trailingUuidPrefix[1];
       return ready ? sanitizeAssistantOutput(ready) : "";
     }
 

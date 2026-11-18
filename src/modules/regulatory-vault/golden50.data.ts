@@ -128,14 +128,20 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
           },
         ],
       },
+      {
+        clause_reference: "Regulations 6.2.2, 6.3.2, 6.3.7–6.3.17 & 7",
+        clause_text:
+          "Regulations 6.2.2 & 6.3.2 require complaint acknowledgement within 24 hours with a unique tracking reference, owner, and timeline. Regulations 6.3.7–6.3.11 mandate full refund with applicable interest, formal apology, and Summary Resolution Communication (SRC) by the next business day after resolution. Regulations 6.3.15–6.3.17 require quarterly root-cause reporting to the CBN. Regulation 7 and BOFIA 2020 strictly prohibit false, misleading, or unverified regulatory returns.",
+        page_number: 28,
+      },
     ],
   },
   {
     regulatorAcronym: "CBN",
-    title: "Guidelines on Operations of Electronic Payment Channels in Nigeria",
+    title: "Guidelines on Operations of Electronic Payment Channels & Instant EFT Regulation",
     instrument_type: "GUIDELINE",
     instrument_number: "BPS/DIR/GEN/CIR/01/014",
-    description: "Operational standards for electronic payment systems, ATM, POS, and mobile banking channels.",
+    description: "Operational standards for electronic payment systems, NIP Instant EFT reversal clocks, and unauthorised debit rules.",
     publication_date: "2020-05-11",
     effective_date: "2020-06-01",
     source_url: "https://cbn.gov.ng/documents/electronicpaymentchannels.html",
@@ -155,6 +161,12 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
           },
         ],
       },
+      {
+        clause_reference: "Instant EFT Regulation 2018 Sections 5.1(13), 5.2(8), 5.2(9), 5.3(2)–(4), 10.1.2 & 11; Cybercrimes Act Section 37(3)",
+        clause_text:
+          "Instant EFT Regulation 2018 Section 5.2(8) mandates refund within 10 minutes where failed transfer proceeds are returned by the receiving institution; Section 5.2(9) mandates refund within 1 hour after the next settlement closure where the sender cannot process; Sections 5.3(2)–(4) require inward NIP credit within 60 seconds (exceptions not exceeding 24 hours); Section 10.1.2 sets a 3-working-day general dispute window; Section 11 sanctions failure to reverse a failed NIP transfer within 24 hours (₦10,000 penalty per item); Section 5.1(13) requires daily fraud returns to NIBSS. Separately, Cybercrimes (Prohibition, Prevention, etc.) Act 2015 Section 37(3) requires a financial institution, upon written customer notification of an unauthorised debit, to provide clear legal authorisation or reverse the debit within 72 hours (carrying a ₦5,000,000 fine on conviction).",
+        page_number: 15,
+      },
     ],
   },
   {
@@ -162,7 +174,7 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
     title: "Regulatory Framework for Mobile Money Services in Nigeria",
     instrument_type: "REGULATION",
     instrument_number: "BPS/DIR/GEN/CIR/02/003",
-    description: "Prudential and marketing rules for mobile money operators and agent banking networks.",
+    description: "Prudential and marketing rules for mobile money operators, Section 9 Nominee Accounts, and Section 16 MMO wallet limits.",
     publication_date: "2021-07-09",
     effective_date: "2021-08-01",
     source_url: "https://cbn.gov.ng/documents/mobilemoneyservices.html",
@@ -182,6 +194,12 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
             product_type: "PAYMENTS",
           },
         ],
+      },
+      {
+        clause_reference: "Sections 7.2.1, 7.4(g), Section 9 (Nominee Accounts) & Section 16 (MMO Wallet Limits)",
+        clause_text:
+          "Section 7.2.1 reserves wallet creation, e-money issuance, and pool management exclusively to licensed MMOs (not PSSPs). Section 7.4(g) mandates separate corporate business accounts from customer funds. Section 9 requires customer float to be held in non-interest-bearing Nominee Accounts at designated DMBs with no right of set-off, settlement-only debits, no collateralisation, 100% backing of outstanding e-money liabilities, and daily reconciliation. Section 16 sets MMO Wallet limits: Tier 1 (₦50,000 daily outflow / ₦300,000 cumulative balance), Tier 2 (₦200,000 daily outflow / ₦500,000 cumulative balance), and Tier 3 (₦5,000,000 daily outflow / no tier-imposed balance cap).",
+        page_number: 19,
       },
     ],
   },
@@ -209,14 +227,14 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
     clauses: [
       {
         clause_reference: "Sections 2.1, 4.1 & 5.3 (Geographic Scope & NDIC Coverage)",
-        clause_text: "A Unit Microfinance Bank is restricted to operating within its licensed local government area/state and shall not solicit universal nationwide retail credit ('for all Nigerians') without a National MFB license. No MFB shall represent that deposits or loans carry unconditional sovereign guarantees; NDIC deposit insurance covers eligible MFB deposits up to ₦2,000,000 per depositor (and does not cover loans or borrower credit-life insurance fees).",
+        clause_text: "A Unit Microfinance Bank is restricted to operating within its licensed local government area/state and shall not solicit universal nationwide retail credit ('for all Nigerians') or nationwide operations without a National MFB license (and a nationwide digital app does not expand a Unit MFB's licensed geographic scope). No MFB shall represent that deposits or loans carry unconditional sovereign guarantees; NDIC deposit insurance covers eligible MFB deposits up to ₦2,000,000 per depositor (and does not cover loans or borrower credit-life insurance fees).",
         page_number: 22,
         obligations: [
           {
             obligation_text: "Unit/State MFBs must qualify geographic eligibility to their licensed territory and must not misapply NDIC deposit insurance to credit products.",
             obligation_type: "PROHIBITIVE",
             severity: "CRITICAL",
-            applicability_description: "Applies to microfinance banks promoting deposit or credit products.",
+            applicability_description: "Applies to microfinance banks and fintechs partnering with Unit/State MFBs promoting deposit or credit products.",
             institution_type: "MFB",
             product_type: "SAVINGS_DEPOSIT",
           },
@@ -244,7 +262,7 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
     title: "Guide to Charges by Banks, Other Financial and Non-Bank Financial Institutions (2020)",
     instrument_type: "GUIDELINE",
     instrument_number: "FPR/DIR/GEN/CIR/07/042",
-    description: "Binding tariff ceilings on bank and MFB fees, including Part 2(A) Section 2.6 (1% max MFB processing/appraisal/management fee cap) and Part 2(A) Section 2.5 & Footnote 3 (1% flat per month MFB penal rate cap after 3-day grace period).",
+    description: "Binding tariff ceilings on bank and MFB fees, including Part 2(A) Section 2.6 (1% max MFB processing/appraisal/management fee cap), Part 2(A) Section 2.5 & Footnote 3 (1% flat per month MFB penal rate cap after 3-day grace period), and Section 2.2 fee transparency.",
     publication_date: "2019-12-22",
     effective_date: "2020-01-01",
     source_url: "https://cbn.gov.ng/documents/guidetobankcharges.html",
@@ -260,8 +278,15 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
             obligation_type: "PROHIBITIVE",
             severity: "CRITICAL",
             applicability_description: "Applies to all Microfinance Bank credit facilities and co-marketed fintech-MFB loan campaigns.",
+            institution_type: "MFB",
+            product_type: "DIGITAL_LENDING",
           },
         ],
+      },
+      {
+        clause_reference: "Section 2.2 (Published Tariff Transparency)",
+        clause_text: "Any tariff, fee, or service charge published in promotional literature that departs from or conceals mandatory standard rates constitutes an unfair trade practice subject to sanction.",
+        page_number: 6,
       },
     ],
   },
@@ -320,10 +345,10 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
   },
   {
     regulatorAcronym: "CBN",
-    title: "AML/CFT/CPF Customer Onboarding Communication Rules",
+    title: "AML/CFT/CPF Customer Onboarding, Tiered KYC & NFIU Reporting Rules",
     instrument_type: "REGULATION",
     instrument_number: "FPR/DIR/GEN/CIR/07/033",
-    description: "KYC tier communication rules and anti-money laundering disclosure requirements in onboarding promos.",
+    description: "Tiered KYC bank vs MMO limits (2016/2023), CDD Regulations 2023, and MLPPA 2022 NFIU CTR/STR reporting rules.",
     publication_date: "2022-01-14",
     effective_date: "2022-02-01",
     source_url: "https://cbn.gov.ng/documents/amlcftregulations.html",
@@ -342,18 +367,32 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
           },
         ],
       },
+      {
+        clause_reference: "Circular PSM/DIR/PUB/CIR/001/053 (1 Dec 2023), Circular FPR/DIR/CIR/GEN/06/002 (1 July 2016), CDD Regs 2023 Reg 16 & MLPPA 2022 Sections 3(1), 7, 8 & 11",
+        clause_text:
+          "Under CBN Circular PSM/DIR/PUB/CIR/001/053 (1 Dec 2023) and CDD Regulations 2023 Regulation 16, Tier 1 requires validated BVN and/or NIN, while Tiers 2 and 3 require BOTH BVN and NIN. Under the 1 July 2016 Bank Account Circular (FPR/DIR/CIR/GEN/06/002), Tier 1 has a ₦50,000 single-deposit limit and ₦300,000 cumulative balance cap, and Tier 2 has a ₦100,000 single-deposit limit and ₦500,000 cumulative balance cap (distinct from July 2021 MMO Wallet daily outflow limits of ₦50,000 / ₦200,000 / ₦5,000,000 under Section 16). Under MLPPA 2022: Section 11 mandates CTR filing within 7 days for transactions/lodgements/transfers exceeding ₦5M (individual) or ₦10M (corporate); Section 7 & NFIU 2024 STR Guidance mandate immediate STR filing within 24 hours upon reasonable suspicion (no monetary threshold, includes attempted transactions); Section 3(1) mandates reporting international transfers exceeding USD 10,000 within 1 day; Section 8 mandates 5-year record retention.",
+        page_number: 11,
+      },
     ],
   },
   {
     regulatorAcronym: "CBN",
-    title: "Risk-Based Cybersecurity Framework & Fraud Warning Directives",
+    title: "Risk-Based Cybersecurity Framework for PSPs & OFIs (BSD/DIR/GEN/LAB/11/25)",
     instrument_type: "DIRECTIVE",
     instrument_number: "BSD/DIR/GEN/CIR/11/010",
-    description: "Mandatory customer cybersecurity warnings against sharing PINs, OTPs, and login credentials in promotional apps.",
+    description: "PSP Cybersecurity governance (Sections 2.4–2.9), VAPT (Section 3.7), 31 March self-assessment (Section 3.9.3), and 24h vs 6h incident reporting (Section 5.6 & Appendix VII).",
     publication_date: "2022-11-01",
     effective_date: "2023-01-01",
     source_url: "https://cbn.gov.ng/documents/cybersecurityframework.html",
     document_hash: "c9d0e1f2a3b456789abcdef0123456789abcdef0123456789abcdef012345678",
+    clauses: [
+      {
+        clause_reference: "Circular BSD/DIR/GEN/LAB/11/25 (10 Oct 2018) Sections 2.4–2.9, 3.7, 3.9.3, Section 5.6 & Appendix VII",
+        clause_text:
+          "Sections 2.4–2.9 require Board oversight and an independent CISO; Section 3.7 and the NPS Risk and Information Security Management Framework mandate regular vulnerability and penetration testing (annual statutory baseline); Section 3.9.3 mandates annual cybersecurity self-assessment submission by 31 March; operative Section 5.6 requires cyber-incident reporting to CBN no later than 24 hours after detection, while Appendix VII refers to an initial 6-hour notification window.",
+        page_number: 18,
+      },
+    ],
   },
   {
     regulatorAcronym: "CBN",
@@ -860,29 +899,35 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
           },
         ],
       },
+      {
+        clause_reference: "Sections 24–29, 32, 40 & 41–44",
+        clause_text:
+          "Sections 24–28 govern lawful processing, explicit freely-given consent, burden of proof on the data controller, and Data Privacy Impact Assessments (DPIAs); Section 29 mandates written processor contracts; Section 32 governs DPO designation; Section 40 requires reporting personal data breaches to the NDPC within 72 hours of awareness; Sections 41–43 regulate cross-border data transfers; Section 44 requires registration of Data Controllers and Processors of Major Importance (DCPMIs).",
+        page_number: 22,
+      },
     ],
   },
   {
     regulatorAcronym: "NDPC",
-    title: "NDPC General Application and Implementation Directive (GAID) 2024",
+    title: "NDPC General Application and Implementation Directive (GAID) 2025",
     instrument_type: "DIRECTIVE",
-    instrument_number: "NDPC/DIR/GAID/2024/01",
-    description: "Implementation directive detailing lawful consent, cookie policies, and penalty schedules up to ₦10M or 2% turnover.",
-    publication_date: "2024-02-14",
-    effective_date: "2024-03-01",
-    source_url: "https://ndpc.gov.ng/directives/gaid-2024/",
+    instrument_number: "NDPC/DIR/GAID/2025/01",
+    description: "Implementation directive detailing DCPMI classification, 31 March annual CAR deadline (Article 10), cross-border transfers (Article 45), lawful consent, and penalty schedules.",
+    publication_date: "2025-03-20",
+    effective_date: "2025-03-20",
+    source_url: "https://ndpc.gov.ng/directives/gaid-2025/",
     document_hash: "f6a7b8c9d0e1234abcdef0123456789abcdef0123456789abcdef01234567892",
     clauses: [
       {
-        clause_reference: "Section 14.2",
-        clause_text: "Every direct marketing communication sent via electronic mail, short message service (SMS), or instant messaging application must contain an easily accessible, functioning, and cost-free opt-out or unsubscribe mechanism.",
+        clause_reference: "Articles 8–10 (31 March Annual CAR Deadline), Section 14.2 & Article 45",
+        clause_text: "Articles 8–10 govern DCPMI classification, registration, and annual Compliance Audit Return (CAR) filing via an NDPC-licensed DPCO: Article 10 sets the annual CAR deadline at 31 March for entities established before 12 June 2023 (and within 15 months of establishment for entities established after 12 June 2023, followed by annual filing by 31 March), replacing the repealed NDPR 15 March date. Article 45 governs cross-border transfer mechanisms. Section 14.2 requires every direct marketing communication sent via electronic mail, SMS, or instant messaging to contain an easily accessible, functioning, and cost-free opt-out or unsubscribe mechanism.",
         page_number: 15,
         obligations: [
           {
-            obligation_text: "Mandatory free and functional opt-out/unsubscribe mechanism in every marketing communication.",
+            obligation_text: "Mandatory free and functional opt-out/unsubscribe mechanism in every marketing communication, and annual CAR filing by 31 March under Article 10.",
             obligation_type: "DISCLOSURE",
             severity: "CRITICAL",
-            applicability_description: "Applies to all electronic direct marketing.",
+            applicability_description: "Applies to all electronic direct marketing and DCPMI data controllers/processors.",
           },
         ],
       },

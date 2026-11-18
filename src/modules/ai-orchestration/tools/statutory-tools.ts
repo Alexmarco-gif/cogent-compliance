@@ -22,6 +22,7 @@ import { visualForensicsService } from "@/modules/asset-processing/visual-forens
 import { appStoreAuditorService } from "@/modules/compliance-assessment/app-store-auditor.service";
 import { licenseScopeService } from "@/modules/compliance-assessment/license-scope.service";
 import { kfsGeneratorService } from "@/modules/compliance-assessment/kfs-generator.service";
+import { statutoryReferenceMatrix } from "@/modules/compliance-assessment/statutory-reference-matrix";
 import { precedentMemoryService } from "@/modules/ai-orchestration/precedent-memory.service";
 import { entitlementsService } from "@/modules/billing/entitlements.service";
 import { workProductService } from "@/modules/work-products/work-product.service";
@@ -1950,9 +1951,12 @@ export class StatutoryToolExecutor {
       ).catch(() => ({ chunks: [], rules: [] })),
     ]);
 
+    const referenceProvisions = statutoryReferenceMatrix.extractApplicableProvisions(args.query);
+
     return {
       success: true,
       statutory_provisions: vaultRes.results || [],
+      statutory_reference_provisions: referenceProvisions,
       playbook_chunks: playbookRes.chunks || [],
       playbook_rules: playbookRes.rules || [],
     };
@@ -2077,6 +2081,10 @@ export class StatutoryToolExecutor {
       args.policy_text ||
       policyChunks.map((c) => `[Section #${c.chunk_index + 1}] ${c.chunk_text}`).join("\n\n");
 
+    const referenceProvisions = statutoryReferenceMatrix.extractApplicableProvisions(
+      `${args.regulation_query}\n${combinedPolicyText}`
+    );
+
     return {
       success: true,
       source_class: "INTERNAL_PLAYBOOK",
@@ -2085,10 +2093,12 @@ export class StatutoryToolExecutor {
       policy_excerpt: combinedPolicyText.slice(0, 6000),
       policy_sections_count: policyChunks.length || (args.policy_text ? 1 : 0),
       statutory_benchmarks: vaultResults,
+      statutory_reference_provisions: referenceProvisions,
       legal_floors: [
-        "NFIU / MLPPA 2022 §8: Customer & transaction record retention >= 5 years.",
-        "NDPA 2023 §40 / GAID 2025: Personal data breach notification to NDPC within 72 hours.",
-        "CBN CDD Regulations 2023: Mandatory BVN/NIN verification on Tier 2/3 & business accounts.",
+        "NFIU / MLPPA 2022 Section 8: Customer & transaction record retention at least 5 years.",
+        "NDPA 2023 Section 40 / GAID 2025: Personal data breach notification to NDPC within 72 hours.",
+        "NDPC GAID 2025 Article 10: Annual Compliance Audit Return (CAR) deadline is 31 March (not 15 March).",
+        "CBN CDD Regulations 2023 & Circular PSM/DIR/PUB/CIR/001/053: Mandatory validated BVN and NIN on Tier 2/3 & business accounts.",
       ],
     };
   }
@@ -2106,6 +2116,7 @@ export class StatutoryToolExecutor {
   ): Promise<Record<string, unknown>> {
     const supabase = createAdminSupabaseClient();
     let rawDdqText = args.ddq_text || "";
+    let attachmentLoaded = false;
 
     if (!rawDdqText && args.asset_id) {
       const { data: ext } = await supabase
@@ -2117,14 +2128,19 @@ export class StatutoryToolExecutor {
         .limit(1)
         .maybeSingle();
       rawDdqText = String(ext?.extracted_text || "");
+      attachmentLoaded = rawDdqText.trim().length > 0;
     }
 
-    // Parse numbered / bulleted / question-mark lines up to 25 items
+    // Parse numbered / bulleted / Q1 (Topic): / Part B items up to 25 items
     const parsedQuestions = rawDdqText
       .split(/\r?\n/)
       .map((l) => l.trim())
-      .filter((l) => /^(?:\d+[.)]|[-*•]|Q\d+[:.)])\s+/i.test(l) || l.endsWith("?"))
-      .map((l) => l.replace(/^(?:\d+[.)]|[-*•]|Q\d+[:.)])\s*/i, "").trim())
+      .filter(
+        (l) =>
+          /^(?:\d+[.)]|\(\d+\)|[-*•]|Q\d+(?:\s*\([^)]+\))?[:.)]|PART\s+[A-Z]\b)/i.test(l) ||
+          l.endsWith("?")
+      )
+      .map((l) => l.replace(/^(?:\d+[.)]|\(\d+\)|[-*•]|Q\d+(?:\s*\([^)]+\))?[:.)])\s*/i, "").trim())
       .filter((l) => l.length >= 8)
       .slice(0, 25);
 
@@ -2132,12 +2148,12 @@ export class StatutoryToolExecutor {
 
     const [kbRes, productRes, vaultRes] = await Promise.all([
       this.searchInstitutionalKnowledge(
-        { query: questions.slice(0, 5).join(" ").slice(0, 250) || "compliance policy", limit: 8 },
+        { query: questions.slice(0, 6).join(" ").slice(0, 250) || "compliance policy", limit: 8 },
         ctx
       ).catch(() => ({ chunks: [], rules: [] })),
       productService.getProductTruth(ctx.tenantId, {}).catch(() => null),
       this.searchRegulatoryEvidence(
-        { query: questions.slice(0, 5).join(" ").slice(0, 250) || "CBN AML KYC NDPA", limit: 8 },
+        { query: questions.slice(0, 6).join(" ").slice(0, 250) || "CBN AML KYC NDPA NIP Cybercrimes", limit: 8 },
         ctx
       ).catch(() => ({ results: [] })),
     ]);
@@ -2177,9 +2193,9 @@ export class StatutoryToolExecutor {
         evidenceGaps.push({
           gap_code: `DDQ_GAP_Q${idx + 1}`,
           section_or_question: `Q${idx + 1}: ${q.slice(0, 90)}`,
-          description: "No matching internal policy or product evidence found in workspace Knowledge Base.",
+          description: "No matching internal policy, licence instrument, filing acknowledgement, or incident log found in workspace Knowledge Base.",
           severity: "HIGH",
-          remediation_prompt: `Provide internal SOP/evidence covering: ${q.slice(0, 120)}`,
+          remediation_prompt: `Provide internal SOP, licence/filing receipt, or verified engineering/reconciliation evidence covering: ${q.slice(0, 120)}`,
         });
       }
 
@@ -2192,14 +2208,63 @@ export class StatutoryToolExecutor {
       };
     });
 
+    const referenceProvisions = statutoryReferenceMatrix.extractApplicableProvisions(rawDdqText);
+
+    // Detect named attachment that was NOT uploaded/extracted
+    const mentionedPdfMatch = rawDdqText.match(/["']?([\w.-]+\.(?:pdf|docx|xlsx|csv))["']?/i);
+    const missingNamedDocument =
+      mentionedPdfMatch?.[1] && !attachmentLoaded ? mentionedPdfMatch[1] : null;
+
+    // Detect specific compliance traps in prompt
+    const hasUnitMfbPartnerSignal =
+      /\b(?:unit\s+(?:tier[- ]?[12]\s+)?mfb|microfinance\s+bank|\bmfb\b)\b/i.test(rawDdqText);
+    const hasSupervisoryIncidentSignal =
+      /\b(?:unauthori[sz]ed\s+(?:wallet\s+)?debit|failed\s+nip|supervisory\s+inquiry|48[- ]hour|restitution)\b/i.test(
+        rawDdqText
+      );
+
+    const missingEvidenceChecklist: string[] = [];
+    if (missingNamedDocument) {
+      missingEvidenceChecklist.push(
+        `Referenced attachment '${missingNamedDocument}' was not supplied in extracted form—explicitly state this in the cover note and do not fabricate facts from it.`
+      );
+    }
+    if (!hasInternalEvidence) {
+      missingEvidenceChecklist.push(
+        "Licence instrument (reference number & issue date), signed sponsor-bank agreement, fund-flow diagram, bank mandates, and daily reconciliation reports",
+        "DPO appointment/acceptance letter, NDPC registration/category receipt, and latest CAR filing acknowledgement",
+        "Signed VAPT report, retest closure report, CISO appointment, and CBN 31 March annual cybersecurity self-assessment receipt",
+        "Customer-level complaint/restitution register, NIBSS/NIP reconciliation split, NFIU goAML filing acknowledgements, and verified engineering root-cause chronology"
+      );
+    }
+
     return {
       success: true,
       parsed_questions_count: questions.length,
       has_internal_evidence: hasInternalEvidence,
+      missing_named_document: missingNamedDocument,
+      has_unit_mfb_partner_signal: hasUnitMfbPartnerSignal,
+      has_supervisory_incident_signal: hasSupervisoryIncidentSignal,
       evidence_gaps_count: evidenceGaps.length,
       evidence_gaps: evidenceGaps,
       question_alignments: questionAlignments,
       statutory_benchmarks: (vaultRes.results as Array<Record<string, unknown>>) || [],
+      statutory_reference_provisions: referenceProvisions,
+      missing_evidence_checklist: missingEvidenceChecklist,
+      evidence_honesty_directives: [
+        "BOFIA 2020 & CBN Consumer Protection Regulations 2019 Regulation 7 Truthfulness Rule: NEVER invent operational incident dates, database migration deadlocks, exact unauthorized-debit counts, Naira refund amounts, ticket timestamps, or past STR/CAR/VAPT/DPO certifications not present in verified internal evidence.",
+        "Explicitly distinguish (a) Completed & Evidenced Actions, (b) Gaps / Records Not Yet Supplied ([NEEDS_INTERNAL_EVIDENCE]), and (c) Prospective Commitments ('will implement'). Use safe [insert ...] placeholders for unverified fields.",
+        ...(hasUnitMfbPartnerSignal
+          ? [
+              "Unit MFB Geographic Scope Check: Explicitly request written confirmation from the Sponsor Bank that the partnership, customer geography, virtual accounts, and product scope fall within its subsisting Unit MFB permissions and applicable CBN approvals (a nationwide app does not expand a Unit MFB's licensed scope).",
+            ]
+          : []),
+        ...(hasSupervisoryIncidentSignal
+          ? [
+              "Unauthorised Debit vs. Failed NIP Separation: Cite Cybercrimes Act 2015 Section 37(3) (72-hour legal-authorisation or reversal duty from written customer notice; ₦5,000,000 fine) separately from CBN Instant EFT Regulation 2018 Sections 5.2(8) (10 minutes), 5.2(9) (1 hour post-settlement), 5.3(2)-(4) (60 seconds / 24h), 10.1.2 (3 working days), 11 (24-hour failed-NIP sanction), and 5.1(13) (daily NIBSS fraud returns).",
+            ]
+          : []),
+      ],
     };
   }
 
