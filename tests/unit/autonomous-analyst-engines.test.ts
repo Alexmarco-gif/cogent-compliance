@@ -553,8 +553,103 @@ describe("Phase A: Autonomous Compliance Analyst Deterministic & Forensic Engine
       ).toBe(true);
     });
   });
+
+  describe("11. NexaPay FlexVault & Instant-Advance v1.0 — Head-to-Head Product Structuring Benchmark", () => {
+    const NEXAPAY_PRD_PROMPT = `Operating Entity: NexaPay Technologies Limited (Lagos, Nigeria)
+License Held: CBN Payment Solution Service Provider (PSSP) License Only
+Partner Bank: Kopa Microfinance Bank Ltd (Unit MFB — Tier 2, Lagos)
+
+Product Concept: "NexaPay FlexVault & Instant-Advance v1.0" (Nationwide iOS/Android App)
+1. FlexVault Naira Wallet: Virtual NUBANs via Kopa MFB sweep daily into NexaPay's Master Corporate Account at a commercial bank. NexaPay pays 20% p.a. fixed interest weekly by investing pooled user funds into commercial papers.
+2. NexaTag P2P: Stored consumer wallet balances with zero-fee internal @NexaTag P2P ledger transfers.
+3. Instant-Advance Loans: 14-day nano-loans up to NGN 150,000 funded from 40% of pooled FlexVault user deposits. Displayed as a "Flat 3.5% weekly convenience fee" (no APR or Key Facts Statement screen) + 1.5% daily late fee.
+4. Debt Recovery: Mandatory Android access to contacts, call logs, and SMS. Day 3 overdue triggers automated SMS to top 5 contacts in borrower's phonebook.
+5. DollarShield USD Wallet: In-app NGN-to-USD conversion at peer/parallel FX rates via an offshore Delaware API, holding up to $10,000 USD.
+6. Custom KYC: Starter Tier requires Phone + Name + DOB only (BVN/NIN deferred 30 days) with NGN 200k/day and NGN 1M balance limits. Pro Tier requires BVN OR NIN (facial biometrics optional) with NGN 2M/day and Unlimited balance.
+7. Launch Promo & Hosting: "Save & Win NGN 10M" weekly raffle (NGN 10k deposit entry) launching immediately on TikTok without external pre-vetting. Footer: "Powered by NexaPay — Your Licensed Digital Bank, Deposits Insured by NDIC." All KYC and contact data hosted exclusively on AWS US-East (Virginia).
+
+Please review the text added for our upcoming consumer product, "NexaPay FlexVault & Instant-Advance v1.0", and generate a comprehensive Statutory Product Structuring Memo.`;
+
+    it("computes exact Simple APR (182.5%), Compound EAR (483.55%), Annualized Late Fee (547.5%), and formula strings for 3.5% weekly + 1.5% daily late fee", () => {
+      const apr = aprCalculatorService.analyzeCopyAgainstProductTruth(NEXAPAY_PRD_PROMPT);
+
+      expect(apr).not.toBeNull();
+      expect(apr!.principalNgn).toBe(150_000);
+      expect(apr!.tenorDays).toBe(14);
+      expect(apr!.advertisedRatePercent).toBe(3.5);
+      expect(apr!.advertisedRatePeriod).toBe("WEEKLY");
+      expect(apr!.interestAmountNgn).toBe(10_500);
+      expect(apr!.effectiveNominalAprPercent).toBe(182.5);
+      expect(apr!.effectiveCompoundIrrPercent).toBeCloseTo(483.55, 1);
+      expect(apr!.dripPricingDetected).toBe(true);
+      expect(apr!.shortTenorPlayStoreViolation).toBe(true);
+      expect(apr!.excessivePenaltyViolation).toBe(true);
+
+      const cf = apr!.computedFinancials;
+      expect(cf.effective_compound_ear_percent).toBeCloseTo(483.55, 1);
+      expect(cf.daily_late_fee_percent).toBe(1.5);
+      expect(cf.annualized_late_fee_percent).toBe(547.5);
+      expect(cf.formula_breakdown?.period_cost_formula).toContain("3.5% weekly × (14 / 7) weeks = 7%");
+      expect(cf.formula_breakdown?.simple_apr_formula).toContain("182.5% p.a.");
+      expect(cf.formula_breakdown?.compound_ear_formula).toContain("483.55% p.a.");
+      expect(cf.formula_breakdown?.late_fee_annualized_formula).toContain("547.5% p.a.");
+    });
+
+    it("deterministically catches all 9 statutory license, Unit MFB geographic, SEC CIS, Dec 2023 Tier-1 BVN/NIN, FX, NDPA/CBN data residency, and NDIC/ARCON/NLRC violations", () => {
+      const scope = licenseScopeService.verifyLicenseScope({
+        contentText: NEXAPAY_PRD_PROMPT,
+        licenseTier: "FINTECH_GENERAL",
+      });
+
+      expect(scope.resolvedLicenseTier).toBe("PSSB_PAYMENT_SOLUTION");
+      expect(scope.detectedPartnerTier).toBe("MFB_UNIT");
+      expect(scope.passedLicenseBoundary).toBe(false);
+
+      const codes = scope.blindSpots.map((b) => b.findingCode);
+      expect(codes).toContain("LICENSE_SCOPE_UNAUTHORIZED_LENDING");
+      expect(codes).toContain("LICENSE_SCOPE_UNLAWFUL_DEPOSIT_SOLICITATION");
+      expect(codes).toContain("LICENSE_SCOPE_UNREGISTERED_INVESTMENT_SOLICITATION");
+      expect(codes).toContain("LICENSE_SCOPE_MFB_GEOGRAPHIC_BREACH");
+      expect(codes).toContain("LICENSE_SCOPE_PSSP_POOL_SWEEP_AND_P2P_LEDGER_BREACH");
+      expect(codes).toContain("LICENSE_SCOPE_CBN_2023_TIER1_KYC_BVN_NIN_BREACH");
+      expect(codes).toContain("LICENSE_SCOPE_UNAUTHORIZED_FX_AND_OFFSHORE_USD_WALLET");
+      expect(codes).toContain("LICENSE_SCOPE_DATA_LOCALIZATION_AND_CROSS_BORDER_BREACH");
+      expect(codes).toContain("LICENSE_SCOPE_FALSE_BANK_NDIC_AND_UNVETTED_LOTTERY_PROMO");
+
+      const kycSpot = scope.blindSpots.find(
+        (b) => b.findingCode === "LICENSE_SCOPE_CBN_2023_TIER1_KYC_BVN_NIN_BREACH"
+      );
+      expect(kycSpot?.violatedStatute).toContain("PSM/DIR/PUB/CIR/001/053");
+
+      const mfbSpot = scope.blindSpots.find(
+        (b) => b.findingCode === "LICENSE_SCOPE_MFB_GEOGRAPHIC_BREACH"
+      );
+      expect(mfbSpot?.whatYouMissed).toContain("Local Government Area");
+    });
+
+    it("decomposes the NexaPay PRD into 5 pillar Vault queries and 4 Live Web queries and classifies intent as PRODUCT_STRUCTURING_MEMO", async () => {
+      const { copilotOrchestrator } = await import(
+        "@/modules/conversations/copilot.orchestrator"
+      );
+
+      const intent = copilotOrchestrator.classifyTurnIntent({
+        tenantId: "tenant_1",
+        userId: "user_1",
+        conversationId: "conv_1",
+        userPrompt: NEXAPAY_PRD_PROMPT,
+        attachmentAssetIds: ["prd_pdf_asset_1"],
+      });
+      expect(intent).toBe("PRODUCT_STRUCTURING_MEMO");
+
+      const queries = copilotOrchestrator.buildWorkflowPillarQueries(
+        NEXAPAY_PRD_PROMPT,
+        "NexaPay FlexVault & Instant-Advance v1.0"
+      );
+      expect(queries.vaultQueries).toHaveLength(5);
+      expect(queries.webQueries).toHaveLength(4);
+      expect(queries.vaultQueries.some((q) => q.includes("PSM/DIR/PUB/CIR/001/053"))).toBe(true);
+      expect(queries.vaultQueries.some((q) => q.includes("Collective Investment Scheme"))).toBe(true);
+      expect(queries.vaultQueries.some((q) => q.includes("PSS/DIR/PUB/CIR/001/004"))).toBe(true);
+    });
+  });
 });
-
-
-
-

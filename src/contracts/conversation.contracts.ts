@@ -183,6 +183,14 @@ export interface ComputedFinancials {
   effective_ear_360_percent?: number;
   daily_penalty_percent?: number;
   monthly_equivalent_penalty_percent?: number;
+  daily_late_fee_percent?: number;
+  annualized_late_fee_percent?: number;
+  formula_breakdown?: {
+    period_cost_formula: string;
+    simple_apr_formula: string;
+    compound_ear_formula: string;
+    late_fee_annualized_formula?: string;
+  };
   tenor_days: number;
   drip_pricing_detected: boolean;
   short_tenor_violation: boolean;

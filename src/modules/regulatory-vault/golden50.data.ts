@@ -167,6 +167,23 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
     effective_date: "2021-08-01",
     source_url: "https://cbn.gov.ng/documents/mobilemoneyservices.html",
     document_hash: "b2c3d4e5f6a7890123456789abcdef0123456789abcdef0123456789abcdef01",
+    clauses: [
+      {
+        clause_reference: "BOFIA 2020 Sections 2, 58 & 59 / CBN Licence Categorisation 2021 (PSSP vs. MMO)",
+        clause_text: "Under BOFIA 2020 Sections 2 and 58 and the CBN New Licence Categorisation Requirements (2021) alongside the CBN Guidelines for Payments Service Holding Companies (PSHC) 2021 Section 3.1.2, a Payment Solution Service Provider (PSSP — ₦100,000,000 minimum capital) is strictly restricted to payment processing, switching, and gateway services and is prohibited from holding customer funds, issuing stored-value consumer wallets, sweeping virtual NUBAN inflows into a Master Corporate Account, or originating loans. Issuing consumer e-money wallets requires a Mobile Money Operator (MMO) license (₦2,000,000,000 minimum capital).",
+        page_number: 4,
+        obligations: [
+          {
+            obligation_text: "PSSP licensees are prohibited from holding customer deposits, operating stored-value P2P consumer wallets, or sweeping virtual account funds into corporate accounts.",
+            obligation_type: "PROHIBITIVE",
+            severity: "CRITICAL",
+            applicability_description: "Applies to all Payment Solution Service Providers (PSSPs) and payment gateways in Nigeria.",
+            institution_type: "PSSP",
+            product_type: "PAYMENTS",
+          },
+        ],
+      },
+    ],
   },
   {
     regulatorAcronym: "CBN",
@@ -200,6 +217,21 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
             obligation_type: "PROHIBITIVE",
             severity: "CRITICAL",
             applicability_description: "Applies to microfinance banks promoting deposit or credit products.",
+            institution_type: "MFB",
+            product_type: "SAVINGS_DEPOSIT",
+          },
+        ],
+      },
+      {
+        clause_reference: "Section 2.1 & Section 5.1 (Unit MFB Geographic Restriction)",
+        clause_text: "A Unit Microfinance Bank (Tier 1 or Tier 2 Unit MFB) is authorized to operate strictly within a single Local Government Area (LGA) and is prohibited from opening branches, soliciting retail deposits, or powering nationwide digital banking operations outside its licensed geographical boundary. Nationwide operations across all 36 states require a National Microfinance Bank license (₦5,000,000,000 minimum capital) or Commercial Bank license.",
+        page_number: 5,
+        obligations: [
+          {
+            obligation_text: "Unit MFBs (Tier 1 and Tier 2) and State MFBs cannot power nationwide retail deposit-taking or lending apps outside their licensed LGA/State.",
+            obligation_type: "RESTRICTION",
+            severity: "CRITICAL",
+            applicability_description: "Applies to Unit and State Microfinance Banks and fintech BaaS partnerships.",
             institution_type: "MFB",
             product_type: "SAVINGS_DEPOSIT",
           },
@@ -270,6 +302,21 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
     effective_date: "2021-04-01",
     source_url: "https://cbn.gov.ng/documents/licensingdisclosures.html",
     document_hash: "a7b8c9d0e1f23456789abcdef0123456789abcdef0123456789abcdef0123456",
+    clauses: [
+      {
+        clause_reference: "BOFIA 2020 Section 59 & NDIC Act 2023 Section 21 (2024 Revised Coverage Limits)",
+        clause_text: "Under BOFIA 2020 Section 59, no person or fintech holding a PSSP license shall use the word 'Bank' or 'Digital Bank' in its promotional description. Under the NDIC Act 2023 and May 2024 Revised NDIC Coverage Limits, deposit insurance covers up to ₦2,000,000 per depositor for Microfinance Banks (MFBs) and ₦5,000,000 per depositor for Deposit Money Banks (DMBs) and PSBs, attaching strictly to deposits domiciled in the licensed bank's ledger and never to funds swept into a corporate account or commercial paper pool.",
+        page_number: 3,
+        obligations: [
+          {
+            obligation_text: "Non-bank fintechs/PSSPs must not claim to be a 'Licensed Digital Bank' or make unqualified NDIC insurance representations; MFB deposit insurance is capped at ₦2,000,000 per depositor.",
+            obligation_type: "DISCLOSURE",
+            severity: "CRITICAL",
+            applicability_description: "Applies to all fintechs, PSSPs, MFBs, and banking partnerships in Nigeria.",
+          },
+        ],
+      },
+    ],
   },
   {
     regulatorAcronym: "CBN",
@@ -281,6 +328,21 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
     effective_date: "2022-02-01",
     source_url: "https://cbn.gov.ng/documents/amlcftregulations.html",
     document_hash: "b8c9d0e1f2a3456789abcdef0123456789abcdef0123456789abcdef01234567",
+    clauses: [
+      {
+        clause_reference: "CBN Circular PSM/DIR/PUB/CIR/001/053 (1 Dec 2023) & CBN CDD Regulations 2023 Reg. 16",
+        clause_text: "Pursuant to CBN Circular PSM/DIR/PUB/CIR/001/053 dated 1 December 2023, all Tier-1 accounts and wallets for individuals must have a validated Bank Verification Number (BVN) and/or National Identification Number (NIN) verified electronically with facial biometrics at onboarding; zero-BVN/NIN account opening or 30-day deferral is strictly prohibited. Statutory Three-Tiered KYC limits are: Tier 1 (BVN or NIN: ₦50,000 single/daily transaction limit and ₦300,000 cumulative balance limit); Tier 2 (BVN and NIN: ₦100,000 single deposit, ₦200,000 daily transaction limit, and ₦500,000 cumulative balance limit); Tier 3 (BVN and NIN + verified address + Enhanced CDD: ₦5,000,000 daily transaction limit and mandatory NFIU Currency Transaction Report [CTR] filing at ₦5,000,000 for individuals under MLPPA 2022 Sections 2–7 & 12).",
+        page_number: 4,
+        obligations: [
+          {
+            obligation_text: "Mandatory BVN or NIN validation at onboarding for Tier 1 (₦50k/day, ₦300k balance) and both BVN and NIN for Tier 2/3; deferring BVN/NIN or offering unlimited unmonitored wallet balances is prohibited.",
+            obligation_type: "PRESCRIPTIVE",
+            severity: "CRITICAL",
+            applicability_description: "Applies to all customer onboarding, digital wallets, and virtual NUBAN issuance in Nigeria.",
+          },
+        ],
+      },
+    ],
   },
   {
     regulatorAcronym: "CBN",
@@ -325,6 +387,22 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
     effective_date: "2021-10-01",
     source_url: "https://cbn.gov.ng/documents/posguidelines.html",
     document_hash: "f2a3b4c5d6e789abcdef0123456789abcdef0123456789abcdef0123456789ab",
+    clauses: [
+      {
+        clause_reference: "CBN Circular PSS/DIR/PUB/CIR/001/004 (15 June 2026) & Section 4.4 (Payment Data Localisation)",
+        clause_text: "All domestic payment transaction data, switching records, and customer KYC files generated by licensed Payment Service Providers and financial institutions in Nigeria must be stored and processed in-country within sovereign data centers physically located in Nigeria (compliance deadline 1 January 2027). Exclusive hosting on foreign cloud regions (such as AWS US-East Virginia or AWS Africa Cape Town) without primary in-country Nigerian residency is prohibited.",
+        page_number: 11,
+        obligations: [
+          {
+            obligation_text: "Mandatory primary in-country Nigerian data residency for all domestic payment transaction and KYC records.",
+            obligation_type: "PRESCRIPTIVE",
+            severity: "CRITICAL",
+            applicability_description: "Applies to all CBN-licensed PSSPs, MMOs, MFBs, and payment processors.",
+            product_type: "PAYMENTS",
+          },
+        ],
+      },
+    ],
   },
   {
     regulatorAcronym: "CBN",
@@ -336,6 +414,21 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
     effective_date: "2023-03-01",
     source_url: "https://cbn.gov.ng/documents/fxcircular.html",
     document_hash: "a3b4c5d6e7f8901abcdef0123456789abcdef0123456789abcdef0123456789b",
+    clauses: [
+      {
+        clause_reference: "Foreign Exchange Act 1995 Sections 1, 5 & 6 / CBN Revised IMTO Guidelines 2024 Section 4.1",
+        clause_text: "Under the Foreign Exchange (Monitoring and Miscellaneous Provisions) Act 1995 Sections 1, 5, and 6, only CBN-licensed Authorized Dealers (Commercial and Merchant Banks) may buy, sell, or convert foreign currency in Nigeria, strictly at official Nigerian Autonomous Foreign Exchange Market (NAFEM / EFEMS) rates. Under the CBN Revised IMTO Guidelines (January 2024), fintechs, PSSPs, and IMTOs are prohibited from conducting NGN-to-USD conversions, quoting parallel/peer exchange rates, or holding onshore retail USD wallet balances via offshore APIs.",
+        page_number: 2,
+        obligations: [
+          {
+            obligation_text: "Strict prohibition on in-app NGN-to-USD conversion at parallel/peer rates and offshore API USD wallet custody by non-Authorized Dealers.",
+            obligation_type: "PROHIBITIVE",
+            severity: "CRITICAL",
+            applicability_description: "Applies to all Nigerian fintechs, PSSPs, MMOs, and remittance operators.",
+          },
+        ],
+      },
+    ],
   },
 
   // ==========================================
@@ -505,6 +598,22 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
     effective_date: "2023-02-01",
     source_url: "https://fccpc.gov.ng/directives/debt-recovery/",
     document_hash: "b0c1d2e3f4a5678abcdef0123456789abcdef0123456789abcdef01234567892",
+    clauses: [
+      {
+        clause_reference: "FCCPC DEON Consumer Lending Regulations 2025 Regulations 15, 17, 18, 21 & 27",
+        clause_text: "Under the FCCPC Digital, Electronic, Online, or Non-Traditional Consumer Lending Regulations 2025 (DEON Regulations), digital lenders must register with the FCCPC, display a transparent Key Facts Statement (KFS) and true Annual Percentage Rate (APR) prior to loan disbursement (Regulations 15 & 17), and are strictly prohibited from requesting Android/iOS permissions to access borrower contacts, call logs, or SMS messages (Regulation 21) or contacting third parties in the borrower's phonebook for debt recovery (Regulation 18). Breaches attract administrative penalties up to ₦100,000,000 or 1% of annual turnover and director disqualification under Regulation 27.",
+        page_number: 8,
+        obligations: [
+          {
+            obligation_text: "Strict prohibition on scraping phone contacts, call logs, or SMS and messaging third-party contacts on overdue loans; mandatory KFS and APR disclosure.",
+            obligation_type: "PROHIBITIVE",
+            severity: "CRITICAL",
+            applicability_description: "Applies to all digital lending apps and nano-loan products in Nigeria.",
+            product_type: "DIGITAL_LENDING",
+          },
+        ],
+      },
+    ],
   },
   {
     regulatorAcronym: "FCCPC",
@@ -566,15 +675,15 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
     document_hash: "a5b6c7d8e9f0123abcdef0123456789abcdef0123456789abcdef01234567897",
     clauses: [
       {
-        clause_reference: "Section 10(1)",
-        clause_text: "No advertisement shall be exposed, broadcast, or published on any medium in Nigeria without prior submission to and approval by the Advertising Standards Panel (ASP).",
+        clause_reference: "Sections 2, 8, 9, 54 & 57 (Mandatory ASP Pre-Vetting & Advertising Offences)",
+        clause_text: "Under ARCON Act 2022 Sections 2, 8, 9, 54, and 57, no person or organization shall expose, broadcast, or publish any advertisement or marketing communication directed at the Nigerian market (including TikTok, social media, and digital influencer campaigns) without prior submission to and Certificate of Approval from the Advertising Standards Panel (ASP). Exposing an unvetted advertisement attracts a statutory penalty of at least ₦500,000 per exposure and prosecution before the Advertising Offences Tribunal.",
         page_number: 7,
         obligations: [
           {
-            obligation_text: "All advertising content must obtain ASP certificate of approval prior to exposure on any broadcast, print, or digital media.",
+            obligation_text: "All advertising content, including social media and TikTok campaigns, must obtain an ASP Certificate of Approval prior to public exposure.",
             obligation_type: "PRESCRIPTIVE",
             severity: "CRITICAL",
-            applicability_description: "Applies to all public promotional advertising in Nigeria.",
+            applicability_description: "Applies to all public promotional advertising and digital media in Nigeria.",
           },
         ],
       },
@@ -671,6 +780,21 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
     effective_date: "2023-10-01",
     source_url: "https://arcon.gov.ng/guidelines/prize-competitions/",
     document_hash: "b2c3d4e5f6a7890abcdef0123456789abcdef0123456789abcdef0123456789e",
+    clauses: [
+      {
+        clause_reference: "NLRC Act 2005 Section 7 & ARCON Prize Draw Guidelines Section 4",
+        clause_text: "Any deposit-linked raffle, promotional lottery, sweepstake, or prize competition conditioned on customer deposits or transactions must obtain prior regulatory permits from the National Lottery Regulatory Commission (NLRC) and applicable state lottery authorities (such as LSLGA in Lagos), register promotional terms with the FCCPC, and present the lottery permit alongside CBN partner bank no-objection prior to ARCON ASP pre-vetting.",
+        page_number: 4,
+        obligations: [
+          {
+            obligation_text: "Deposit-linked promotional raffles and sweepstakes require NLRC/LSLGA lottery permits, FCCPC notification, and ARCON ASP pre-vetting prior to launch.",
+            obligation_type: "PRESCRIPTIVE",
+            severity: "HIGH",
+            applicability_description: "Applies to all promotional raffles, sweepstakes, and deposit reward draws in Nigeria.",
+          },
+        ],
+      },
+    ],
   },
   {
     regulatorAcronym: "ARCON",
@@ -709,6 +833,19 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
     source_url: "https://ndpc.gov.ng/laws/ndpa-2023/",
     document_hash: "e5f6a7b8c9d0123abcdef0123456789abcdef0123456789abcdef01234567891",
     clauses: [
+      {
+        clause_reference: "Sections 24–27, 41–43 & 48 (Data Minimization, Cross-Border Transfers & Penalties)",
+        clause_text: "Under NDPA 2023 Sections 24–27, personal data processing must be lawful, proportionate, and limited to the minimum necessary (prohibiting invasive phone contact-list, call-log, and SMS scraping). Under Part VIII (Sections 41–43) of the NDPA 2023 and NDPC GAID 2025 Article 45 & Schedule 5, a data controller shall not transfer personal data of Nigerian citizens outside Nigeria (e.g., to AWS US-East Virginia) unless the recipient jurisdiction provides an adequate level of protection or the controller executes NDPC-approved Standard Contractual Clauses accompanied by a Transfer Impact Assessment (TIA) and Data Protection Impact Assessment (DPIA) under Section 28. Violations attract fines up to ₦10,000,000 or 2% of annual gross revenue under Section 48.",
+        page_number: 19,
+        obligations: [
+          {
+            obligation_text: "Cross-border transfers of Nigerian personal data require adequacy or NDPC-approved transfer instruments + TIA/DPIA under NDPA 2023 Sections 41–43; contact/SMS scraping violates Sections 24–27.",
+            obligation_type: "PRESCRIPTIVE",
+            severity: "CRITICAL",
+            applicability_description: "Applies to all financial institutions and fintechs processing or hosting Nigerian personal data.",
+          },
+        ],
+      },
       {
         clause_reference: "Section 34(1)",
         clause_text: "A data subject shall have the right to object at any time to the processing of personal data concerning him or her for direct marketing, which includes profiling to the extent that it is related to such direct marketing.",
@@ -897,6 +1034,20 @@ export const GOLDEN_50_INSTRUMENTS: SeedRegulatoryInstrument[] = [
     source_url: "https://sec.gov.ng/rules/cis/",
     document_hash: "d6e7f8a9b0c1234abcdef0123456789abcdef0123456789abcdef0123456789c",
     clauses: [
+      {
+        clause_reference: "ISA 2025 Sections 153–160 & SEC CIS Rules (Commercial Paper Pooling & Fund Management)",
+        clause_text: "Pooling retail user wallet funds to invest in commercial papers, treasury bills, or money market instruments and pay returns to users constitutes operating a Collective Investment Scheme (CIS) and Fund/Portfolio Management under the Investments and Securities Act (ISA) 2025 and SEC Consolidated Rules. Such activity is illegal unless the scheme is registered with the SEC as an authorized Money Market Fund managed by an SEC-licensed Fund/Portfolio Manager with an independent SEC-registered Custodian and Trustee.",
+        page_number: 4,
+        obligations: [
+          {
+            obligation_text: "Fintechs and PSSPs cannot pool customer deposits into commercial papers or money market instruments without an SEC Fund/Portfolio Manager license and registered Collective Investment Scheme.",
+            obligation_type: "PROHIBITIVE",
+            severity: "CRITICAL",
+            applicability_description: "Applies to all savings vaults, treasury pools, and commercial paper yield products in Nigeria.",
+            product_type: "INVESTMENT",
+          },
+        ],
+      },
       {
         clause_reference: "Rule 214(2)",
         clause_text: "Whenever the past performance of a collective investment scheme or mutual fund is cited in any advertisement, it shall be accompanied by the conspicuous statement: 'Past performance is not a reliable indicator of future returns, and the value of investments may fluctuate.'",

@@ -9,7 +9,7 @@
 import { ApprovedTerms, CampaignProduct } from "@/contracts/knowledge-product.contracts";
 import type { ComputedFinancials, ComputedLoanExample } from "@/contracts/conversation.contracts";
 
-export type RatePeriodType = "DAILY" | "MONTHLY" | "ANNUAL" | "FLAT_PER_TENOR";
+export type RatePeriodType = "DAILY" | "WEEKLY" | "MONTHLY" | "ANNUAL" | "FLAT_PER_TENOR";
 
 export interface AprCalculationInput {
   principalNgn?: number;
@@ -110,6 +110,8 @@ export class AprCalculatorService {
       advertisedImpliedAprPercent = Number(advertisedRatePercent.toFixed(2));
     } else if (advertisedRatePeriod === "MONTHLY") {
       advertisedImpliedAprPercent = Number((advertisedRatePercent * 12).toFixed(2));
+    } else if (advertisedRatePeriod === "WEEKLY") {
+      advertisedImpliedAprPercent = Number((advertisedRatePercent * (365 / 7)).toFixed(2));
     } else if (advertisedRatePeriod === "DAILY") {
       advertisedImpliedAprPercent = Number((advertisedRatePercent * 365).toFixed(2));
     } else {
@@ -122,6 +124,8 @@ export class AprCalculatorService {
       let interestRaw = 0;
       if (advertisedRatePeriod === "MONTHLY") {
         interestRaw = facePrincipal * (advertisedRatePercent / 100) * (tenorDays / 30);
+      } else if (advertisedRatePeriod === "WEEKLY") {
+        interestRaw = facePrincipal * (advertisedRatePercent / 100) * (tenorDays / 7);
       } else if (advertisedRatePeriod === "DAILY") {
         interestRaw = facePrincipal * (advertisedRatePercent / 100) * tenorDays;
       } else if (advertisedRatePeriod === "ANNUAL") {
@@ -228,8 +232,16 @@ export class AprCalculatorService {
       Math.max(effectiveNominalAprPercent - advertisedImpliedAprPercent, 0).toFixed(2)
     );
 
-    const dripPricingDetected = upfrontFeesNgn > 0 && aprDiscrepancyPercent >= 3;
+    const concealedShortPeriodRate =
+      (advertisedRatePeriod === "WEEKLY" || advertisedRatePeriod === "DAILY") &&
+      !input.claimedAprPercent &&
+      effectiveNominalAprPercent >= 100;
+
+    const dripPricingDetected =
+      (upfrontFeesNgn > 0 && aprDiscrepancyPercent >= 3) || concealedShortPeriodRate;
     const shortTenorPlayStoreViolation = tenorDays <= 60;
+    const annualizedLateFeePercent =
+      dailyPenaltyPercent > 0 ? Number((dailyPenaltyPercent * 365).toFixed(2)) : 0;
     const excessivePenaltyViolation = dailyPenaltyPercent > 0.1;
     const mfbProcessingFeeCapViolation = processingFeePercent + managementFeePercent > 1.0;
     const unsubstantiatedInsuranceFeeDetected = insuranceFeePercent > 0;
@@ -246,11 +258,13 @@ export class AprCalculatorService {
     const redesignPeriodicRate =
       advertisedRatePeriod === "MONTHLY"
         ? (advertisedRatePercent / 100) * (tenorDays / 30)
-        : advertisedRatePeriod === "DAILY"
-          ? (advertisedRatePercent / 100) * tenorDays
-          : advertisedRatePeriod === "ANNUAL"
-            ? (advertisedRatePercent / 100) * (tenorDays / 365)
-            : advertisedRatePercent / 100;
+        : advertisedRatePeriod === "WEEKLY"
+          ? (advertisedRatePercent / 100) * (tenorDays / 7)
+          : advertisedRatePeriod === "DAILY"
+            ? (advertisedRatePercent / 100) * tenorDays
+            : advertisedRatePeriod === "ANNUAL"
+              ? (advertisedRatePercent / 100) * (tenorDays / 365)
+              : advertisedRatePercent / 100;
     const redesignSimpleApr365 = Number(
       (redesignPeriodicRate * annualizationFactor365 * 100).toFixed(6)
     );
@@ -282,7 +296,7 @@ export class AprCalculatorService {
     // 5. Build Problem -> Risk -> Fix blind-spot alerts
     const blindSpots: BlindSpotAlert[] = [];
 
-    if (dripPricingDetected || aprDiscrepancyPercent >= 5) {
+    if ((upfrontFeesNgn > 0 && aprDiscrepancyPercent >= 3) || aprDiscrepancyPercent >= 5) {
       const formattedPrincipal = `₦${principalNgn.toLocaleString("en-NG")}`;
       const formattedFees = `₦${upfrontFeesNgn.toLocaleString("en-NG")}`;
       const formattedNet = `₦${netDisbursedNgn.toLocaleString("en-NG")}`;
@@ -333,6 +347,22 @@ export class AprCalculatorService {
         violatedStatute:
           "CBN Consumer Protection Regulations 2019 Regulations 4.5.1(g), 5.1.9 & 5.2.6",
       });
+    } else if (concealedShortPeriodRate) {
+      const formattedPrincipal = `₦${principalNgn.toLocaleString("en-NG")}`;
+      const formattedInterest = `₦${roundedInterestNgn.toLocaleString("en-NG")}`;
+      const formattedRepay = `₦${totalRepaymentNgn.toLocaleString("en-NG")}`;
+      const periodCostPct = Number(((totalCostOfCreditNgn / principalNgn) * 100).toFixed(2));
+
+      blindSpots.push({
+        findingCode: "APR_DRIP_PRICING_MISMATCH",
+        severity: "CRITICAL",
+        exactQuoteOrMetric: `${advertisedRatePercent}% ${advertisedRatePeriod.toLowerCase()} fee over ${tenorDays} days = ${periodCostPct}% period cost -> ${effectiveNominalAprPercent}% Simple APR / ${effectiveCompoundIrrPercent}% Compound EAR`,
+        whatYouMissed: `Framing the loan price as a "${advertisedRatePercent}% ${advertisedRatePeriod.toLowerCase()} convenience fee" without an Annual Percentage Rate (APR) or Key Facts Statement conceals that a ${tenorDays}-day loan costs ${periodCostPct}% (${formattedInterest} on ${formattedPrincipal}), which equals ${effectiveNominalAprPercent}% Simple APR (${periodCostPct}% × 365/${tenorDays}) and ${effectiveCompoundIrrPercent}% Compound Effective Annual Rate ((1 + ${(periodicReturn).toFixed(4)})^(365/${tenorDays}) - 1).`,
+        whatItCostsYou:
+          "Violates FCCPC DEON Consumer Lending Regulations 2025 Regulation 15 & Regulation 17 (Mandatory Pre-Contractual APR & Total Cost of Credit Disclosure), FCCPA 2018 Section 115, and CBN Consumer Protection Framework Section 4.2.1 (Key Facts Statement). Exposes the lender to up to ₦100,000,000 corporate penalty or 1% of turnover and app delisting.",
+        oneClickFix: `Present a mandatory CBN Key Facts Statement (KFS) screen prior to loan acceptance showing: Principal ${formattedPrincipal}, Tenor ${tenorDays} days, Total Cost of Credit ${formattedInterest} (${periodCostPct}%), Total Repayable ${formattedRepay}, Simple APR ${effectiveNominalAprPercent}% p.a., and Compound EAR ${effectiveCompoundIrrPercent}% p.a.`,
+        violatedStatute: "FCCPC DEON Regulations 2025 Reg. 15 & 17 / CBN CPF Section 4.2.1 / FCCPA 2018 Section 115",
+      });
     }
 
     if (shortTenorPlayStoreViolation) {
@@ -353,16 +383,31 @@ export class AprCalculatorService {
       blindSpots.push({
         findingCode: "EXCESSIVE_ROLLOVER_PENALTY",
         severity: "CRITICAL",
-        exactQuoteOrMetric: `${dailyPenaltyPercent}% daily late penalty (${monthlyPenaltyEquiv}% over 30 days vs. 1% flat/month MFB ceiling)`,
-        whatYouMissed: `A daily default penalty of ${dailyPenaltyPercent}% accrues to ${monthlyPenaltyEquiv}% over 30 days, blatantly breaching the CBN Guide to Charges Part 2(A), Section 2.5 and Footnote 3 (p. 30) ceiling for Microfinance Banks, which caps penal charges at a maximum of 1% flat per month on the unpaid amount after a mandatory 3-day grace period. Furthermore, CBN Consumer Protection Regulations 2019 Regulation 4.6(b)–(c) requires first-day default notification, application only after 3 days, and separate statement disclosure. This breach cannot be cured by fine-print disclosure.`,
+        exactQuoteOrMetric: `${dailyPenaltyPercent}% daily late penalty (${monthlyPenaltyEquiv}% over 30 days / ${annualizedLateFeePercent}% p.a. annualized vs. 1% flat/month MFB ceiling)`,
+        whatYouMissed: `A daily default penalty of ${dailyPenaltyPercent}% accrues to ${monthlyPenaltyEquiv}% over 30 days (${annualizedLateFeePercent}% per annum annualized), blatantly breaching the CBN Guide to Charges Part 2(A), Section 2.5 and Footnote 3 (p. 30) ceiling for Microfinance Banks, which caps penal charges at a maximum of 1% flat per month on the unpaid amount after a mandatory 3-day grace period. Furthermore, CBN Consumer Protection Regulations 2019 Regulation 4.6(b)–(c) requires first-day default notification, application only after 3 days, and separate statement disclosure. This breach cannot be cured by fine-print disclosure.`,
         whatItCostsYou:
           "Mandatory customer restitution order by CBN Consumer Protection Department, regulatory sanction under CBN Guide to Charges Part 2(A) Section 2.5, and FCCPC DEON enforcement for punitive debt-trap pricing.",
         oneClickFix:
-          "Eliminate the 2% daily default charge or cap late-payment penal interest in the product schedule and KFS at no more than 1% flat per month on the unpaid amount only, applied strictly after a 3-day grace period and first-day default notice (CBN Guide to Charges Part 2(A) Section 2.5; CBN CPR Regulation 4.6(b)).",
+          "Eliminate the excessive daily default charge or cap late-payment penal interest in the product schedule and KFS at no more than 1% flat per month on the unpaid amount only, applied strictly after a 3-day grace period and first-day default notice (CBN Guide to Charges Part 2(A) Section 2.5; CBN CPR Regulation 4.6(b)).",
         violatedStatute:
           "CBN Guide to Charges (2020) Part 2(A), Section 2.5 & Footnote 3 (p. 30) / CBN Consumer Protection Regulations 2019 Regulation 4.6(b)–(c)",
       });
     }
+
+    const periodCostPct = Number(((totalCostOfCreditNgn / principalNgn) * 100).toFixed(2));
+    const formulaBreakdown: NonNullable<ComputedFinancials["formula_breakdown"]> = {
+      period_cost_formula:
+        advertisedRatePeriod === "WEEKLY"
+          ? `${advertisedRatePercent}% weekly × (${tenorDays} / 7) weeks = ${periodCostPct}% nominal ${tenorDays}-day cost (₦${totalCostOfCreditNgn.toLocaleString("en-NG")} on ₦${principalNgn.toLocaleString("en-NG")} principal)`
+          : `${periodCostPct}% total cost of credit over ${tenorDays} days (₦${totalCostOfCreditNgn.toLocaleString("en-NG")} on ₦${principalNgn.toLocaleString("en-NG")} principal)`,
+      simple_apr_formula: `(${periodCostPct}% / ${tenorDays} days) × 365 days = ${effectiveNominalAprPercent}% p.a. Simple Nominal APR (${effectiveNetDisbursedAprPercent}% on net disbursed cash)`,
+      compound_ear_formula: `((1 + ${(periodicReturn).toFixed(4)})^(365 / ${tenorDays}) - 1) × 100 = ${effectiveCompoundIrrPercent}% p.a. Compound Effective Annual Rate (EAR)`,
+      ...(dailyPenaltyPercent > 0
+        ? {
+            late_fee_annualized_formula: `${dailyPenaltyPercent}% daily × 365 days = ${annualizedLateFeePercent}% p.a. Simple Annualized Late Penalty (${(dailyPenaltyPercent * 30).toFixed(1)}% per 30-day month vs. CBN 1% monthly cap on unpaid principal)`,
+          }
+        : {}),
+    };
 
     const computedFinancials: ComputedFinancials = {
       product_name: productName,
@@ -387,6 +432,13 @@ export class AprCalculatorService {
       daily_penalty_percent: dailyPenaltyPercent > 0 ? dailyPenaltyPercent : undefined,
       monthly_equivalent_penalty_percent:
         dailyPenaltyPercent > 0 ? Number((dailyPenaltyPercent * 30).toFixed(2)) : undefined,
+      ...(dailyPenaltyPercent > 0
+        ? {
+            daily_late_fee_percent: dailyPenaltyPercent,
+            annualized_late_fee_percent: annualizedLateFeePercent,
+          }
+        : {}),
+      formula_breakdown: formulaBreakdown,
       tenor_days: tenorDays,
       drip_pricing_detected: dripPricingDetected,
       short_tenor_violation: shortTenorPlayStoreViolation,
@@ -450,7 +502,7 @@ export class AprCalculatorService {
     };
     const customTerms = (terms.custom_terms || {}) as Record<string, unknown>;
 
-    // 1. Extract loan principal(s) from copy, distinguishing loan amounts ("Borrow up to ₦500,000", "borrow ₦200k")
+    // 1. Extract loan principal(s) from copy, distinguishing loan amounts ("Borrow up to ₦500,000", "nano-loans up to NGN 150,000")
     // from raffle prizes ("WIN ₦5,000,000") or transfer qualifiers ("transfer of ₦5,000+")
     const parseNgnToken = (numStr: string, suffix?: string): number => {
       const base = parseFloat(numStr.replace(/,/g, ""));
@@ -463,7 +515,7 @@ export class AprCalculatorService {
 
     const detectedLoanPrincipals: number[] = [];
     const loanContextRegex =
-      /\b(?:borrow(?:\s+up\s+to)?|loan(?:\s+of|\s+up\s+to)?|get(?:\s+up\s+to)?|access(?:\s+up\s+to)?|principal(?:\s+of)?)\s*(?:₦|NGN\s*|N)\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k|m|million|thousand)?\b/gi;
+      /\b(?:borrow(?:\s+up\s+to)?|nano[- ]?loans?(?:\s+of|\s+up\s+to)?|loans?(?:\s+of|\s+up\s+to)?|advance(?:\s+of|\s+up\s+to)?|facility(?:\s+of|\s+up\s+to)?|get(?:\s+up\s+to)?|access(?:\s+up\s+to)?|principal(?:\s+of)?)\s*(?:₦|NGN\s*|N)\s*(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)\s*(k|m|million|thousand)?\b/gi;
     let loanMatch: RegExpExecArray | null;
     while ((loanMatch = loanContextRegex.exec(contentText)) !== null) {
       if (loanMatch[1]) {
@@ -499,8 +551,11 @@ export class AprCalculatorService {
       contentText.match(
         /(\d+(?:\.\d+)?)\s*%\s*monthly\s*flat\s*rate/i
       );
+    const weeklyMatch = contentText.match(
+      /(?:flat\s+)?(\d+(?:\.\d+)?)\s*%\s*(?:weekly|per\s*week|a\s*week)(?:\s*(?:convenience|service|interest|flat|loan|credit)?\s*(?:fee|rate)?)?/i
+    );
     const dailyMatch = contentText.match(
-      /(\d+(?:\.\d+)?)\s*%\s*(?:daily|per\s*day|a\s*day)\s*(?:interest|rate)/i
+      /(\d+(?:\.\d+)?)\s*%\s*(?:daily|per\s*day|a\s*day)(?!\s*(?:late|penalty|default|overdue|rollover))/i
     );
     const annualMatch = contentText.match(
       /(\d+(?:\.\d+)?)\s*%\s*(?:p\.?a\.?|per\s*annum|annual(?:ly)?|apr)/i
@@ -510,6 +565,9 @@ export class AprCalculatorService {
     if (monthlyMatch && monthlyMatch[1]) {
       advertisedRatePercent = parseFloat(monthlyMatch[1]);
       advertisedRatePeriod = "MONTHLY";
+    } else if (weeklyMatch && weeklyMatch[1]) {
+      advertisedRatePercent = parseFloat(weeklyMatch[1]);
+      advertisedRatePeriod = "WEEKLY";
     } else if (dailyMatch && dailyMatch[1]) {
       advertisedRatePercent = parseFloat(dailyMatch[1]);
       advertisedRatePeriod = "DAILY";
@@ -537,7 +595,7 @@ export class AprCalculatorService {
     // If copy has an advertised rate or product truth, or financial promotion signals, run APR analysis
     const hasLoanSignal =
       advertisedRatePercent !== undefined ||
-      /\b(?:loan|borrow|credit|disburse|repay|interest|apr|tenor|tenure|quickcash|monthly|processing\s*fee)\b/i.test(
+      /\b(?:loan|borrow|credit|disburse|repay|interest|apr|tenor|tenure|quickcash|monthly|weekly|processing\s*fee|convenience\s*fee)\b/i.test(
         contentText
       ) ||
       Boolean(product);
@@ -548,7 +606,7 @@ export class AprCalculatorService {
     // 3. Resolve tenor (prefer copy if explicitly stated, unless product truth has a shorter/strict tenor)
     let tenorDays = terms.tenor_min_days || terms.tenor_max_days || 30;
     const tenorDaysMatch = contentText.match(
-      /(\d+)\s*[- ]?(?:day|days)\s*(?:loan|tenor|tenure|repayment|term)?/i
+      /(\d+)\s*[- ]?(?:day|days)\s*(?:nano[- ]?loans?|loans?|tenor|tenure|repayment|advance|term)?/i
     );
     if (tenorDaysMatch && tenorDaysMatch[1]) {
       const parsedDays = parseInt(tenorDaysMatch[1], 10);

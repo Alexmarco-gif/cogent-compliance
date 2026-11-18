@@ -457,4 +457,36 @@ describe("Work Product Anti-Hallucination Guardrails & PDF/DOCX Export", () => {
     expect(decodedStreams).toContain("Central Bank of Nigeria");
     expect(decodedStreams).toContain("Financial Conduct Authority");
   });
+
+  it("remediates NDPA Section 44, Pursa/ brand bleed, Cape Town data localization advice, and flags pre-2023 Tier-1 KYC assumptions in PRODUCT_STRUCTURING_MEMO", async () => {
+    const validator = new GuardrailValidator();
+    const res = await validator.validateWorkProduct(
+      {
+        workflow_type: "PRODUCT_STRUCTURING_MEMO",
+        markdown_content: [
+          "1. Cross-border hosting on AWS US-East violates NDPA 2023 Section 44.",
+          "2. Pursa/NexaPay should migrate database infrastructure from AWS US-East to AWS Africa (Cape Town) or compliant local data centers in Nigeria.",
+          "3. Restrict Starter Tier wallets to statutory limits (₦50k daily / ₦300k balance) until BVN/NIN is verified.",
+        ].join("\n"),
+        citations: [],
+      },
+      { tenantId: "tenant_1" }
+    );
+
+    expect(res.sanitized_markdown).toContain("NDPA 2023 Sections 41–43");
+    expect(res.sanitized_markdown).not.toContain("NDPA 2023 Section 44");
+    expect(res.sanitized_markdown).not.toContain("Pursa/NexaPay");
+    expect(res.sanitized_markdown).toContain("NexaPay should migrate");
+    expect(res.sanitized_markdown).toContain("CBN Circular PSS/DIR/PUB/CIR/001/004");
+    expect(res.sanitized_markdown).not.toContain("AWS Africa (Cape Town) or compliant local data centers");
+    expect(
+      res.evidence_gaps.some((g) => g.gap_code === "LEGAL_FLOOR_BREACH_CBN_2023_TIER1_BVN_NIN")
+    ).toBe(true);
+    expect(
+      res.guardrail_report.legal_floor_warnings.some((v) =>
+        v.includes("CBN Circular PSM/DIR/PUB/CIR/001/053")
+      )
+    ).toBe(true);
+  });
 });
+

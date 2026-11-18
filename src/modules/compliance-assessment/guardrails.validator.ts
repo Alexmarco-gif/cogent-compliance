@@ -396,6 +396,50 @@ export class GuardrailValidator {
       }
     }
 
+    // 3b. Statutory Citation Accuracy & Entity-Bleed Normalization
+    // Correct common LLM citation drift: NDPA 2023 cross-border data transfer is Part VIII (Sections 41–43), not Section 44
+    sanitizedMarkdown = sanitizedMarkdown.replace(
+      /\bNDPA\s*(?:2023\s*)?Section\s*44\b/gi,
+      "NDPA 2023 Sections 41–43"
+    );
+    // Strip accidental multi-tenant brand prefix bleed (e.g., "Pursa/ClientEntity" -> "ClientEntity")
+    sanitizedMarkdown = sanitizedMarkdown.replace(
+      /\bPursa\s*\/\s*([A-Z][A-Za-z0-9_-]+)/g,
+      "$1"
+    );
+    // Remediate unsafe advice claiming AWS Africa (Cape Town) satisfies primary Nigerian in-country payment data residency
+    sanitizedMarkdown = sanitizedMarkdown.replace(
+      /\bAWS\s+Africa\s*\(\s*Cape\s+Town\s*\)\s+or\s+compliant\s+local\s+data\s+centers\s+in\s+Nigeria\b/gi,
+      "Tier-III/IV data centers physically located in Nigeria (e.g., Rack Centre, Equinix/MainOne MDXi Lagos, or Africa Data Centres LOS1, per CBN Circular PSS/DIR/PUB/CIR/001/004; foreign regions such as AWS Cape Town do not satisfy primary Nigerian payment data localization)"
+    );
+
+    if (candidate.workflow_type === "PRODUCT_STRUCTURING_MEMO") {
+      const lowerMemo = sanitizedMarkdown.toLowerCase();
+      if (
+        /(?:starter\s+tier|tier\s*[- ]?1)[^.\n]{0,90}(?:phone\s*(?:and|\+)\s*name\s*only|without\s+bvn|until\s+bvn\/nin\s+is\s+verified)/i.test(
+          lowerMemo
+        ) &&
+        !/psm\/dir\/pub\/cir\/001\/053|abolished\s+zero[- ]bvn|mandatory\s+bvn\s+or\s+nin\s+at\s+(?:day[- ]?0\s+)?onboarding/i.test(
+          lowerMemo
+        )
+      ) {
+        legalFloorWarnings.push(
+          "LEGAL_FLOOR_BREACH_CBN_2023_TIER1_BVN_NIN: Memo suggests Tier-1/Starter wallets can operate prior to BVN/NIN verification. Under CBN Circular PSM/DIR/PUB/CIR/001/053 (1 December 2023), every Tier-1 account/wallet requires mandatory electronic BVN or NIN validation at onboarding before account opening."
+        );
+        if (!evidenceGaps.some((g) => g.gap_code === "LEGAL_FLOOR_BREACH_CBN_2023_TIER1_BVN_NIN")) {
+          evidenceGaps.push({
+            gap_code: "LEGAL_FLOOR_BREACH_CBN_2023_TIER1_BVN_NIN",
+            section_or_question: "Tier-1 KYC Onboarding Floor",
+            description:
+              "Memo suggests operating Tier-1/Starter wallets prior to BVN/NIN verification, which was abolished by CBN Circular PSM/DIR/PUB/CIR/001/053 (1 December 2023).",
+            severity: "HIGH",
+            remediation_prompt:
+              "Require mandatory electronic BVN or NIN validation at Day-0 onboarding before opening any Tier-1 wallet.",
+          });
+        }
+      }
+    }
+
     // 4. Policy Redline Legal Floor Enforcement
     if (candidate.workflow_type === "POLICY_GAP_REDLINE") {
       const lower = sanitizedMarkdown.toLowerCase();
@@ -430,20 +474,20 @@ export class GuardrailValidator {
 
       // CBN Tiered KYC exemption check
       if (
-        /(?:exempt|waive|skip|bypass)[^.\n]{0,60}(?:bvn|nin|kyc)[^.\n]{0,60}(?:tier\s*[23]|all\s+customers|unlimited)/i.test(
+        /(?:exempt|waive|skip|bypass)[^.\n]{0,60}(?:bvn|nin|kyc)[^.\n]{0,60}(?:tier\s*[123]|all\s+customers|unlimited)/i.test(
           lower
         )
       ) {
         legalFloorWarnings.push(
-          "LEGAL_FLOOR_BREACH_CBN_KYC: Proposed clause attempts to waive mandatory BVN/NIN verification on Tier 2/3 accounts contrary to CBN Customer Due Diligence Regulations 2023."
+          "LEGAL_FLOOR_BREACH_CBN_KYC: Proposed clause attempts to waive mandatory BVN/NIN verification on Tier 1/2/3 accounts contrary to CBN Circular PSM/DIR/PUB/CIR/001/053 (2023) and CBN Customer Due Diligence Regulations 2023."
         );
       }
+    }
 
-      if (legalFloorWarnings.length > 0) {
-        sanitizedMarkdown = `${sanitizedMarkdown}\n\n> **STATUTORY LEGAL FLOOR WARNING**:\n${legalFloorWarnings
-          .map((w) => `> - ${w}`)
-          .join("\n")}`;
-      }
+    if (legalFloorWarnings.length > 0) {
+      sanitizedMarkdown = `${sanitizedMarkdown}\n\n> **STATUTORY LEGAL FLOOR WARNING**:\n${legalFloorWarnings
+        .map((w) => `> - ${w}`)
+        .join("\n")}`;
     }
 
     // 5. Cross-Border Comparison Universal Evidence Coverage Check

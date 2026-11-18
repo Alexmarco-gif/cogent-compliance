@@ -134,7 +134,11 @@ CRITICAL OPERATIONAL RULES:
    - Instead, explain clearly how you help compliance, legal, and product teams in practice: clearing campaigns and ads before launch, checking loan rates and fee disclosures, structuring new products or cross-border expansions, redlining internal policies against current circulars, and drafting evidence-backed responses to bank or regulator questionnaires.
 2. DYNAMIC INTENT & WORKFLOW ADAPTATION (NO RIGID TEMPLATES):
    - Adapt naturally to the user's request:
-     a) **Product & Feature Structuring Memo** (when structuring a product or launch): Output an executive Statutory Structuring Memo covering applicable regulators, licensing boundaries, transaction/KYC limits, data transfer requirements, mandatory consumer disclosures, and an actionable launch checklist. Persist the deliverable via \`upsert_work_product_artifact\` (\`statutory_structuring_memo\`).
+     a) **Product & Feature Structuring Memo** (when structuring a product, PRD, or launch): Output an executive, board-ready Statutory Product Structuring Memo covering:
+        - **Executive Verdict & Activity-by-Activity Licensing Matrix** (\`| Proposed Activity | Regulatory Character & Governing Law | Current License Sufficient? | Compliant Restructuring Pathway |\`)
+        - **Pillar-by-Pillar Statutory & Circular Audit**: Cite exact sections and circular numbers from your grounded evidence (e.g., \`BOFIA 2020 Sections 2, 58, and 59\`, \`CBN New Licence Categorisation Requirements 2021 (PSSP vs. MMO)\`, \`CBN PSHC Guidelines 2021 Section 3.1.2\`, \`CBN Revised MFB Guidelines 2020 Sections 2 & 5 (Unit MFB single-LGA geographic restriction vs. National MFB)\`, \`SEC Rules on Collective Investment Schemes & ISA 2025 (commercial paper pooling)\`, \`FCCPC DEON Consumer Lending Regulations 2025 Regulations 15, 17, 18, 21 & 27\`, \`CBN Circular PSM/DIR/PUB/CIR/001/053 of 1 December 2023 (mandatory BVN or NIN at onboarding for Tier-1 wallets — never state that Tier-1 allows phone/name only without BVN/NIN)\`, \`Foreign Exchange (Monitoring and Miscellaneous Provisions) Act 1995 Sections 1, 5 & 6 & CBN Revised IMTO Guidelines 2024\`, \`CBN Circular PSS/DIR/PUB/CIR/001/004 of 15 June 2026 (mandatory in-country Nigerian payment data localization — never claim foreign cloud regions like AWS Cape Town satisfy primary Nigerian payment data residency)\`, \`NDPA 2023 Sections 24–27 & 41–43 & NDPC GAID 2025 Article 45 & Schedule 5\`, \`NDIC Act 2023 (₦2,000,000 MFB / ₦5,000,000 DMB coverage limits)\`, \`ARCON Act 2022 Sections 2, 8, 9, 54 & 57\`, and \`National Lottery Regulatory Commission (NLRC) Act 2005\`).
+        - **Verified Financial & APR Mathematics Block** (whenever credit rates, weekly/daily convenience fees, or late penalties apply): Display the exact step-by-step mathematical formulas and figures from \`<canonical_computed_financials>\` (Period Cost, Simple Nominal APR, Compound Effective Annual Rate [EAR], and Annualized Late Penalty Rate).
+        - **Compliant Restructuring Pathway**: Include an \`Immediate Compliant Launch Scope vs. Deferred Features\` matrix, \`Exact Compliant Footer & Disclosure Replacement\` copy, and \`Recommended Board Resolutions\`. Persist the deliverable via \`upsert_work_product_artifact\` (\`statutory_structuring_memo\`).
      b) **Internal Policy & SOP Gap Redline** (when reviewing internal policy against law): Compare the user's uploaded/referenced internal policy (\`<internal_institutional_truth>\`) against governing statutory updates. Output a structured Markdown comparison table (\`| Policy Section | Current Language | Statutory Gap | Recommended Redlined Clause | Statutory Floor |\`), never weakening NFIU at-least-5-year retention, NDPC 72-hour breach notice, or CBN KYC limits. Persist via \`upsert_work_product_artifact\` (\`policy_gap_redline\`).
      c) **Supervisory Inquiry / Bank DDQ Response** (when answering questionnaires): Answer each numbered question formally with statutory citations and internal evidence. Whenever internal institutional evidence is absent for a question, explicitly emit \`[NEEDS_INTERNAL_EVIDENCE]\` rather than inventing operational controls. Persist via \`upsert_work_product_artifact\` (\`supervisory_ddq_response\`).
      d) **Cross-Border Regulatory Matrix & Comparison** (when comparing countries—African or global): Build both a comprehensive side-by-side Markdown comparison matrix AND a detailed pillar-by-pillar breakdown across every requested jurisdiction using Verified Vault + Live Web evidence. Persist via \`upsert_work_product_artifact\` (\`cross_border_matrix\`).
@@ -158,11 +162,12 @@ CRITICAL OPERATIONAL RULES:
         8. **ARCON Substantiation & Regulatory-Clearance Checklist Table + Release Gate**.
      f) **Conversational Follow-Ups & Regulatory Q&A**: Answer directly in clean editorial prose with inline citations (e.g., \`[CBN CPR Regulation 4.2.5]\`, \`[FCCPA Section 115]\`).
 3. PROMPT & SYSTEM CONFIDENTIALITY:
-   - NEVER mention, quote, or expose internal XML context tags (\`<canonical_computed_financials>\`, \`<verified_statutory_vault>\`, \`<internal_institutional_truth>\`, \`<dual_grounding_context>\`, \`<untrusted_live_web_evidence>\`, \`<uploaded_asset_extracted_content>\`, \`<referenced_product_and_lock_scan>\`, \`<workspace_product_context>\`, \`<active_thread_audit_context>\`, \`<prior_turn_audit_summary>\`) or internal tool names in your user-facing replies or documents.
+   - NEVER mention, quote, or expose internal XML context tags (\`<canonical_computed_financials>\`, \`<deterministic_structuring_findings>\`, \`<verified_statutory_vault>\`, \`<internal_institutional_truth>\`, \`<dual_grounding_context>\`, \`<untrusted_live_web_evidence>\`, \`<uploaded_asset_extracted_content>\`, \`<referenced_product_and_lock_scan>\`, \`<workspace_product_context>\`, \`<active_thread_audit_context>\`, \`<prior_turn_audit_summary>\`) or internal tool names in your user-facing replies or documents.
    - Present verified financial calculations naturally (e.g., "Based on the verified loan schedule and CBN APR/EAR calculation...")—never refer to a "canonical computation engine".
+   - Always use the exact operating entity name specified by the user in their prompt; never bleed a different brand or tenant name into the memo.
 4. SINGLE SOURCE OF TRUTH FOR VERIFIED LOAN MATH:
-   - Whenever \`<canonical_computed_financials>\` is provided in the context, you MUST use those exact locked numbers (Principal, Itemized Upfront Fees including both processing and insurance fees, Net Disbursed Cash, Nominal Interest, Total Cost of Credit, Total Repayable, Tenor Days, Gross-Principal Nominal APR, Net-Disbursed Simple Annualised APR, Compounded EAR, \`loan_examples\`, and \`lawful_redesign_schedule\`) verbatim across your narrative and Markdown tables.
-   - NEVER recalculate, drop an upfront fee (such as the 1.5% insurance fee), round differently, or invent an alternative APR, fee, or tenor.
+   - Whenever \`<canonical_computed_financials>\` is provided in the context, you MUST use those exact locked numbers (Principal, Itemized Upfront Fees including both processing and insurance fees, Net Disbursed Cash, Nominal Interest, Total Cost of Credit, Total Repayable, Tenor Days, Gross-Principal Nominal APR, Net-Disbursed Simple Annualised APR, Compounded EAR, Daily/Annualized Late Fee, \`formula_breakdown\`, \`loan_examples\`, and \`lawful_redesign_schedule\`) verbatim across your narrative and Markdown tables.
+   - NEVER recalculate, drop an upfront fee, round differently, or invent an alternative APR, fee, or tenor.
 5. DUAL STATUTORY VAULT + LIVE WEB GROUNDING & STRICT EVIDENCE BOUNDARIES:
    - Statutes in \`<verified_statutory_vault>\` represent binding Nigerian primary legislation.
    - Internal docs/products in \`<internal_institutional_truth>\` represent tenant-approved internal truth.
@@ -540,6 +545,101 @@ CRITICAL OPERATIONAL RULES:
   }
 
   /**
+   * Decomposes complex product structuring, PRD, and multi-regulator workflow prompts into
+   * targeted pillar sub-queries across the Statutory Vault and Dual-Engine Live Web Search
+   * so later sections of a long PRD (KYC tiers, FX wallets, data residency, promos) are never truncated.
+   */
+  public buildWorkflowPillarQueries(
+    userPrompt: string,
+    productName?: string | null,
+    extractedText?: string | null
+  ): { vaultQueries: string[]; webQueries: string[] } {
+    const primary = this.buildDualSearchQueries(userPrompt, productName, extractedText);
+    const fullCorpus = `${userPrompt} ${extractedText || ""}`.toLowerCase();
+
+    const vaultQueries: string[] = [];
+    const webQueries: string[] = [];
+
+    // Pillar 1: Licensing, BOFIA, PSSP vs MMO, Virtual NUBANs & Partner MFB Geographic Tiers
+    if (
+      /\b(?:pssp|mmo|psb|mfb|microfinance|virtual\s*nuban|sweep|wallet|p2p|bofia|license|partner\s+bank)\b/i.test(
+        fullCorpus
+      )
+    ) {
+      vaultQueries.push(
+        "BOFIA 2020 Sections 2 58 59 PSSP MMO license permissible activities Unit MFB geographic restriction virtual NUBAN"
+      );
+      webQueries.push(
+        "Nigeria CBN PSSP MMO license permissible activities BOFIA 2020 Unit MFB geographic restriction virtual account"
+      );
+    }
+
+    // Pillar 2: Pooled Funds, Commercial Papers, Treasury Yield & SEC Collective Investment Schemes
+    if (
+      /\b(?:commercial\s*papers?|pooled|yield|interest\s+weekly|fixed\s+interest|savings|vault|mutual\s*fund|investment|cis\b)\b/i.test(
+        fullCorpus
+      )
+    ) {
+      vaultQueries.push(
+        "SEC Collective Investment Scheme CIS commercial paper pooling fund manager ISA 2025 guaranteed returns"
+      );
+      webQueries.push(
+        "Nigeria SEC Collective Investment Scheme CIS rules commercial paper pooling fintech savings yield"
+      );
+    }
+
+    // Pillar 3: Lending Mechanics, APR / Key Facts Statement & Debt Recovery Contact Scraping
+    if (
+      /\b(?:loans?|advance|credit|apr|convenience\s*fee|late\s*fee|contacts?|call\s*logs?|sms|overdue|phonebook|deon)\b/i.test(
+        fullCorpus
+      )
+    ) {
+      vaultQueries.push(
+        "FCCPC DEON Consumer Lending Regulations 2025 APR Key Facts Statement contact scraping debt recovery"
+      );
+      webQueries.push(
+        "Nigeria FCCPC DEON digital lending regulations 2025 APR Key Facts Statement contact scraping"
+      );
+    }
+
+    // Pillar 4: Tiered KYC, Mandatory BVN/NIN (Dec 2023 Circular) & Foreign Exchange / USD Wallets
+    if (
+      /\b(?:kyc|bvn|nin|tier\s*1|starter\s*tier|unlimited\s*balance|usd|fx|parallel|offshore|imto)\b/i.test(
+        fullCorpus
+      )
+    ) {
+      vaultQueries.push(
+        "CBN Circular PSM/DIR/PUB/CIR/001/053 Tier 1 BVN NIN KYC limits Foreign Exchange Act 1995 IMTO Guidelines 2024"
+      );
+      webQueries.push(
+        "Nigeria CBN circular PSM/DIR/PUB/CIR/001/053 Tier 1 BVN NIN KYC Foreign Exchange Act IMTO 2024 USD wallet"
+      );
+    }
+
+    // Pillar 5: Data Localization, Cross-Border Transfer (NDPA 2023), ARCON ASP, NDIC & Raffle Promos
+    if (
+      /\b(?:aws|gcp|azure|us[- ]east|eu[- ]west|offshore\s+hosting|foreign\s+server|hosting|data|ndpa|ndpc|arcon|ndic|raffle|sweepstake|lottery|giveaway|tiktok|instagram|influencer|promo)\b/i.test(
+        fullCorpus
+      )
+    ) {
+      vaultQueries.push(
+        "CBN Circular PSS/DIR/PUB/CIR/001/004 payment data localisation NDPA 2023 Sections 41 43 ARCON Act Section 54 NDIC Act 2023 NLRC lottery"
+      );
+      webQueries.push(
+        "Nigeria CBN payment data localisation circular NDPA 2023 cross border transfer ARCON ASP NDIC MFB limit NLRC raffle"
+      );
+    }
+
+    vaultQueries.push(primary.vaultQuery);
+    webQueries.push(primary.webQuery);
+
+    return {
+      vaultQueries: Array.from(new Set(vaultQueries)).slice(0, 5),
+      webQueries: Array.from(new Set(webQueries)).slice(0, 4),
+    };
+  }
+
+  /**
    * Cleans raw OCR stutter/glitches from statutory chunk titles and deduplicates citations
    * by semantic identity (regulator + instrument + normalized section/clause).
    */
@@ -597,7 +697,25 @@ CRITICAL OPERATIONAL RULES:
       return "SUPERVISORY_DDQ_RESPONSE";
     }
 
-    // 3. Pan-African & Global Cross-Border Comparison (open-world country detection)
+    // 3. Explicit Product Structuring Memo request (even if a PRD document or offshore hosting/API region is mentioned)
+    const explicitStructuringRequest =
+      /\b(?:structuring\s+memo|product\s+structuring|statutory\s+product\s+structuring|compliant\s+restructuring\s+pathway)\b/i.test(
+        prompt
+      );
+    const hasExplicitCrossBorderComparisonCue =
+      /\b(?:cross[- ]?border\s+(?:expansion|licensing|comparison|matrix|strategy)|multi[- ]?(?:country|jurisdiction)\s+(?:matrix|comparison|expansion|licensing)|regulatory\s+matrix\s+comparing|side[- ]by[- ]side\s+comparison|compare\s+(?:regulations?|licensing|frameworks?)\s+(?:across|between|in))\b/i.test(
+        prompt
+      );
+
+    if (
+      explicitStructuringRequest &&
+      !hasExplicitCrossBorderComparisonCue &&
+      !(options.searchJurisdictions && options.searchJurisdictions.some((j) => j !== "NG"))
+    ) {
+      return "PRODUCT_STRUCTURING_MEMO";
+    }
+
+    // 3b. Pan-African & Global Cross-Border Comparison (open-world country detection)
     const detectedJurisdictions = extractTargetJurisdictionsFromPrompt(
       prompt,
       options.searchJurisdictions
@@ -1469,15 +1587,22 @@ CRITICAL OPERATIONAL RULES:
         options.userPrompt,
         options.searchJurisdictions
       );
+      const hasExplicitNonNgScope = Boolean(
+        options.searchJurisdictions && options.searchJurisdictions.some((j) => j !== "NG")
+      );
       const requestedJurisdictions: SearchJurisdiction[] =
-        detectedWfJurisdictions.length > 1 ||
-        detectedWfJurisdictions.some((j) => j !== "NG")
-          ? detectedWfJurisdictions
-          : turnIntent === "CROSS_BORDER_COMPARISON"
-            ? ["NG", "KE", "GH"]
-            : detectedWfJurisdictions.length > 0
-              ? detectedWfJurisdictions
-              : ["NG"];
+        turnIntent === "PRODUCT_STRUCTURING_MEMO" &&
+        !hasExplicitNonNgScope &&
+        (detectedWfJurisdictions.length === 0 || detectedWfJurisdictions.includes("NG"))
+          ? ["NG"]
+          : detectedWfJurisdictions.length > 1 ||
+              detectedWfJurisdictions.some((j) => j !== "NG")
+            ? detectedWfJurisdictions
+            : turnIntent === "CROSS_BORDER_COMPARISON"
+              ? ["NG", "KE", "GH"]
+              : detectedWfJurisdictions.length > 0
+                ? detectedWfJurisdictions
+                : ["NG"];
 
       const workflowPlanSteps: ExecutionPlanStep[] = [
         {
@@ -1525,7 +1650,40 @@ CRITICAL OPERATIONAL RULES:
       let policyGapPayload: Record<string, unknown> | null = null;
       let ddqPayload: Record<string, unknown> | null = null;
 
-      if (
+      if (turnIntent === "PRODUCT_STRUCTURING_MEMO") {
+        aprAuditResult = aprCalculatorService.analyzeCopyAgainstProductTruth(
+          combinedAnalysisText,
+          resolvedProduct
+        );
+        licenseAuditResult = licenseScopeService.verifyLicenseScope({
+          contentText: combinedAnalysisText,
+          licenseTier: memory?.licenseTier || null,
+        });
+        appStoreAuditResult = appStoreAuditorService.auditListingOrLandingPage({
+          listingText: combinedAnalysisText,
+        });
+        const terms = resolvedProduct?.approved_terms || {};
+        lockResult = await mechanicalLocksEngine
+          .executeLocks({
+            tenantId: options.tenantId,
+            contentText: combinedAnalysisText,
+            productTruth: resolvedProduct
+              ? {
+                  productName: resolvedProduct.product_name,
+                  productType: resolvedProduct.product_type,
+                  interestRateMin: terms.interest_rate_min,
+                  interestRateMax: terms.interest_rate_max,
+                  interestRateType: terms.interest_rate_type,
+                  processingFeePercent: terms.processing_fee_percent,
+                  managementFeePercent: terms.management_fee_percent,
+                  tenorMinDays: terms.tenor_min_days,
+                  tenorMaxDays: terms.tenor_max_days,
+                  requiredDisclosures: terms.required_disclosures,
+                }
+              : null,
+          })
+          .catch(() => null);
+      } else if (
         turnIntent === "POLICY_GAP_REDLINE" &&
         typeof statutoryToolExecutor.comparePolicyAgainstRegulation === "function"
       ) {
@@ -1567,7 +1725,7 @@ CRITICAL OPERATIONAL RULES:
           step_id: "wf_hydrate",
           status: "COMPLETED",
           summary: memory
-            ? `Hydrated ${memory.institutionName} (${memory.licenseTier})`
+            ? `Hydrated ${memory.institutionName} (${licenseAuditResult?.resolvedLicenseTier || memory.licenseTier})`
             : "Institutional context ready",
         },
       };
@@ -1577,11 +1735,13 @@ CRITICAL OPERATIONAL RULES:
         data: { step_id: "wf_retrieve", status: "RUNNING" },
       };
 
-      const { vaultQuery, webQuery } = this.buildDualSearchQueries(
+      const { vaultQueries, webQueries } = this.buildWorkflowPillarQueries(
         options.userPrompt,
         resolvedProductName,
         extractedAssetTexts.join(" ")
       );
+      const vaultQuery = vaultQueries[0]!;
+      const webQuery = webQueries[0]!;
 
       yield {
         type: "search.track_started",
@@ -1594,7 +1754,8 @@ CRITICAL OPERATIONAL RULES:
 
       const wantsLiveWeb =
         options.enableLiveWebSearch === true ||
-        turnIntent === "CROSS_BORDER_COMPARISON";
+        turnIntent === "CROSS_BORDER_COMPARISON" ||
+        (turnIntent === "PRODUCT_STRUCTURING_MEMO" && options.enableLiveWebSearch !== false);
 
       let allowLive = false;
       if (wantsLiveWeb) {
@@ -1632,13 +1793,44 @@ CRITICAL OPERATIONAL RULES:
           : webQuery;
 
       const wfStart = Date.now();
+      const activeVaultQueries =
+        turnIntent === "PRODUCT_STRUCTURING_MEMO" ? vaultQueries : [vaultQuery];
+      const activeWebQueries =
+        turnIntent === "PRODUCT_STRUCTURING_MEMO" ? webQueries : [webQuery];
+
       const [vaultRes, kbRes, webRes] = await Promise.all([
         typeof statutoryToolExecutor.searchRegulatoryEvidence === "function"
-          ? this.withTimeout(
-              statutoryToolExecutor.searchRegulatoryEvidence({ query: vaultQuery, limit: 8 }, ctx),
-              5000,
-              { success: false, results: [] }
-            )
+          ? turnIntent === "PRODUCT_STRUCTURING_MEMO"
+            ? Promise.all(
+                activeVaultQueries.map((q) =>
+                  this.withTimeout(
+                    statutoryToolExecutor.searchRegulatoryEvidence({ query: q, limit: 8 }, ctx),
+                    4500,
+                    { success: false, results: [] }
+                  )
+                )
+              ).then((batches) => {
+                const merged: Array<Record<string, unknown>> = [];
+                const seen = new Set<string>();
+                for (const b of batches) {
+                  for (const item of (b?.results as Array<Record<string, unknown>>) || []) {
+                    const key = String(
+                      item.regulatory_clause_id ||
+                        `${item.instrument_title || ""}:${item.clause_reference || ""}`
+                    );
+                    if (!seen.has(key)) {
+                      seen.add(key);
+                      merged.push(item);
+                    }
+                  }
+                }
+                return { results: merged };
+              })
+            : this.withTimeout(
+                statutoryToolExecutor.searchRegulatoryEvidence({ query: vaultQuery, limit: 8 }, ctx),
+                5000,
+                { success: false, results: [] }
+              )
           : Promise.resolve({ results: [] }),
         typeof statutoryToolExecutor.searchInstitutionalKnowledge === "function"
           ? this.withTimeout(
@@ -1647,20 +1839,64 @@ CRITICAL OPERATIONAL RULES:
               { chunks: [], rules: [] }
             ).catch(() => ({ chunks: [], rules: [] }))
           : Promise.resolve({ chunks: [], rules: [] }),
-        allowLive
-          ? this.withTimeout(
-              statutoryToolExecutor.searchLiveWeb(
-                {
-                  query: wfLiveQuery,
-                  jurisdictions: requestedJurisdictions,
-                  prioritize_official_regulators: true,
-                  include_news: true,
-                },
-                { ...ctx, quotaPreConsumed: true }
-              ),
-              16000,
-              { results: [], web_summary: "", status: "timeout" }
-            )
+        allowLive && typeof statutoryToolExecutor.searchLiveWeb === "function"
+          ? turnIntent === "PRODUCT_STRUCTURING_MEMO"
+            ? Promise.all(
+                activeWebQueries.map((q) =>
+                  this.withTimeout(
+                    statutoryToolExecutor.searchLiveWeb(
+                      {
+                        query: q,
+                        jurisdictions: requestedJurisdictions,
+                        prioritize_official_regulators: true,
+                        include_news: true,
+                      },
+                      { ...ctx, quotaPreConsumed: true }
+                    ),
+                    9500,
+                    { results: [], web_summary: "", status: "timeout" }
+                  )
+                )
+              ).then((batches) => {
+                const mergedResults: Array<Record<string, unknown>> = [];
+                const summaries: string[] = [];
+                const seenUrls = new Set<string>();
+                let anyCacheHit = false;
+                let allTimedOut = true;
+                for (const b of batches) {
+                  const rec = (b || {}) as Record<string, unknown>;
+                  if (rec.status !== "timeout") allTimedOut = false;
+                  if (rec.cache_hit) anyCacheHit = true;
+                  if (rec.web_summary) summaries.push(String(rec.web_summary));
+                  for (const wr of (rec.results as Array<Record<string, unknown>>) || []) {
+                    const u = String(wr.retrieved_url || wr.url || "");
+                    const dedupKey = u || JSON.stringify(wr);
+                    if (!seenUrls.has(dedupKey)) {
+                      seenUrls.add(dedupKey);
+                      mergedResults.push(wr);
+                    }
+                  }
+                }
+                return {
+                  results: mergedResults,
+                  web_summary: summaries.join("\n\n"),
+                  cache_hit: anyCacheHit,
+                  status: allTimedOut ? "timeout" : "completed",
+                };
+              })
+            : this.withTimeout(
+                statutoryToolExecutor.searchLiveWeb(
+                  {
+                    query: wfLiveQuery,
+                    jurisdictions: requestedJurisdictions,
+                    prioritize_official_regulators: true,
+                    include_news: true,
+                  },
+                  { ...ctx, quotaPreConsumed: true }
+                ),
+                16000,
+                { results: [], web_summary: "", status: "timeout" }
+              )
           : Promise.resolve(null),
       ]);
 
@@ -1750,6 +1986,42 @@ CRITICAL OPERATIONAL RULES:
         resolveJurisdictionDescriptor(j)
       );
 
+      const structuringFindingsBlock =
+        turnIntent === "PRODUCT_STRUCTURING_MEMO"
+          ? `${
+              aprAuditResult?.computedFinancials
+                ? `\n<canonical_computed_financials>\n${JSON.stringify(
+                    aprAuditResult.computedFinancials,
+                    null,
+                    2
+                  )}\n</canonical_computed_financials>`
+                : ""
+            }\n<deterministic_structuring_findings>\n${JSON.stringify(
+              {
+                resolved_entity_license_tier: licenseAuditResult?.resolvedLicenseTier,
+                detected_partner_bank_tier: licenseAuditResult?.detectedPartnerTier,
+                detected_regulated_activities: licenseAuditResult?.detectedActivities,
+                license_and_structuring_findings: licenseAuditResult?.blindSpots || [],
+                apr_and_lending_findings: aprAuditResult?.blindSpots || [],
+                app_store_and_privacy_findings: appStoreAuditResult?.blindSpots || [],
+                mechanical_lock_breaches: lockResult
+                  ? [
+                      ...lockResult.lock1_prohibited_terms.breaches,
+                      ...lockResult.lock2_product_rate_match.breaches,
+                      ...lockResult.lock3_mandatory_disclosures.breaches,
+                    ]
+                  : [],
+              },
+              null,
+              2
+            )}\n</deterministic_structuring_findings>`
+          : "";
+
+      const structuringSynthesisDirective =
+        turnIntent === "PRODUCT_STRUCTURING_MEMO"
+          ? `\nCRITICAL STRUCTURING MEMO REQUIREMENTS:\n1. Include a Markdown table titled '### Activity-by-Activity Licensing & Structure Matrix' with columns: | Proposed Activity | Regulatory Character & Governing Law | Current License Sufficient? | Compliant Restructuring Pathway |.\n2. Include a dedicated '### Verified Financial & APR Mathematics' section displaying the exact formulas and locked figures from <canonical_computed_financials> (Period Cost, Simple Nominal APR, Compound Effective Annual Rate [EAR], and Annualized Late Penalty Rate) whenever loan pricing or fees are present.\n3. Incorporate every statutory violation and circular reference identified in <deterministic_structuring_findings> and <verified_statutory_vault> (including BOFIA 2020 Sections 2, 58 & 59; CBN New Licence Categorisation 2021 PSSP vs. MMO capital & scope; CBN Revised MFB Guidelines 2020 Sections 2 & 5 on Unit MFB single-LGA geographic restriction vs. National MFB for nationwide apps; SEC Collective Investment Scheme [CIS] & ISA 2025 rules on pooling user funds into commercial papers; FCCPC DEON Consumer Lending Regulations 2025 Regulations 15, 17, 18, 21 & 27; CBN Circular PSM/DIR/PUB/CIR/001/053 of 1 Dec 2023 mandating BVN or NIN at onboarding for Tier-1 wallets; Foreign Exchange Act 1995 Sections 1, 5 & 6 and CBN Revised IMTO Guidelines 2024; CBN Circular PSS/DIR/PUB/CIR/001/004 of 15 June 2026 requiring in-country Nigerian payment data residency + NDPA 2023 Sections 24–27 & 41–43 + NDPC GAID 2025 Art. 45 & Schedule 5; NDIC Act 2023 ₦2,000,000 MFB coverage limit; ARCON Act 2022 Sections 2, 8, 9, 54 & 57; and NLRC Act 2005 lottery permits).\n4. Close with an '### Immediate Compliant Launch Scope vs. Deferred Features' table, '### Exact Compliant Footer & Disclosure Replacement' block, and '### Recommended Board Resolutions'.`
+          : "";
+
       const lastUserTurn = contents[contents.length - 1];
       if (lastUserTurn && lastUserTurn.role === "user") {
         const workflowGuidance =
@@ -1758,10 +2030,10 @@ CRITICAL OPERATIONAL RULES:
             : `Execute workflow intent '${turnIntent}' directly now using the hydrated statutory vault, institutional records, and live evidence above. Do NOT repeat redundant search tool calls unless a critical gap remains; write the complete citation-backed deliverable directly (the Work Product Studio automatically saves your output).`;
 
         lastUserTurn.parts.push({
-          text: `\n<verified_statutory_vault>\n${JSON.stringify(vaultResults, null, 2)}\n</verified_statutory_vault>\n<internal_institutional_truth>\n${JSON.stringify(
+          text: `\n<verified_statutory_vault>\n${JSON.stringify(vaultResults, null, 2)}\n</verified_statutory_vault>${structuringFindingsBlock}\n<internal_institutional_truth>\n${JSON.stringify(
             {
               institution_name: memory?.institutionName,
-              license_tier: memory?.licenseTier,
+              license_tier: licenseAuditResult?.resolvedLicenseTier || memory?.licenseTier,
               target_jurisdictions: targetJurisdictionProfiles,
               matched_product: resolvedProduct
                 ? {
@@ -1785,7 +2057,7 @@ CRITICAL OPERATIONAL RULES:
                   2
                 )}\n</untrusted_live_web_evidence>`
               : ""
-          }\n${workflowGuidance}`,
+          }${structuringSynthesisDirective}\n${workflowGuidance}`,
         });
       }
     } else if (turnIntent === "REGULATORY_LOOKUP") {
