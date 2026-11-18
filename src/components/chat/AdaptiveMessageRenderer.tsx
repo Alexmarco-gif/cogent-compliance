@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
   FileText,
+  FileImage,
   BookOpen,
   Globe,
   Paperclip,
@@ -23,6 +24,9 @@ import {
   Check,
   ThumbsUp,
   ThumbsDown,
+  Pencil,
+  X,
+  ExternalLink,
 } from "lucide-react";
 import Link from "next/link";
 import type {
@@ -43,6 +47,9 @@ import { sanitizeAssistantOutput } from "@/lib/ai/output-sanitizer";
 export interface MessageAttachmentChip {
   assetId?: string;
   filename: string;
+  mimeType?: string | null;
+  fileSizeBytes?: number | null;
+  previewUrl?: string;
 }
 
 export interface SearchTrackPill {
@@ -68,12 +75,14 @@ export interface WorkProductBannerRef {
 }
 
 export interface AdaptiveMessageRendererProps {
+  messageId?: string;
   content: string;
   role: "USER" | "ASSISTANT" | "SYSTEM" | "TOOL";
   citations?: CitationItem[];
   followUps?: FollowUpSuggestion[];
   feedback?: "up" | "down" | null;
   isLatestAssistantMessage?: boolean;
+  canEdit?: boolean;
   planSteps?: ExecutionPlanStep[];
   structuredReport?: StructuredComplianceReport;
   attachments?: MessageAttachmentChip[];
@@ -88,6 +97,10 @@ export interface AdaptiveMessageRendererProps {
   onOpenSources?: (citations: CitationItem[]) => void;
   onSelectFollowUp?: (suggestion: FollowUpSuggestion) => void;
   onFeedback?: (rating: "up" | "down" | null) => void;
+  onEditMessage?: (
+    messageId: string,
+    newContent: string
+  ) => Promise<boolean | void> | boolean | void;
   onOpenArtifactCanvas?: (
     artifactType: ComplianceArtifactType,
     report: StructuredComplianceReport
@@ -248,13 +261,68 @@ function renderChildrenWithInlineCitations(
   });
 }
 
+function formatAttachmentSize(bytes?: number | null): string | null {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isImageAttachment(att: MessageAttachmentChip): boolean {
+  if (att.mimeType && att.mimeType.toLowerCase().startsWith("image/")) return true;
+  return /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(att.filename);
+}
+
+function resolveAttachmentBadge(att: MessageAttachmentChip): {
+  label: string;
+  badgeClass: string;
+  kind: "image" | "pdf" | "doc" | "file";
+} {
+  const mime = (att.mimeType || "").toLowerCase();
+  const lower = att.filename.toLowerCase();
+  if (isImageAttachment(att)) {
+    return {
+      label: "IMAGE",
+      badgeClass: "bg-zinc-900 text-white border-zinc-900",
+      kind: "image",
+    };
+  }
+  if (mime === "application/pdf" || lower.endsWith(".pdf")) {
+    return {
+      label: "PDF",
+      badgeClass: "bg-rose-50 text-rose-700 border-rose-200",
+      kind: "pdf",
+    };
+  }
+  if (
+    mime.includes("wordprocessingml") ||
+    mime === "application/msword" ||
+    lower.endsWith(".docx") ||
+    lower.endsWith(".doc")
+  ) {
+    return {
+      label: lower.endsWith(".doc") ? "DOC" : "DOCX",
+      badgeClass: "bg-sky-50 text-sky-700 border-sky-200",
+      kind: "doc",
+    };
+  }
+  const ext = lower.includes(".") ? lower.split(".").pop()?.toUpperCase().slice(0, 5) : null;
+  return {
+    label: ext || "FILE",
+    badgeClass: "bg-zinc-100 text-zinc-700 border-zinc-200",
+    kind: "file",
+  };
+}
+
 export function AdaptiveMessageRenderer({
+  messageId,
   content,
   role,
   citations = [],
   followUps = [],
   feedback = null,
   isLatestAssistantMessage = false,
+  canEdit = false,
   planSteps = [],
   structuredReport,
   attachments = [],
@@ -268,11 +336,45 @@ export function AdaptiveMessageRenderer({
   onOpenSources,
   onSelectFollowUp,
   onFeedback,
+  onEditMessage,
   onOpenArtifactCanvas,
   onOpenWorkProduct,
   isStreaming,
 }: AdaptiveMessageRendererProps) {
   const [copiedAnswer, setCopiedAnswer] = React.useState(false);
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [editDraft, setEditDraft] = React.useState(content);
+  const [isSubmittingEdit, setIsSubmittingEdit] = React.useState(false);
+  const [lightboxImage, setLightboxImage] = React.useState<{
+    src: string;
+    filename: string;
+  } | null>(null);
+  const [brokenPreviewKeys, setBrokenPreviewKeys] = React.useState<Record<string, boolean>>({});
+  const editTextareaRef = React.useRef<HTMLTextAreaElement>(null);
+
+  React.useEffect(() => {
+    if (isEditing) {
+      setEditDraft(content);
+      requestAnimationFrame(() => {
+        const el = editTextareaRef.current;
+        if (el) {
+          el.focus();
+          el.setSelectionRange(el.value.length, el.value.length);
+          el.style.height = "auto";
+          el.style.height = `${Math.min(el.scrollHeight, 260)}px`;
+        }
+      });
+    }
+  }, [isEditing, content]);
+
+  React.useEffect(() => {
+    if (!lightboxImage) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setLightboxImage(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [lightboxImage]);
 
   const dedupedCitations = React.useMemo(
     () => cleanAndDeduplicateCitations(citations),
@@ -307,27 +409,269 @@ export function AdaptiveMessageRenderer({
     }
   }, [sanitizedMarkdown]);
 
+  const handleSaveEdit = React.useCallback(async () => {
+    const trimmed = editDraft.trim();
+    if (!trimmed || !messageId || !onEditMessage || isSubmittingEdit) return;
+    setIsSubmittingEdit(true);
+    try {
+      const result = await onEditMessage(messageId, trimmed);
+      if (result !== false) {
+        setIsEditing(false);
+      }
+    } finally {
+      setIsSubmittingEdit(false);
+    }
+  }, [editDraft, messageId, onEditMessage, isSubmittingEdit]);
+
   // Strictly single-column centered editorial reading stream (Claude / ChatGPT Canvas style)
   if (role === "USER") {
+    const canShowEditButton = Boolean(canEdit && messageId && onEditMessage && !isStreaming && !isEditing);
+
     return (
-      <div className="max-w-3xl w-full mx-auto flex justify-end my-4">
-        <div className="max-w-[85%] sm:max-w-[78%] rounded-2xl bg-zinc-100 border border-zinc-200/80 px-4 py-2.5 text-[14px] text-zinc-950 leading-relaxed space-y-2 break-words">
+      <>
+        <div className="max-w-3xl w-full mx-auto flex flex-col items-end my-4 group">
           {attachments.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
-              {attachments.map((att, idx) => (
-                <span
-                  key={att.assetId || `${att.filename}-${idx}`}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2 py-0.5 text-[12px] font-medium text-zinc-700"
-                >
-                  <Paperclip className="h-3 w-3 text-zinc-500 shrink-0" />
-                  <span className="truncate max-w-[220px]">{att.filename}</span>
-                </span>
-              ))}
+            <div className="mb-2 flex flex-wrap justify-end gap-2 max-w-[88%] sm:max-w-[80%]">
+              {attachments.map((att, idx) => {
+                const key = att.assetId || `${att.filename}-${idx}`;
+                const badge = resolveAttachmentBadge(att);
+                const sizeLabel = formatAttachmentSize(att.fileSizeBytes);
+                const assetContentUrl = att.assetId
+                  ? `/api/marketing-shield/v1/assets/${att.assetId}/content`
+                  : undefined;
+                const imageSrc = att.previewUrl || assetContentUrl;
+                const showImagePreview =
+                  badge.kind === "image" && Boolean(imageSrc) && !brokenPreviewKeys[key];
+
+                if (badge.kind === "image") {
+                  if (showImagePreview && imageSrc) {
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setLightboxImage({ src: imageSrc, filename: att.filename })}
+                        className="group/att w-[210px] sm:w-[240px] text-left rounded-xl overflow-hidden border border-zinc-200 bg-white hover:border-zinc-300 shadow-xs transition-all cursor-pointer"
+                        title={`Preview ${att.filename}`}
+                      >
+                        <div className="relative h-32 w-full bg-zinc-100 overflow-hidden">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={imageSrc}
+                            alt={att.filename}
+                            onError={() =>
+                              setBrokenPreviewKeys((prev) => ({ ...prev, [key]: true }))
+                            }
+                            className="h-full w-full object-cover group-hover/att:scale-[1.02] transition-transform duration-200"
+                          />
+                        </div>
+                        <div className="px-2.5 py-2 flex items-center justify-between gap-2 bg-white border-t border-zinc-100">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <FileImage className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+                            <span className="truncate text-[12px] font-medium text-zinc-900">
+                              {att.filename}
+                            </span>
+                          </div>
+                          {sizeLabel && (
+                            <span className="font-mono text-[10.5px] text-zinc-400 shrink-0">
+                              {sizeLabel}
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  }
+
+                  return (
+                    <div
+                      key={key}
+                      className="flex items-center gap-2.5 rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-xs min-w-[200px] max-w-[280px]"
+                    >
+                      <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-zinc-100 border border-zinc-200 text-zinc-700 shrink-0">
+                        <FileImage className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12.5px] font-medium text-zinc-900">
+                          {att.filename}
+                        </p>
+                        <p className="text-[11px] text-zinc-500">
+                          Image{sizeLabel ? ` • ${sizeLabel}` : ""}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                }
+
+                const cardInner = (
+                  <>
+                    <div
+                      className={`flex h-9 w-9 items-center justify-center rounded-lg border font-mono text-[10px] font-bold shrink-0 ${badge.badgeClass}`}
+                    >
+                      {badge.kind === "pdf" || badge.kind === "doc" ? (
+                        <FileText className="h-4 w-4" />
+                      ) : (
+                        <Paperclip className="h-4 w-4" />
+                      )}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[12.5px] font-medium text-zinc-900">
+                        {att.filename}
+                      </p>
+                      <p className="text-[11px] text-zinc-500">
+                        {badge.label}
+                        {sizeLabel ? ` • ${sizeLabel}` : ""}
+                      </p>
+                    </div>
+                    {assetContentUrl && (
+                      <ExternalLink className="h-3.5 w-3.5 text-zinc-400 group-hover/file:text-zinc-800 shrink-0 transition-colors" />
+                    )}
+                  </>
+                );
+
+                return assetContentUrl ? (
+                  <a
+                    key={key}
+                    href={assetContentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="group/file flex items-center gap-2.5 rounded-xl border border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50/70 px-3 py-2 shadow-xs min-w-[210px] max-w-[290px] transition-colors"
+                    title={`Open ${att.filename}`}
+                  >
+                    {cardInner}
+                  </a>
+                ) : (
+                  <div
+                    key={key}
+                    className="flex items-center gap-2.5 rounded-xl border border-zinc-200 bg-white px-3 py-2 shadow-xs min-w-[210px] max-w-[290px]"
+                  >
+                    {cardInner}
+                  </div>
+                );
+              })}
             </div>
           )}
-          {content && <p className="whitespace-pre-wrap">{content}</p>}
+
+          {isEditing ? (
+            <div className="w-full max-w-[92%] sm:max-w-[84%] rounded-2xl border border-zinc-300 bg-white p-3 shadow-sm space-y-2.5">
+              <textarea
+                ref={editTextareaRef}
+                value={editDraft}
+                onChange={(e) => {
+                  setEditDraft(e.target.value);
+                  e.target.style.height = "auto";
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 260)}px`;
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") {
+                    e.preventDefault();
+                    setIsEditing(false);
+                    setEditDraft(content);
+                  } else if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    void handleSaveEdit();
+                  }
+                }}
+                rows={2}
+                disabled={isSubmittingEdit}
+                className="w-full resize-none bg-transparent text-[14px] text-zinc-950 leading-relaxed focus:outline-none"
+                aria-label="Edit message"
+              />
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1.5 border-t border-zinc-100">
+                <span className="text-[11px] text-zinc-500">
+                  Saving will update this message and regenerate the response below.
+                </span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsEditing(false);
+                      setEditDraft(content);
+                    }}
+                    disabled={isSubmittingEdit}
+                    className="px-2.5 py-1 rounded-lg border border-zinc-200 bg-white hover:bg-zinc-50 text-[12px] font-medium text-zinc-700 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSaveEdit()}
+                    disabled={isSubmittingEdit || !editDraft.trim()}
+                    className="px-3 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-200 disabled:text-zinc-400 text-[12px] font-medium text-white transition-colors cursor-pointer"
+                  >
+                    {isSubmittingEdit ? "Resending..." : "Save & Resend"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {content && (
+                <div className="max-w-[85%] sm:max-w-[78%] rounded-2xl bg-zinc-100 border border-zinc-200/80 px-4 py-2.5 text-[14px] text-zinc-950 leading-relaxed break-words">
+                  <p className="whitespace-pre-wrap">{content}</p>
+                </div>
+              )}
+
+              {canShowEditButton && (
+                <div className="mt-1 flex items-center justify-end opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                  <button
+                    type="button"
+                    onClick={() => setIsEditing(true)}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100 transition-colors cursor-pointer"
+                    title="Edit & resend message"
+                    aria-label="Edit & resend message"
+                  >
+                    <Pencil className="h-3 w-3" />
+                    <span>Edit</span>
+                  </button>
+                </div>
+              )}
+            </>
+          )}
         </div>
-      </div>
+
+        {lightboxImage && (
+          <div
+            className="fixed inset-0 z-50 bg-zinc-950/80 backdrop-blur-xs flex items-center justify-center p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-label={lightboxImage.filename}
+            onClick={() => setLightboxImage(null)}
+          >
+            <div
+              className="relative max-w-4xl w-full max-h-[90vh] flex flex-col items-center gap-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-full flex items-center justify-between text-white px-1">
+                <span className="truncate text-[13px] font-medium">{lightboxImage.filename}</span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <a
+                    href={lightboxImage.src}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-white/10 hover:bg-white/20 text-[12px] text-white transition-colors"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    <span>Open</span>
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setLightboxImage(null)}
+                    className="p-1.5 rounded-md bg-white/10 hover:bg-white/20 text-white transition-colors cursor-pointer"
+                    aria-label="Close preview"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={lightboxImage.src}
+                alt={lightboxImage.filename}
+                className="max-h-[80vh] w-auto max-w-full rounded-xl object-contain bg-zinc-900 border border-white/10 shadow-2xl"
+              />
+            </div>
+          </div>
+        )}
+      </>
     );
   }
 

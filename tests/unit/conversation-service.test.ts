@@ -330,4 +330,153 @@ describe("ConversationService (Unit)", () => {
       ),
     ).toBe(true);
   });
+
+  it("fetches a single message scoped by tenant and conversation via getMessage", async () => {
+    const maybeSingleMock = vi.fn().mockResolvedValue({
+      data: {
+        id: "msg_target",
+        tenant_id: testTenantId,
+        conversation_id: "conv_1",
+        role: "USER",
+        content: "Original prompt",
+        sequence_number: 3,
+      },
+      error: null,
+    });
+    const eqIdMock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock });
+    const eqConvMock = vi.fn().mockReturnValue({ eq: eqIdMock });
+    const eqTenantMock = vi.fn().mockReturnValue({ eq: eqConvMock });
+
+    mockSupabase.from.mockReturnValue({
+      select: vi.fn().mockReturnValue({ eq: eqTenantMock }),
+    });
+
+    const msg = await service.getMessage(testTenantId, "conv_1", "msg_target");
+    expect(msg?.id).toBe("msg_target");
+    expect(msg?.sequence_number).toBe(3);
+    expect(eqTenantMock).toHaveBeenCalledWith("tenant_id", testTenantId);
+    expect(eqConvMock).toHaveBeenCalledWith("conversation_id", "conv_1");
+    expect(eqIdMock).toHaveBeenCalledWith("id", "msg_target");
+  });
+
+  it("truncates messages from a sequence number onwards when editing and resending", async () => {
+    const selectMock = vi.fn().mockResolvedValue({
+      data: [{ id: "msg_3" }, { id: "msg_4" }],
+      error: null,
+    });
+    const gteMock = vi.fn().mockReturnValue({ select: selectMock });
+    const eqConvMock = vi.fn().mockReturnValue({ gte: gteMock });
+    const eqTenantMock = vi.fn().mockReturnValue({ eq: eqConvMock });
+
+    mockSupabase.from.mockReturnValue({
+      delete: vi.fn().mockReturnValue({ eq: eqTenantMock }),
+    });
+
+    const deletedCount = await service.truncateMessagesFrom({
+      tenantId: testTenantId,
+      conversationId: "conv_1",
+      fromSequenceNumber: 3,
+    });
+
+    expect(deletedCount).toBe(2);
+    expect(eqTenantMock).toHaveBeenCalledWith("tenant_id", testTenantId);
+    expect(eqConvMock).toHaveBeenCalledWith("conversation_id", "conv_1");
+    expect(gteMock).toHaveBeenCalledWith("sequence_number", 3);
+  });
+
+  it("hydrates attachment metadata from campaign_assets when only attachment_asset_ids are present", async () => {
+    const inMock = vi.fn().mockResolvedValue({
+      data: [
+        {
+          id: "asset_1",
+          original_filename: "campaign-flyer.png",
+          mime_type: "image/png",
+          file_size_bytes: 245760,
+        },
+      ],
+      error: null,
+    });
+    const eqTenantMock = vi.fn().mockReturnValue({ in: inMock });
+    mockSupabase.from.mockReturnValue({
+      select: vi.fn().mockReturnValue({ eq: eqTenantMock }),
+    });
+
+    const hydrated = await service.hydrateMessageAttachments(testTenantId, [
+      {
+        id: "msg_legacy",
+        tenant_id: testTenantId,
+        conversation_id: "conv_1",
+        role: "USER",
+        content: "Audit this flyer",
+        content_type: "TEXT",
+        status: "COMPLETED",
+        sequence_number: 1,
+        parent_message_id: null,
+        model_run_id: null,
+        created_at: "2026-11-12T12:00:00Z",
+        metadata: {
+          attachment_asset_ids: ["asset_1"],
+        },
+      },
+      {
+        id: "msg_already_hydrated",
+        tenant_id: testTenantId,
+        conversation_id: "conv_1",
+        role: "USER",
+        content: "Check policy PDF",
+        content_type: "TEXT",
+        status: "COMPLETED",
+        sequence_number: 2,
+        parent_message_id: null,
+        model_run_id: null,
+        created_at: "2026-11-12T12:05:00Z",
+        metadata: {
+          attachment_asset_ids: ["asset_2"],
+          attachments: [
+            {
+              asset_id: "asset_2",
+              filename: "policy.pdf",
+              mime_type: "application/pdf",
+              file_size_bytes: 102400,
+            },
+          ],
+        },
+      },
+    ]);
+
+    expect(inMock).toHaveBeenCalledWith("id", ["asset_1"]);
+    expect(hydrated[0]?.metadata?.attachments).toEqual([
+      {
+        asset_id: "asset_1",
+        filename: "campaign-flyer.png",
+        mime_type: "image/png",
+        file_size_bytes: 245760,
+      },
+    ]);
+    expect(hydrated[1]?.metadata?.attachments).toEqual([
+      {
+        asset_id: "asset_2",
+        filename: "policy.pdf",
+        mime_type: "application/pdf",
+        file_size_bytes: 102400,
+      },
+    ]);
+  });
+
+  it("validates optional replace_from_message_id UUID on sendMessageStreamSchema", async () => {
+    const { sendMessageStreamSchema } = await import("@/contracts/conversation.contracts");
+
+    const valid = sendMessageStreamSchema.safeParse({
+      content: "Updated compliance prompt",
+      replace_from_message_id: "11111111-1111-4111-8111-111111111111",
+    });
+    expect(valid.success).toBe(true);
+
+    const invalid = sendMessageStreamSchema.safeParse({
+      content: "Updated compliance prompt",
+      replace_from_message_id: "not-a-uuid",
+    });
+    expect(invalid.success).toBe(false);
+  });
 });
+

@@ -5,6 +5,7 @@
 
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
+import type { PersistedMessageAttachment } from "@/contracts/conversation.contracts";
 
 export type ConversationContextType =
   | "GENERAL"
@@ -479,6 +480,133 @@ export class ConversationService {
       messageId: params.messageId,
       metadata: nextMeta,
     });
+  }
+
+  /**
+   * Fetches a single message scoped by tenant and conversation.
+   */
+  public async getMessage(
+    tenantId: string,
+    conversationId: string,
+    messageId: string
+  ): Promise<MessageRecord | null> {
+    const supabase = createAdminSupabaseClient();
+    const { data, error } = await supabase
+      .from("marketing_messages")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("conversation_id", conversationId)
+      .eq("id", messageId)
+      .maybeSingle();
+
+    if (error) {
+      logger.error("Failed to fetch message", {
+        tenantId,
+        conversationId,
+        messageId,
+        error: error.message,
+      });
+      throw new Error(`Failed to fetch message: ${error.message}`);
+    }
+
+    return (data as MessageRecord) || null;
+  }
+
+  /**
+   * Deletes all messages from a given sequence_number onwards (used when editing & resending a sent user message).
+   */
+  public async truncateMessagesFrom(params: {
+    tenantId: string;
+    conversationId: string;
+    fromSequenceNumber: number;
+  }): Promise<number> {
+    const supabase = createAdminSupabaseClient();
+    const { data, error } = await supabase
+      .from("marketing_messages")
+      .delete()
+      .eq("tenant_id", params.tenantId)
+      .eq("conversation_id", params.conversationId)
+      .gte("sequence_number", params.fromSequenceNumber)
+      .select("id");
+
+    if (error) {
+      logger.error("Failed to truncate conversation messages", {
+        tenantId: params.tenantId,
+        conversationId: params.conversationId,
+        fromSequenceNumber: params.fromSequenceNumber,
+        error: error.message,
+      });
+      throw new Error(`Failed to revert conversation messages: ${error.message}`);
+    }
+
+    return (data || []).length;
+  }
+
+  /**
+   * Backfills attachment file metadata (filename, mime_type, file_size_bytes) onto messages
+   * that only stored raw attachment_asset_ids.
+   */
+  public async hydrateMessageAttachments(
+    tenantId: string,
+    messages: MessageRecord[]
+  ): Promise<MessageRecord[]> {
+    const missingAssetIds = new Set<string>();
+    for (const m of messages) {
+      const meta = (m.metadata || {}) as Record<string, unknown>;
+      const existing = Array.isArray(meta.attachments) ? meta.attachments : [];
+      const rawIds = Array.isArray(meta.attachment_asset_ids)
+        ? (meta.attachment_asset_ids as unknown[]).filter((id): id is string => typeof id === "string")
+        : [];
+      if (rawIds.length > 0 && existing.length === 0) {
+        for (const id of rawIds) missingAssetIds.add(id);
+      }
+    }
+
+    if (missingAssetIds.size === 0) {
+      return messages;
+    }
+
+    try {
+      const supabase = createAdminSupabaseClient();
+      const { data: assets } = await supabase
+        .from("campaign_assets")
+        .select("id, original_filename, mime_type, file_size_bytes")
+        .eq("tenant_id", tenantId)
+        .in("id", Array.from(missingAssetIds));
+
+      const assetMap = new Map<string, PersistedMessageAttachment>();
+      for (const a of (assets || []) as Array<Record<string, unknown>>) {
+        if (!a.id) continue;
+        assetMap.set(String(a.id), {
+          asset_id: String(a.id),
+          filename: typeof a.original_filename === "string" ? a.original_filename : String(a.id),
+          mime_type: typeof a.mime_type === "string" ? a.mime_type : null,
+          file_size_bytes: typeof a.file_size_bytes === "number" ? a.file_size_bytes : null,
+        });
+      }
+
+      return messages.map((m) => {
+        const meta = (m.metadata || {}) as Record<string, unknown>;
+        const existing = Array.isArray(meta.attachments) ? meta.attachments : [];
+        const rawIds = Array.isArray(meta.attachment_asset_ids)
+          ? (meta.attachment_asset_ids as unknown[]).filter((id): id is string => typeof id === "string")
+          : [];
+        if (rawIds.length > 0 && existing.length === 0) {
+          const resolved: PersistedMessageAttachment[] = rawIds
+            .map((id) => assetMap.get(id) || { asset_id: id, filename: "Uploaded Attachment" });
+          return {
+            ...m,
+            metadata: {
+              ...meta,
+              attachments: resolved,
+            },
+          };
+        }
+        return m;
+      });
+    } catch {
+      return messages;
+    }
   }
 }
 

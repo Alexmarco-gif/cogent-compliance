@@ -46,6 +46,7 @@ import { PanelRight, AlertTriangle, LogIn, X, Plus, Sparkles } from "lucide-reac
 
 interface DisplayMessage {
   id: string;
+  clientKey?: string;
   role: "USER" | "ASSISTANT" | "SYSTEM" | "TOOL";
   content: string;
   citations?: CitationItem[];
@@ -532,6 +533,32 @@ function ChatWorkspaceContent() {
                   }
                 : undefined;
 
+          const rawAtts = Array.isArray(m.metadata?.attachments)
+            ? (m.metadata.attachments as Array<{
+                asset_id?: string;
+                filename?: string;
+                mime_type?: string | null;
+                file_size_bytes?: number | null;
+              }>)
+            : [];
+          const rawAssetIds = Array.isArray(m.metadata?.attachment_asset_ids)
+            ? (m.metadata.attachment_asset_ids as unknown[]).filter(
+                (id): id is string => typeof id === "string"
+              )
+            : [];
+          const hydratedAttachments: MessageAttachmentChip[] =
+            rawAtts.length > 0
+              ? rawAtts.map((a) => ({
+                  assetId: a.asset_id,
+                  filename: a.filename || "Uploaded Attachment",
+                  mimeType: a.mime_type ?? null,
+                  fileSizeBytes: a.file_size_bytes ?? null,
+                }))
+              : rawAssetIds.map((id) => ({
+                  assetId: id,
+                  filename: "Uploaded Attachment",
+                }));
+
           return {
             id: m.id,
             role: m.role,
@@ -539,6 +566,7 @@ function ChatWorkspaceContent() {
             citations: (m.metadata?.citations as CitationItem[]) || [],
             followUps: (m.metadata?.follow_ups as FollowUpSuggestion[]) || [],
             feedback: (m.metadata?.feedback as "up" | "down" | undefined) ?? null,
+            attachments: hydratedAttachments.length > 0 ? hydratedAttachments : undefined,
             structuredReport: reportMeta,
             workProductRef,
             isStreaming: false,
@@ -776,11 +804,12 @@ function ChatWorkspaceContent() {
     text: string,
     msgOptions?: {
       attachmentAssetIds?: string[];
-      attachments?: PendingAttachment[];
+      attachments?: Array<PendingAttachment | MessageAttachmentChip>;
       enableLiveWebSearch?: boolean;
       searchJurisdictions?: SearchJurisdiction[];
       referencedKnowledgeDocId?: string;
       workflowHint?: WorkflowType;
+      replaceFromMessageId?: string;
     },
   ): Promise<boolean> => {
     setChatError(null);
@@ -852,7 +881,7 @@ function ChatWorkspaceContent() {
       const baseTitle = firstFilename.replace(/\.[^/.]+$/, "").trim();
       const campaignName = baseTitle.length >= 3 ? baseTitle : `${baseTitle || "Campaign"} Asset`;
       const combinedExtracted = attachedAssets
-        .map((a) => a.extractedText?.trim())
+        .map((a) => ("extractedText" in a ? a.extractedText?.trim() : undefined))
         .filter(Boolean)
         .join("\n\n");
 
@@ -881,11 +910,15 @@ function ChatWorkspaceContent() {
     const tempUserMsgId = `user_${Date.now()}`;
     const userMsg: DisplayMessage = {
       id: tempUserMsgId,
+      clientKey: tempUserMsgId,
       role: "USER",
       content: text,
       attachments: attachedAssets.map((a) => ({
         assetId: a.assetId,
         filename: a.filename,
+        mimeType: a.mimeType ?? null,
+        fileSizeBytes: a.fileSizeBytes ?? null,
+        previewUrl: a.previewUrl,
       })),
       isStreaming: false,
     };
@@ -894,6 +927,7 @@ function ChatWorkspaceContent() {
     const tempAssistantMsgId = `assistant_${streamStartTime}`;
     const assistantMsg: DisplayMessage = {
       id: tempAssistantMsgId,
+      clientKey: tempAssistantMsgId,
       role: "ASSISTANT",
       content: "",
       citations: [],
@@ -903,6 +937,9 @@ function ChatWorkspaceContent() {
       thinkingStartedAt: streamStartTime,
       isStreaming: true,
     };
+
+    let currentUserMsgId = tempUserMsgId;
+    let currentAssistantMsgId = tempAssistantMsgId;
 
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setIsStreaming(true);
@@ -941,6 +978,7 @@ function ChatWorkspaceContent() {
             enable_live_web_search: useLiveWebSearch,
             search_jurisdictions: effectiveJurisdictions,
             workflow_hint: effectiveWorkflowHint,
+            replace_from_message_id: msgOptions?.replaceFromMessageId || undefined,
           }),
         },
       );
@@ -966,23 +1004,62 @@ function ChatWorkspaceContent() {
         try {
           const event: SSEEvent = JSON.parse(jsonStr);
 
-          if (event.type === "assistant.delta") {
+          if (event.type === "message.started") {
+            const prevUserId = currentUserMsgId;
+            const prevAsstId = currentAssistantMsgId;
+            const nextUserId = event.data.user_message_id || prevUserId;
+            const nextAsstId = event.data.assistant_message_id || prevAsstId;
+            currentUserMsgId = nextUserId;
+            currentAssistantMsgId = nextAsstId;
+            const serverAtts = event.data.user_attachments;
+
+            setMessages((prev) =>
+              prev.map((m) => {
+                if (m.id === prevUserId) {
+                  const mergedAttachments =
+                    serverAtts && serverAtts.length > 0
+                      ? serverAtts.map((sa, idx) => {
+                          const existing =
+                            m.attachments?.find((ea) => ea.assetId === sa.asset_id) ||
+                            m.attachments?.[idx];
+                          return {
+                            assetId: sa.asset_id,
+                            filename: sa.filename,
+                            mimeType: sa.mime_type ?? existing?.mimeType ?? null,
+                            fileSizeBytes: sa.file_size_bytes ?? existing?.fileSizeBytes ?? null,
+                            previewUrl: existing?.previewUrl,
+                          };
+                        })
+                      : m.attachments;
+                  return {
+                    ...m,
+                    id: nextUserId,
+                    ...(mergedAttachments ? { attachments: mergedAttachments } : {}),
+                  };
+                }
+                if (m.id === prevAsstId) {
+                  return { ...m, id: nextAsstId };
+                }
+                return m;
+              }),
+            );
+          } else if (event.type === "assistant.delta") {
             const delta = event.data.text_delta;
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === tempAssistantMsgId ? { ...m, content: m.content + delta } : m,
+                m.id === currentAssistantMsgId ? { ...m, content: m.content + delta } : m,
               ),
             );
           } else if (event.type === "plan.created") {
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === tempAssistantMsgId ? { ...m, planSteps: event.data.steps } : m,
+                m.id === currentAssistantMsgId ? { ...m, planSteps: event.data.steps } : m,
               ),
             );
           } else if (event.type === "plan.step_updated") {
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === tempAssistantMsgId
+                m.id === currentAssistantMsgId
                   ? {
                       ...m,
                       planSteps: (m.planSteps || []).map((s) =>
@@ -1001,7 +1078,7 @@ function ChatWorkspaceContent() {
           } else if (event.type === "search.track_started") {
             setMessages((prev) =>
               prev.map((m) => {
-                if (m.id !== tempAssistantMsgId) return m;
+                if (m.id !== currentAssistantMsgId) return m;
                 const existing = m.searchTracks || [];
                 const nextTrack: SearchTrackPill = {
                   track: event.data.track,
@@ -1019,7 +1096,7 @@ function ChatWorkspaceContent() {
           } else if (event.type === "search.track_completed") {
             setMessages((prev) =>
               prev.map((m) => {
-                if (m.id !== tempAssistantMsgId) return m;
+                if (m.id !== currentAssistantMsgId) return m;
                 const existing = m.searchTracks || [];
                 const idx = existing.findIndex((t) => t.track === event.data.track);
                 const updatedTrack: SearchTrackPill = {
@@ -1042,7 +1119,7 @@ function ChatWorkspaceContent() {
           } else if (event.type === "entitlement.blocked") {
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === tempAssistantMsgId
+                m.id === currentAssistantMsgId
                   ? {
                       ...m,
                       entitlementBlocked: {
@@ -1065,7 +1142,7 @@ function ChatWorkspaceContent() {
             setShowInspector(false);
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === tempAssistantMsgId
+                m.id === currentAssistantMsgId
                   ? {
                       ...m,
                       workProductRef: {
@@ -1084,7 +1161,7 @@ function ChatWorkspaceContent() {
             const traceLabel = (event.data.display_label || event.data.tool_name).replace(/\.{3}$/, "");
             setMessages((prev) =>
               prev.map((m) => {
-                if (m.id !== tempAssistantMsgId) return m;
+                if (m.id !== currentAssistantMsgId) return m;
                 const existing = m.searchTraces || [];
                 const idx = existing.findIndex((t) => t.id === traceId);
                 const nextTrace: SearchTraceItem = {
@@ -1105,7 +1182,7 @@ function ChatWorkspaceContent() {
             const traceId = `tool:${event.data.tool_call_id || event.data.tool_name}`;
             setMessages((prev) =>
               prev.map((m) => {
-                if (m.id !== tempAssistantMsgId) return m;
+                if (m.id !== currentAssistantMsgId) return m;
                 const existing = m.searchTraces || [];
                 const idx = existing.findIndex((t) => t.id === traceId);
                 const fallbackLabel =
@@ -1132,7 +1209,7 @@ function ChatWorkspaceContent() {
             setCanvasReport(event.data.structured_report);
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === tempAssistantMsgId
+                m.id === currentAssistantMsgId
                   ? { ...m, structuredReport: event.data.structured_report }
                   : m,
               ),
@@ -1145,7 +1222,7 @@ function ChatWorkspaceContent() {
             }
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === tempAssistantMsgId
+                m.id === currentAssistantMsgId
                   ? {
                       ...m,
                       id: event.data.assistant_message_id || m.id,
@@ -1177,7 +1254,7 @@ function ChatWorkspaceContent() {
             setChatError(failMsg);
             setMessages((prev) =>
               prev.map((m) =>
-                m.id === tempAssistantMsgId
+                m.id === currentAssistantMsgId
                   ? {
                       ...m,
                       content: m.content
@@ -1226,7 +1303,7 @@ function ChatWorkspaceContent() {
       const finalDurationMs = Date.now() - streamStartTime;
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === tempAssistantMsgId && m.isStreaming
+          m.id === currentAssistantMsgId && m.isStreaming
             ? {
                 ...m,
                 thinkingDurationMs: m.thinkingDurationMs ?? finalDurationMs,
@@ -1245,7 +1322,7 @@ function ChatWorkspaceContent() {
       setChatError(errMsg);
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === tempAssistantMsgId
+          m.id === currentAssistantMsgId
             ? {
                 ...m,
                 content: m.content
@@ -1304,6 +1381,32 @@ function ChatWorkspaceContent() {
     } catch (err) {
       console.warn("Failed to persist message feedback", err);
     }
+  };
+
+  const handleEditMessage = async (
+    messageId: string,
+    newContent: string
+  ): Promise<boolean> => {
+    if (isStreaming) return false;
+    const trimmed = newContent.trim();
+    if (!trimmed) return false;
+
+    const targetIdx = messages.findIndex((m) => m.id === messageId);
+    if (targetIdx < 0) return false;
+
+    const targetMsg = messages[targetIdx]!;
+    const origAttachments = targetMsg.attachments || [];
+    const origAssetIds = origAttachments
+      .map((a) => a.assetId)
+      .filter((id): id is string => Boolean(id));
+
+    setMessages((prev) => prev.slice(0, targetIdx));
+
+    return handleSendMessage(trimmed, {
+      replaceFromMessageId: messageId.startsWith("user_") ? undefined : messageId,
+      attachments: origAttachments.length > 0 ? origAttachments : undefined,
+      attachmentAssetIds: origAssetIds.length > 0 ? origAssetIds : undefined,
+    });
   };
 
   const handleSelectFollowUp = async (suggestion: FollowUpSuggestion) => {
@@ -1528,7 +1631,8 @@ function ChatWorkspaceContent() {
 
               {messages.map((msg) => (
                 <AdaptiveMessageRenderer
-                  key={msg.id}
+                  key={msg.clientKey || msg.id}
+                  messageId={msg.id}
                   role={msg.role}
                   content={msg.content}
                   citations={msg.citations}
@@ -1537,6 +1641,7 @@ function ChatWorkspaceContent() {
                   isLatestAssistantMessage={
                     msg.role === "ASSISTANT" && msg.id === lastAssistantMsgId
                   }
+                  canEdit={msg.role === "USER" && !isStreaming}
                   planSteps={msg.planSteps}
                   structuredReport={msg.structuredReport}
                   attachments={msg.attachments}
@@ -1555,6 +1660,7 @@ function ChatWorkspaceContent() {
                   onFeedback={(rating) => {
                     void handleMessageFeedback(msg.id, rating);
                   }}
+                  onEditMessage={handleEditMessage}
                   onOpenArtifactCanvas={handleOpenArtifactCanvas}
                   onOpenWorkProduct={handleOpenWorkProduct}
                   onApplyCompliantRewrite={handleApplyCompliantRewrite}

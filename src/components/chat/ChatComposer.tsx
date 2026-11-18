@@ -49,6 +49,7 @@ export interface PendingAttachment {
   assetId: string;
   filename: string;
   mimeType: SupportedUploadMimeType;
+  fileSizeBytes?: number;
   previewUrl?: string;
   extractedText?: string;
 }
@@ -326,15 +327,12 @@ export function ChatComposer({
       content.trim() ||
       `Review the attached document/asset (${attachmentNames}) and generate the appropriate compliance deliverable.`;
 
-    // Clear composer immediately for responsive UX
+    // Clear composer immediately for responsive UX (preserve previewUrl for sent message card)
     setContent("");
     setPendingAttachments([]);
     setUpgradePopover(null);
     setPlusMenuOpen(false);
     setActiveSubmenu(null);
-    for (const att of currentAttachments) {
-      if (att.previewUrl) URL.revokeObjectURL(att.previewUrl);
-    }
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
     }
@@ -465,6 +463,7 @@ export function ChatComposer({
       assetId: asset_id,
       filename: file.name,
       mimeType,
+      fileSizeBytes: file.size,
       previewUrl,
       extractedText,
     };

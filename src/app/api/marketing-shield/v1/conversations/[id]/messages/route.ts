@@ -43,10 +43,18 @@ export const GET = createApiHandler(
       );
     }
 
-    return conversationService.listMessages(tenant.tenantId, conversationId, {
+    const result = await conversationService.listMessages(tenant.tenantId, conversationId, {
       limit: query.limit ?? 100,
       cursor: query.cursor,
       latest: !query.cursor,
     });
+    const hydratedMessages = await conversationService.hydrateMessageAttachments(
+      tenant.tenantId,
+      result.messages
+    );
+    return {
+      ...result,
+      messages: hydratedMessages,
+    };
   }
 );

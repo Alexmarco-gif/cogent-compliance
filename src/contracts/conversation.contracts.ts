@@ -53,7 +53,15 @@ export const sendMessageStreamSchema = z.object({
   enable_live_web_search: z.boolean().default(false).optional(),
   search_jurisdictions: z.array(jurisdictionCodeSchema).default(["NG"]).optional(),
   workflow_hint: z.enum(WORKFLOW_TYPES).optional(),
+  replace_from_message_id: z.string().uuid().optional(),
 });
+
+export interface PersistedMessageAttachment {
+  asset_id: string;
+  filename: string;
+  mime_type?: string | null;
+  file_size_bytes?: number | null;
+}
 
 export const searchRegulatoryEvidenceArgsSchema = z.object({
   query: z.string().min(1, "Search query is required"),
@@ -292,6 +300,7 @@ export type SSEEvent =
         user_message_id: string;
         assistant_message_id: string;
         sequence_number: number;
+        user_attachments?: PersistedMessageAttachment[];
       };
     }
   | {

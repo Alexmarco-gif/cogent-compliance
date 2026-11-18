@@ -80,6 +80,7 @@ import type {
   CitationItem,
   ComplianceArtifactItem,
   ExecutionPlanStep,
+  PersistedMessageAttachment,
   SSEEvent,
   StructuredComplianceReport,
 } from "@/contracts/conversation.contracts";
@@ -106,6 +107,7 @@ export interface StreamCopilotOptions {
   enableLiveWebSearch?: boolean;
   searchJurisdictions?: SearchJurisdiction[];
   workflowHint?: WorkflowType | null;
+  replaceFromMessageId?: string;
 }
 
 /** Max time for a single Gemini generate call (including full stream consumption). */
@@ -876,6 +878,95 @@ CRITICAL OPERATIONAL RULES:
       conversationId: options.conversationId,
     };
 
+    // 0. If editing & resending an earlier USER message, preserve its context & truncate from that sequence_number onwards
+    if (options.replaceFromMessageId) {
+      const targetMsg = await conversationService.getMessage(
+        options.tenantId,
+        options.conversationId,
+        options.replaceFromMessageId
+      );
+      if (!targetMsg || targetMsg.role !== "USER") {
+        throw new Error("Target message to edit was not found in this thread.");
+      }
+
+      const priorMeta = (targetMsg.metadata || {}) as Record<string, unknown>;
+      const priorAssetIds = Array.isArray(priorMeta.attachment_asset_ids)
+        ? (priorMeta.attachment_asset_ids as unknown[]).filter(
+            (id): id is string => typeof id === "string"
+          )
+        : undefined;
+      const priorUrls = Array.isArray(priorMeta.campaign_urls)
+        ? (priorMeta.campaign_urls as unknown[]).filter(
+            (u): u is string => typeof u === "string"
+          )
+        : undefined;
+
+      options = {
+        ...options,
+        attachmentAssetIds:
+          options.attachmentAssetIds && options.attachmentAssetIds.length > 0
+            ? options.attachmentAssetIds
+            : priorAssetIds,
+        campaignUrls:
+          options.campaignUrls && options.campaignUrls.length > 0
+            ? options.campaignUrls
+            : priorUrls,
+        referencedProductId:
+          options.referencedProductId ??
+          (typeof priorMeta.referenced_product_id === "string"
+            ? priorMeta.referenced_product_id
+            : null),
+        referencedKnowledgeDocId:
+          options.referencedKnowledgeDocId ??
+          (typeof priorMeta.referenced_knowledge_doc_id === "string"
+            ? priorMeta.referenced_knowledge_doc_id
+            : null),
+        workflowHint:
+          options.workflowHint ??
+          (typeof priorMeta.workflow_hint === "string"
+            ? (priorMeta.workflow_hint as WorkflowType)
+            : null),
+      };
+
+      await conversationService.truncateMessagesFrom({
+        tenantId: options.tenantId,
+        conversationId: options.conversationId,
+        fromSequenceNumber: targetMsg.sequence_number,
+      });
+    }
+
+    // 0b. Resolve full attachment metadata (filename, mime_type, file_size_bytes) so sent user messages retain rich previews across reloads
+    let persistedAttachments: PersistedMessageAttachment[] = [];
+    if (options.attachmentAssetIds && options.attachmentAssetIds.length > 0) {
+      try {
+        const supabase = createAdminSupabaseClient();
+        const { data: assetRows } = await supabase
+          .from("campaign_assets")
+          .select("id, original_filename, mime_type, file_size_bytes")
+          .eq("tenant_id", options.tenantId)
+          .in("id", options.attachmentAssetIds);
+
+        const byId = new Map<string, PersistedMessageAttachment>();
+        for (const a of (assetRows || []) as Array<Record<string, unknown>>) {
+          if (!a.id) continue;
+          byId.set(String(a.id), {
+            asset_id: String(a.id),
+            filename: typeof a.original_filename === "string" ? a.original_filename : String(a.id),
+            mime_type: typeof a.mime_type === "string" ? a.mime_type : null,
+            file_size_bytes: typeof a.file_size_bytes === "number" ? a.file_size_bytes : null,
+          });
+        }
+        persistedAttachments = options.attachmentAssetIds.map(
+          (id) => byId.get(id) || { asset_id: id, filename: "Uploaded Attachment" }
+        );
+      } catch {
+        persistedAttachments = options.attachmentAssetIds.map((id) => ({
+          asset_id: id,
+          filename: "Uploaded Attachment",
+        }));
+      }
+    }
+
     // 1. Persist User Message to DB
     const userMsg = await conversationService.createMessage({
       tenantId: options.tenantId,
@@ -886,6 +977,7 @@ CRITICAL OPERATIONAL RULES:
       status: "COMPLETED",
       metadata: {
         attachment_asset_ids: options.attachmentAssetIds || [],
+        ...(persistedAttachments.length > 0 ? { attachments: persistedAttachments } : {}),
         campaign_urls: options.campaignUrls || [],
         referenced_product_id: options.referencedProductId || null,
         referenced_knowledge_doc_id: options.referencedKnowledgeDocId || null,
@@ -912,6 +1004,7 @@ CRITICAL OPERATIONAL RULES:
         user_message_id: userMsg.id,
         assistant_message_id: asstMsg.id,
         sequence_number: asstMsg.sequence_number,
+        ...(persistedAttachments.length > 0 ? { user_attachments: persistedAttachments } : {}),
       },
     };
 
