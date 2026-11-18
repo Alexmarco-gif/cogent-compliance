@@ -449,7 +449,112 @@ describe("Phase A: Autonomous Compliance Analyst Deterministic & Forensic Engine
       expect(deduped[0]?.clause_reference).toBe("Section 35");
     });
   });
+
+  describe("10. NexaPay Stage 2 Campaign Benchmark — Multi-Fee Extraction, APR/EAR Conventions & CBN MFB Tariff Caps", () => {
+    const NEXAPAY_CAMPAIGN_PROMPT = `
+      Headline: GET INSTANT CASH IN 60 SECONDS — NO PAPERWORK, NO GUARANTOR!
+      Sub-headline: Borrow up to ₦500,000 today at just 2.5% monthly interest! Zero hidden charges. Guaranteed approval for all Nigerians!
+      Promo Callout: "TRANSACT & WIN ₦5,000,000 CASH!" — Every transfer of ₦5,000+ between Nov 20 and Dec 31 automatically enters you into our Mega Holiday Raffle Draw!
+      Influencer Script (TikTok/IG Reels): "Guys run don't walk! NexaPay is literally giving away free money—borrow ₦200k right now and pay back almost nothing, plus win ₦5M this December! Click my bio link before slots finish!"
+      Fine Print Footer: *Terms apply. 2.5% flat monthly rate applies to principal. Processing fee of 4% and insurance fee of 1.5% deducted upfront upon disbursement. Late repayment attracts 2% daily default interest. NexaPay is a CBN-regulated fintech.
+    `;
+
+    it("extracts both 4% processing (₦20,000) and 1.5% insurance (₦7,500) upfront fees, computes ₦472,500 net cash, 97.33% gross APR, 102.998236% net APR, 168.773652% EAR, and both ₦200k & ₦500k loan examples", () => {
+      const aprAudit = aprCalculatorService.analyzeCopyAgainstProductTruth(
+        NEXAPAY_CAMPAIGN_PROMPT,
+        null
+      );
+
+      expect(aprAudit).not.toBeNull();
+      expect(aprAudit!.principalNgn).toBe(500_000);
+      expect(aprAudit!.tenorDays).toBe(30);
+      expect(aprAudit!.upfrontFeesNgn).toBe(27_500); // ₦20,000 (4%) + ₦7,500 (1.5%)
+      expect(aprAudit!.netDisbursedNgn).toBe(472_500);
+      expect(aprAudit!.interestAmountNgn).toBe(12_500);
+      expect(aprAudit!.totalCostOfCreditNgn).toBe(40_000);
+      expect(aprAudit!.totalRepaymentNgn).toBe(512_500);
+
+      // Periodic 30-day rate on net cash: 40,000 / 472,500 = 8.465608%
+      expect(aprAudit!.periodicCostRatePercent).toBeCloseTo(8.465608, 5);
+      // Gross-principal nominal APR: (40,000 / 500,000) * (365 / 30) = 97.33%
+      expect(aprAudit!.effectiveNominalAprPercent).toBe(97.33);
+      // Net-disbursed simple annualised APR (Actual/365): 8.465608% * (365 / 30) = 102.998236% (103.00%)
+      expect(aprAudit!.effectiveNetDisbursedAprPercent).toBe(103);
+      expect(aprAudit!.effectiveNetDisbursedAprExactPercent).toBeCloseTo(102.998236, 5);
+      // Compounded Effective Annual Rate (EAR, Actual/365): (1 + 40000/472500)^(365/30) - 1 = 168.773652% (168.77%)
+      expect(aprAudit!.effectiveCompoundEarPercent).toBe(168.77);
+      expect(aprAudit!.effectiveCompoundEarExactPercent).toBeCloseTo(168.773652, 5);
+      // 360-day conventions
+      expect(aprAudit!.nominalApr360Percent).toBeCloseTo(101.587302, 5);
+      expect(aprAudit!.effectiveEar360Percent).toBeCloseTo(165.157968, 5);
+
+      // Both ₦200,000 (influencer) and ₦500,000 (headline) loan examples present, ignoring ₦5,000,000 prize and ₦5,000 transfer
+      const examples = aprAudit!.computedFinancials.loan_examples || [];
+      expect(examples.map((e) => e.principal_ngn)).toEqual([200_000, 500_000]);
+      const ex200k = examples.find((e) => e.principal_ngn === 200_000)!;
+      expect(ex200k.processing_fee_ngn).toBe(8_000);
+      expect(ex200k.insurance_fee_ngn).toBe(3_000);
+      expect(ex200k.total_upfront_fees_ngn).toBe(11_000);
+      expect(ex200k.net_disbursed_cash_ngn).toBe(189_000);
+      expect(ex200k.nominal_interest_ngn).toBe(5_000);
+      expect(ex200k.total_cost_of_credit_ngn).toBe(16_000);
+      expect(ex200k.total_repayable_ngn).toBe(205_000);
+
+      // Lawful fee-free redesign schedule (2.5% for 30 days -> 30.416667% simple APR / 35.04% EAR)
+      const redesign = aprAudit!.computedFinancials.lawful_redesign_schedule!;
+      expect(redesign).toBeDefined();
+      expect(redesign.simple_annualised_apr_365_percent).toBeCloseTo(30.416667, 5);
+      expect(redesign.effective_annual_rate_365_percent).toBeCloseTo(35.04, 2);
+
+      // Statutory MFB cap & insurance blind spots triggered
+      expect(aprAudit!.mfbProcessingFeeCapViolation).toBe(true);
+      expect(aprAudit!.excessivePenaltyViolation).toBe(true);
+      expect(aprAudit!.unsubstantiatedInsuranceFee).toBe(true);
+      const codes = aprAudit!.blindSpots.map((b) => b.findingCode);
+      expect(codes).toContain("APR_DRIP_PRICING_MISMATCH");
+      expect(codes).toContain("MFB_PROCESSING_FEE_CAP_BREACH");
+      expect(codes).toContain("UNSUBSTANTIATED_MANDATORY_INSURANCE_FEE");
+      expect(codes).toContain("EXCESSIVE_ROLLOVER_PENALTY");
+
+      // KFS generator preserves both itemized fees (4% processing + 1.5% insurance) and EAR
+      const kfsKit = kfsGeneratorService.generateKfsAndChannelKit({
+        productName: "NexaPay Quick Cash",
+        institutionName: "NexaPay / Partner MFB Ltd",
+        lockedAprAudit: aprAudit,
+      });
+      expect(kfsKit.kfsMarkdownTable).toContain("₦20,000.00");
+      expect(kfsKit.kfsMarkdownTable).toContain("₦7,500.00");
+      expect(kfsKit.kfsMarkdownTable).toContain("₦472,500.00");
+      expect(kfsKit.kfsMarkdownTable).toContain("97.33% APR p.a.");
+      expect(kfsKit.kfsMarkdownTable).toContain("103% APR on net disbursed cash");
+      expect(kfsKit.kfsMarkdownTable).toContain("168.77% p.a.");
+
+      // Visual & License Scope services catch raffle promotion, influencer urgency, "for all Nigerians" geographic overreach, and "CBN-regulated fintech" legend
+      const visAudit = visualForensicsService.evaluateSegments({
+        fullText: NEXAPAY_CAMPAIGN_PROMPT,
+        segments: [],
+      });
+      expect(visAudit.hasCoerciveUrgencyLanguage).toBe(true);
+      expect(
+        visAudit.blindSpots.some(
+          (b) => b.findingCode === "UNREGISTERED_RAFFLE_PROMOTION_AND_TIE_IN"
+        )
+      ).toBe(true);
+
+      const licAudit = licenseScopeService.verifyLicenseScope({
+        contentText: NEXAPAY_CAMPAIGN_PROMPT,
+        licenseTier: "MFB_UNIT",
+      });
+      expect(
+        licAudit.blindSpots.some((b) => b.findingCode === "LICENSE_SCOPE_MFB_GEOGRAPHIC_BREACH")
+      ).toBe(true);
+      expect(
+        licAudit.blindSpots.some((b) => b.findingCode === "INCOMPLETE_REGULATORY_LENDER_LEGEND")
+      ).toBe(true);
+    });
+  });
 });
+
 
 
 

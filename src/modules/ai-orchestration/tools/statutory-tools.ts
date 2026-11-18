@@ -420,7 +420,11 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
         management_fee_percent: {
           type: Type.NUMBER,
-          description: "Management or insurance fee percentage.",
+          description: "Management or administrative fee percentage.",
+        },
+        insurance_fee_percent: {
+          type: Type.NUMBER,
+          description: "Upfront credit-life or compulsory insurance fee percentage (e.g. 1.5 for 1.5%).",
         },
         daily_penalty_percent: {
           type: Type.NUMBER,
@@ -568,7 +572,7 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "calculate_cbn_apr_and_drip_pricing",
     description:
-      "Deterministic math engine computing canonical computedFinancials (principal, itemizedUpfrontFees, totalUpfrontFees, netDisbursedCash, nominalInterest, totalCostOfCredit, totalRepayable, effectiveApr, tenorDays) per CBN Consumer Protection Framework & FCCPC DEON rules.",
+      "Deterministic math engine computing canonical computedFinancials (principal, itemizedUpfrontFees, totalUpfrontFees, netDisbursedCash, nominalInterest, totalCostOfCredit, totalRepayable, effectiveApr, effectiveCompoundEar, tenorDays) per CBN Consumer Protection Regulations 2019, CBN Guide to Charges 2020 Part 2(A), & FCCPC DEON rules.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -598,7 +602,15 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         },
         management_fee_percent: {
           type: Type.NUMBER,
-          description: "Management or insurance fee percentage.",
+          description: "Management or administrative fee percentage.",
+        },
+        insurance_fee_percent: {
+          type: Type.NUMBER,
+          description: "Upfront credit-life or compulsory insurance fee percentage (e.g. 1.5 for 1.5%).",
+        },
+        daily_penalty_percent: {
+          type: Type.NUMBER,
+          description: "Daily late payment penalty percentage.",
         },
         product_id: {
           type: Type.STRING,
@@ -1682,6 +1694,7 @@ export class StatutoryToolExecutor {
       processing_fee_percent?: number;
       processing_fee_flat_ngn?: number;
       management_fee_percent?: number;
+      insurance_fee_percent?: number;
       daily_penalty_percent?: number;
       product_id?: string;
     },
@@ -1706,6 +1719,11 @@ export class StatutoryToolExecutor {
           ? customTerms.processing_fee_flat_ngn
           : 0),
       managementFeePercent: args.management_fee_percent ?? terms.management_fee_percent ?? 0,
+      insuranceFeePercent:
+        args.insurance_fee_percent ??
+        (typeof customTerms.insurance_fee_percent === "number"
+          ? customTerms.insurance_fee_percent
+          : 0),
       dailyPenaltyPercent: args.daily_penalty_percent ?? terms.penalty_fee_percent ?? 0,
       deductFeesUpfront: true,
     });

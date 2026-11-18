@@ -104,7 +104,13 @@ export class LicenseScopeService {
         text
       );
     const promotesNationwideCoverage =
-      /\b(?:across\s+all\s+36\s+states|nationwide\s+branches|every\s+state\s+in\s+nigeria)\b/i.test(
+      /\b(?:across\s+all\s+36\s+states|nationwide\s+branches|every\s+state\s+in\s+nigeria|(?:for\s+)?all\s+nigerians|every\s+nigerian)\b/i.test(
+        text
+      );
+    const hasVagueFintechLegendWithoutLenderName =
+      promotesLending &&
+      /\b(?:cbn[- ]regulated\s+fintech|regulated\s+fintech)\b/i.test(text) &&
+      !/\b(?:microfinance\s+bank|mfb|bank\s+plc|commercial\s+bank|finance\s+company\s+limited)\b/i.test(
         text
       );
 
@@ -124,12 +130,13 @@ export class LicenseScopeService {
         findingCode: "LICENSE_SCOPE_UNAUTHORIZED_LENDING",
         severity: "CRITICAL",
         exactQuoteOrMetric: `${tier} license advertising direct credit/loan facilities`,
-        whatYouMissed: `Your institution profile is ${tier}, which is strictly prohibited by CBN Guidelines from granting loans, advances, or guarantees directly without a disclosed CBN-licensed lending partner (DMB/MFB).`,
+        whatYouMissed: `Your institution profile is ${tier}, which is strictly prohibited by CBN Guidelines from granting loans, advances, or guarantees directly without a disclosed CBN-licensed lending partner (DMB/MFB) and prior FCCPC DEON 2025 Regulations 8 & 10–12 lending-partnership approval.`,
         whatItCostsYou:
-          "CBN regulatory cease-and-desist order, heavy monetary penalty under BOFIA 2020, and potential Payment Service Bank / MMO license suspension.",
+          "CBN regulatory cease-and-desist order, heavy monetary penalty under BOFIA 2020, FCCPC DEON 2025 Regulation 22 sanctions (up to ₦100,000,000 or 1% of turnover), and potential Payment Service / PSSP license suspension.",
         oneClickFix:
-          'Explicitly name the licensed underwriting partner in the ad: "Credit facilities are provided and underwritten by [Partner MFB/DMB Name], licensed by the Central Bank of Nigeria."',
-        violatedStatute: "CBN Guidelines for Payment Service Banks (PSBs) / MMO Framework",
+          'Explicitly name the licensed underwriting partner in the ad: "Credit facilities are provided and underwritten by [Partner MFB/DMB Legal Name], licensed by the Central Bank of Nigeria (CBN)."',
+        violatedStatute:
+          "CBN Guidelines for PSBs/PSSPs / FCCPC DEON Regulations 2025 Regs. 8, 10–12, 19(c), 22(c)",
       });
     }
 
@@ -174,18 +181,37 @@ export class LicenseScopeService {
       });
     }
 
-    // Rule 4: State or Unit MFB advertising nationwide operations across all 36 states
-    if (promotesNationwideCoverage && (tier === "MFB_STATE" || tier === "MFB_UNIT")) {
+    // Rule 4: State or Unit MFB advertising nationwide operations ("all Nigerians" / "all 36 states")
+    if (promotesNationwideCoverage && (tier === "MFB_STATE" || tier === "MFB_UNIT" || hasVagueFintechLegendWithoutLenderName)) {
       blindSpots.push({
         findingCode: "LICENSE_SCOPE_MFB_GEOGRAPHIC_BREACH",
         severity: "HIGH",
-        exactQuoteOrMetric: `${tier} claiming nationwide 36-state banking operations`,
-        whatYouMissed: `A ${tier === "MFB_UNIT" ? "Unit" : "State"} Microfinance Bank is restricted by CBN Guidelines to operating within its licensed state/local government area and cannot solicit nationwide branch banking without a National MFB license.`,
+        exactQuoteOrMetric: `Claiming universal nationwide coverage ("for all Nigerians" / "all 36 states") under ${tier === "MFB_UNIT" ? "Unit MFB" : tier === "MFB_STATE" ? "State MFB" : "Unit/State MFB or Dual-Entity"} scope`,
+        whatYouMissed:
+          "A Unit or State Microfinance Bank is restricted by CBN Revised Regulatory and Supervisory Guidelines for Microfinance Banks in Nigeria to operating within its licensed local government area or state, and cannot promise credit 'for all Nigerians' nationwide without a National MFB or DMB license.",
         whatItCostsYou:
-          "CBN Other Financial Institutions Supervision Department (OFISD) sanction and fine for operating outside licensed geographical boundaries.",
+          "CBN Other Financial Institutions Supervision Department (OFISD) sanction and administrative fine for soliciting outside licensed geographical boundaries, plus CBN CPR Reg. 4.2.5(c) & FCCPA §123 enforcement for deceptive universal eligibility claims.",
         oneClickFix:
-          "Qualify geographic availability to your licensed state of operation or remove 'all 36 states' claims.",
-        violatedStatute: "CBN Revised Regulatory and Supervisory Guidelines for MFBs in Nigeria",
+          "Qualify geographic and credit eligibility: 'Available to eligible salaried or verified residents within our licensed operating territory in Lagos State, subject to KYC, BVN, and creditworthiness assessment.'",
+        violatedStatute:
+          "CBN Revised Regulatory and Supervisory Guidelines for MFBs in Nigeria / CBN CPR 2019 Reg. 4.2.5(c)",
+      });
+    }
+
+    // Rule 5: Vague "CBN-regulated fintech" legend in a loan ad without naming the licensed lender of record
+    if (hasVagueFintechLegendWithoutLenderName) {
+      blindSpots.push({
+        findingCode: "INCOMPLETE_REGULATORY_LENDER_LEGEND",
+        severity: "HIGH",
+        exactQuoteOrMetric: `"NexaPay is a CBN-regulated fintech" (No licensed lender of record or licence category stated)`,
+        whatYouMissed:
+          "'Fintech' is not a statutory CBN licence class. A CBN Payment Solution Service Provider (PSSP) licence does not authorise lending on its own balance sheet. Under CBN Consumer Protection Regulations 2019 Reg. 4.2.4 (explicitly naming the CBN in an advert is restricted beyond stating the exact regulatory status) and FCCPC DEON Regulations 2025 Regs. 8, 10–12, 19(c), and 22(c), any digital lending campaign must identify the exact licensed lender of record (e.g., Unit/State/National MFB or Finance Company) and hold prior FCCPC approval for any PSSP-MFB lending partnership.",
+        whatItCostsYou:
+          "CBN Consumer Protection Department takedown order under Reg. 4.2.4/4.2.8 and FCCPC DEON Regulation 22 penalties (up to ₦100,000,000 or 1% of turnover, plus director disqualification).",
+        oneClickFix:
+          'Replace "CBN-regulated fintech" with the exact dual-entity disclosure: "Loans are offered and underwritten by [Exact Legal Name of Microfinance Bank Ltd] (Licensed by the Central Bank of Nigeria as a [Unit/State/National] Microfinance Bank). Payment processing powered by [Entity Ltd] (CBN-licensed PSSP)."',
+        violatedStatute:
+          "CBN CPR 2019 Reg. 4.2.4 / FCCPC DEON Regulations 2025 Regs. 8, 10–12, 19(c), 22(c)",
       });
     }
 

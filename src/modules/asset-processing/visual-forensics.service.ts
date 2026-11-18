@@ -47,7 +47,11 @@ const ARCON_ASP_PATTERN =
 const COERCIVE_URGENCY_PATTERNS = [
   /\b(?:act\s+now\s+or\s+lose|last\s+chance\s+ever|borrow\s+today\s+before\s+you\s+regret|no\s+questions\s+asked\s+cash)\b/i,
   /\b(?:everyone\s+is\s+approved\s+instantly|beat\s+sapa\s+with\s+free\s+cash)\b/i,
+  /\b(?:run\s+don['’]?t\s+walk|before\s+slots\s+finish|giving\s+away\s+free\s+money|pay\s+back\s+almost\s+nothing)\b/i,
 ];
+
+const RAFFLE_PROMO_PATTERN =
+  /\b(?:transact\s*(?:&|and)\s*win|raffle\s+draw|mega\s+holiday\s+raffle|automatically\s+enters\s+you\s+into)\b/i;
 
 export class VisualForensicsService {
   /**
@@ -123,6 +127,9 @@ export class VisualForensicsService {
 
     // 4. Check coercive urgency or manipulative language
     const hasCoerciveUrgencyLanguage = COERCIVE_URGENCY_PATTERNS.some((rx) => rx.test(fullText));
+    const hasUnregisteredRafflePromo =
+      RAFFLE_PROMO_PATTERN.test(fullText) &&
+      !/\b(?:fccpc\s+reg|gaming\s+board|lsla|lotteries\s+authority)\b/i.test(fullText);
 
     const blindSpots: BlindSpotAlert[] = [];
 
@@ -133,10 +140,10 @@ export class VisualForensicsService {
         exactQuoteOrMetric: `Disclaimer-to-Headline height ratio is ${(disclaimerToHeadlineRatio * 100).toFixed(1)}% (Minimum required: 12.0%)`,
         whatYouMissed: `Your flyer's disclaimer ("${disclaimerSegmentText.slice(0, 80) || "Terms & Conditions"}") is rendered at only ${(disclaimerToHeadlineRatio * 100).toFixed(1)}% of the main headline's height (${smallestDisclaimerBoxHeight}px vs ${headlineBoxHeight}px on a 1000px canvas), making material conditions unreadable on mobile screens.`,
         whatItCostsYou:
-          "Deemed a 'buried/inconspicuous disclosure' under CBN Consumer Protection Framework §4.2 and FCCPA 2018 §115. Regulators treat illegible fine print as if the disclosure was completely omitted, exposing the institution to deceptive advertising fines.",
+          "Deemed a 'buried/inconspicuous disclosure' under CBN Consumer Protection Regulations 2019 Reg. 4.2.5(d)–(e) (minimum font size 10 / legible typography) and FCCPA 2018 §115. Regulators treat illegible fine print as if the disclosure was completely omitted, exposing the institution to deceptive advertising fines.",
         oneClickFix:
           "Increase the footer disclaimer font size to at least 12%–15% of the primary headline height (minimum 10pt on print / 14px on 1080p social creatives) with high-contrast foreground text.",
-        violatedStatute: "CBN Consumer Protection Framework §4.2 / ARCON Code Art. 21",
+        violatedStatute: "CBN Consumer Protection Regulations 2019 Reg. 4.2.5(d)–(e) / ARCON Code Art. 21",
       });
     }
 
@@ -144,14 +151,14 @@ export class VisualForensicsService {
       blindSpots.push({
         findingCode: "MISSING_ARCON_ASP_PRE_VETTING_ID",
         severity: "HIGH",
-        exactQuoteOrMetric: "No ARCON / ASP Pre-Vetting Certificate Number detected on creative",
+        exactQuoteOrMetric: "No ARCON / ASP Pre-Vetting Certificate Number or CBN CPD Reg. 4.2.9 Notification Ref detected on creative",
         whatYouMissed:
-          "You did not ask about ARCON, but under Section 54 of the ARCON Act 2022 and the Nigerian Code of Advertising Practice, every financial services advertisement must obtain Advertising Standards Panel (ASP) pre-vetting approval before publication.",
+          "Under Section 54 of the ARCON Act 2022 and the Nigerian Code of Advertising Practice, every consumer-facing financial advertisement across flyer, landing page, and paid TikTok/IG influencer reels must obtain an Advertising Standards Panel (ASP) Certificate of Approval (via ARCON-licensed practitioner Form 001) BEFORE exposure. Distinctly, under CBN Consumer Protection Regulations 2019 Regulation 4.2.9, the regulated institution must also submit prior notification of advertising content (audience, media, duration, and internal compliance sign-off) to the Director, CBN Consumer Protection Department.",
         whatItCostsYou:
-          "ARCON Notice of Violation, mandatory campaign takedown across all media/social platforms, minimum ₦500,000+ administrative penalty per unvetted exposure, and prosecution before the Advertising Offences Tribunal.",
+          "ARCON Notice of Violation, mandatory campaign takedown across all media/social platforms, minimum ₦500,000+ administrative penalty per unvetted exposure, prosecution before the Advertising Offences Tribunal, and CBN CPD retraction directive under Reg. 4.2.8.",
         oneClickFix:
-          "Generate the ARCON ASP Pre-Vetting Substantiation Memo using Cogent's one-click generator, submit the creative for ASP clearance, and embed the issued 'ARCON/ASP/...' certificate reference on the flyer corner before launch.",
-        violatedStatute: "ARCON Act 2022 §54 / AISOP Code",
+          "File prior notification with the Director, CBN Consumer Protection Department under Reg. 4.2.9, submit Form 001 + substantiation pack to ARCON ASP for pre-exposure vetting, and embed the issued 'ARCON/ASP/...' certificate reference on the creative before launch.",
+        violatedStatute: "ARCON Act 2022 §54 / CBN Consumer Protection Regulations 2019 Reg. 4.2.9",
       });
     }
 
@@ -161,11 +168,11 @@ export class VisualForensicsService {
         severity: "HIGH",
         exactQuoteOrMetric: "Unqualified 100% / unlimited NDIC deposit coverage claim",
         whatYouMissed:
-          "The creative implies unlimited NDIC protection, whereas NDIC statutory deposit insurance is capped at ₦5,000,000 per depositor for Deposit Money Banks (DMBs) and ₦2,000,000 for Microfinance Banks (MFBs).",
+          "The creative implies unlimited NDIC protection, whereas NDIC statutory deposit insurance is capped at ₦5,000,000 per depositor for Deposit Money Banks (DMBs) and ₦2,000,000 per depositor for Microfinance Banks (MFBs, revised upward in 2024). Moreover, NDIC covers eligible deposits only—not loans, credit-life insurance, or raffle prizes.",
         whatItCostsYou:
           "Regulatory sanction from NDIC and CBN for misrepresenting statutory deposit insurance limits to the public.",
         oneClickFix:
-          "Replace blanket insurance claims with the statutory wording: 'Deposits are insured by the Nigeria Deposit Insurance Corporation (NDIC) up to statutory limits.'",
+          "Replace blanket insurance claims with the statutory wording: 'Deposits are insured by the Nigeria Deposit Insurance Corporation (NDIC) up to statutory limits (₦2,000,000 per depositor for MFBs).'",
         violatedStatute: "NDIC Act / CBN Consumer Protection Regulations 2019",
       });
     }
@@ -173,15 +180,30 @@ export class VisualForensicsService {
     if (hasCoerciveUrgencyLanguage) {
       blindSpots.push({
         findingCode: "COERCIVE_URGENCY_MANIPULATION",
-        severity: "MEDIUM",
-        exactQuoteOrMetric: "High-pressure urgency / FOMO borrowing language detected",
+        severity: "HIGH",
+        exactQuoteOrMetric: "High-pressure urgency / FOMO borrowing & influencer baiting language detected ('run don\\'t walk', 'before slots finish', 'giving away free money', 'pay back almost nothing')",
         whatYouMissed:
-          "The flyer uses high-pressure psychological urgency to induce impulsive borrowing, which breaches responsible lending marketing standards.",
+          "The campaign uses artificial scarcity ('before slots finish'), false characterisation of debt as a gift ('giving away free money'), price minimisation ('pay back almost nothing'), and undisclosed commercial influencer endorsement to induce impulsive borrowing.",
         whatItCostsYou:
-          "FCCPC DEON enforcement warning and rejection during ARCON ASP pre-vetting review.",
+          "Breaches CBN Consumer Protection Regulations 2019 Regs. 4.1.5, 4.2.2, 4.2.5, 5.3.1–5.3.2 & 5.3.6 (ban on unsolicited/high-pressure credit marketing), FCCPA 2018 §§ 115, 123 & 125, FCCPC DEON Regulations 2025 Regs. 17(1), 19 & 22 (up to ₦100,000,000 or 1% of turnover), and ARCON influencer vetting rules.",
         oneClickFix:
-          "Remove high-pressure countdown or FOMO slogans and state clear, objective credit eligibility and repayment terms.",
-        violatedStatute: "FCCPC DEON Regulations 2025 / CBN Responsible Lending Guidelines",
+          "Remove all 'free money', 'pay back almost nothing', and 'before slots finish' claims. Require the influencer to open with an explicit 'Paid Advertisement for [Licensed Entity]' disclosure and state the representative example, fees, and APR on-screen and in voiceover.",
+        violatedStatute: "CBN CPR 2019 Regs. 4.1.5, 4.2.2, 5.3.1 / FCCPA 2018 §§ 115, 123, 125 / DEON 2025 Regs. 17, 19, 22 / ARCON Act 2022 §54",
+      });
+    }
+
+    if (hasUnregisteredRafflePromo) {
+      blindSpots.push({
+        findingCode: "UNREGISTERED_RAFFLE_PROMOTION_AND_TIE_IN",
+        severity: "HIGH",
+        exactQuoteOrMetric: `"TRANSACT & WIN ₦5,000,000 CASH! — Every transfer of ₦5,000+ between Nov 20 and Dec 31 automatically enters you into our Mega Holiday Raffle Draw!"`,
+        whatYouMissed:
+          "1) Unregistered Sales Promotion & Lottery: Running a chance-based cash raffle requires prior FCCPC Sales Promotion Registration (rules submitted at least 21 days before start; note also the Draft FCCPC Sales Promotion (Amended) Regulations 2026) and State/National Lotteries & Gaming Authority clearance. 2) Prize Pool vs. Single Prize Ambiguity: 'WIN ₦5,000,000 CASH' fails to clarify whether ₦5,000,000 is one grand prize or a shared pool, and omits draw date, cut-off time, qualifying transaction types (whether self-transfers or reversals count), and winner verification/payout rules. 3) Credit-Raffle Tie-In: Combining a high-cost loan ad and influencer borrow callout ('borrow ₦200k right now... plus win ₦5M') conflates borrowing with a lottery inducement.",
+        whatItCostsYou:
+          "FCCPC stop-order and sales promotion sanctions under FCCPA 2018 §§ 115, 120–125, gaming authority seal/fine for unpermitted lottery draw, and CBN Consumer Protection Regulations 2019 Regs. 4.1.5, 4.2.5, 5.3.1–5.3.2 & 5.3.6 enforcement.",
+        oneClickFix:
+          "Separate the transfer raffle from all loan advertising; hold the raffle until FCCPC Sales Promotion registration (filed >=21 days prior) and gaming permits are issued; and publish full draw rules specifying whether ₦5,000,000 is a single prize or total pool, qualifying transfers, exclusions, draw date, and payout timeline.",
+        violatedStatute: "FCCPA 2018 §§ 115, 120–125 / FCCPC Sales Promotion Rules / CBN CPR 2019 Regs. 4.1.5, 4.2.5, 5.3.1–5.3.2",
       });
     }
 

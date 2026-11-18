@@ -23,6 +23,7 @@ export interface KfsGenerationInput {
   processingFeePercent?: number;
   processingFeeFlatNgn?: number;
   managementFeePercent?: number;
+  insuranceFeePercent?: number;
   dailyPenaltyPercent?: number;
   supportContact?: string;
   product?: CampaignProduct | null;
@@ -104,6 +105,13 @@ export class KfsGeneratorService {
         : 0);
     const managementFeePercent =
       input.managementFeePercent ?? (hasExplicitFlatFee ? 0 : (terms.management_fee_percent ?? 0));
+    const insuranceFeePercent =
+      input.insuranceFeePercent ??
+      (hasExplicitFlatFee
+        ? 0
+        : typeof customTerms.insurance_fee_percent === "number"
+          ? customTerms.insurance_fee_percent
+          : 0);
     const dailyPenaltyPercent = input.dailyPenaltyPercent ?? terms.penalty_fee_percent ?? 0;
 
     const aprSummary =
@@ -117,6 +125,7 @@ export class KfsGeneratorService {
         processingFeePercent,
         processingFeeFlatNgn,
         managementFeePercent,
+        insuranceFeePercent,
         dailyPenaltyPercent,
         deductFeesUpfront: true,
       });
@@ -124,72 +133,88 @@ export class KfsGeneratorService {
     const fmtNgn = (n: number) =>
       `₦${n.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+    const itemizedFeesText =
+      aprSummary.computedFinancials?.itemized_upfront_fees &&
+      aprSummary.computedFinancials.itemized_upfront_fees.length > 0 &&
+      aprSummary.upfrontFeesNgn > 0
+        ? aprSummary.computedFinancials.itemized_upfront_fees
+            .map((f) => `${f.label}: ${fmtNgn(f.amount_ngn)}`)
+            .join("; ")
+        : `Processing: ${processingFeePercent}%${processingFeeFlatNgn > 0 ? ` + ${fmtNgn(processingFeeFlatNgn)}` : ""}${managementFeePercent > 0 ? `, Management: ${managementFeePercent}%` : ""}${insuranceFeePercent > 0 ? `, Insurance: ${insuranceFeePercent}%` : ""}`;
+
     const kfsRows: KfsTableRow[] = [
+      {
+        field: "Mandatory KFS Preamble (Non-Binding Notice)",
+        value:
+          "THIS KEY FACTS STATEMENT (KFS) IS NOT A LOAN OFFER OR CONTRACT; IT IS FOR INFORMATION AND COMPARISON PURPOSES ONLY.",
+        statutoryBasis: "CBN CPR 2019 Reg. 4.3.4 & Annexure A",
+      },
       {
         field: "Product & Lender Identification",
         value: `${productName} • Offered by ${institutionName} (${licenseStatement})`,
-        statutoryBasis: "CBN CPF §4.2.1",
+        statutoryBasis: "CBN CPR Reg. 4.2.4 & DEON 2025 Reg. 19(c)",
       },
       {
         field: "Sample Loan Principal",
         value: fmtNgn(aprSummary.principalNgn),
-        statutoryBasis: "CBN KFS Annex 1",
+        statutoryBasis: "CBN KFS Annexure A",
       },
       {
         field: "Net Cash Disbursed to Customer",
-        value: `${fmtNgn(aprSummary.netDisbursedNgn)} (after ${fmtNgn(aprSummary.upfrontFeesNgn)} upfront fees)`,
-        statutoryBasis: "FCCPC DEON Reg. 18",
+        value: `${fmtNgn(aprSummary.netDisbursedNgn)} (after ${fmtNgn(aprSummary.upfrontFeesNgn)} upfront deductions)`,
+        statutoryBasis: "CBN CPR Reg. 4.3.4(b) & DEON Reg. 17(1)",
       },
       {
         field: "Nominal Interest Rate",
         value: `${aprSummary.advertisedRatePercent}% (${aprSummary.advertisedRatePeriod.toLowerCase()}) — ${fmtNgn(aprSummary.interestAmountNgn)}`,
-        statutoryBasis: "CBN CPF §3.2.3",
+        statutoryBasis: "CBN CPR Reg. 4.2.5(a)",
       },
       {
-        field: "Mandatory Processing & Admin Fees",
+        field: "Mandatory Processing, Admin & Insurance Fees",
         value:
           aprSummary.upfrontFeesNgn > 0
-            ? `${fmtNgn(aprSummary.upfrontFeesNgn)} (Processing: ${processingFeePercent}%${processingFeeFlatNgn > 0 ? ` + ${fmtNgn(processingFeeFlatNgn)}` : ""}${managementFeePercent > 0 ? `, Management: ${managementFeePercent}%` : ""})`
-            : "₦0.00 (No upfront processing fees)",
-        statutoryBasis: "CBN Guide to Charges",
+            ? `${fmtNgn(aprSummary.upfrontFeesNgn)} (${itemizedFeesText})${aprSummary.mfbProcessingFeeCapViolation ? " — [STATUTORY BREACH: CBN Guide to Charges Part 2(A) Sec. 2.6 (pp. 31–32) caps MFB processing/appraisal/management fees at 1% max of principal disbursed; CBN CPR Regs. 4.5.1(g) & 5.2.6 prohibit mandatory unquoted borrower-paid insurance]" : ""}`
+            : "₦0.00 (No upfront processing or compulsory insurance fees)",
+        statutoryBasis: "CBN Guide to Charges Part 2(A) Sec. 2.6 & CPR Reg. 4.5.1(g)",
       },
       {
         field: "Total Cost of Credit (Interest + Fees)",
         value: fmtNgn(aprSummary.totalCostOfCreditNgn),
-        statutoryBasis: "CBN KFS Annex 1",
+        statutoryBasis: "CBN KFS Annexure A",
       },
       {
         field: "Total Amount Repayable",
         value: fmtNgn(aprSummary.totalRepaymentNgn),
-        statutoryBasis: "FCCPA 2018 §115",
+        statutoryBasis: "FCCPA 2018 §115 & CBN CPR Reg. 4.3.4",
       },
       {
         field: "Effective Annual Percentage Rate (APR)",
-        value: `${aprSummary.effectiveNominalAprPercent}% APR p.a. (${aprSummary.effectiveNetDisbursedAprPercent}% APR on net disbursed cash)`,
-        statutoryBasis: "CBN CPF §3.2.1",
+        value: `${aprSummary.effectiveNominalAprPercent}% APR p.a. (${aprSummary.effectiveNetDisbursedAprPercent}% APR on net disbursed cash; Compounded EAR: ${aprSummary.effectiveCompoundEarPercent}% p.a. Actual/365${aprSummary.computedFinancials.lawful_redesign_schedule ? ` | Lawful Fee-Free Redesign at ${aprSummary.advertisedRatePercent}%/mo: ${aprSummary.computedFinancials.lawful_redesign_schedule.simple_annualised_apr_365_percent}% simple APR / ${aprSummary.computedFinancials.lawful_redesign_schedule.effective_annual_rate_365_percent}% EAR` : ""})`,
+        statutoryBasis: "CBN CPR Reg. 4.2.5(a) & 4.3.4(b)",
       },
       {
         field: "Repayment Tenor",
         value: aprSummary.shortTenorPlayStoreViolation
           ? `${aprSummary.tenorDays} Calendar Days (Note: Google Play Store requires ≥ 61 days for mobile loan apps)`
           : `${aprSummary.tenorDays} Calendar Days (Google Play compliant range: 61–180 days)`,
-        statutoryBasis: "FCCPC DEON §5",
+        statutoryBasis: "FCCPC DEON 2025 & Google Play Policy",
       },
       {
         field: "Default / Late Payment Penalty",
-        value: "1% flat per month on unpaid principal balance only (non-compounding)",
-        statutoryBasis: "CBN Guide to Charges",
+        value:
+          "1% flat per month on unpaid overdue amount only after mandatory 3-day grace period and first-day default notice (non-compounding)",
+        statutoryBasis: "CBN Guide to Charges Part 2(A) Sec. 2.5 (p. 30) & CPR Reg. 4.6(b)–(c)",
       },
       {
-        field: "Cooling-Off Cancellation Right",
+        field: "Pre-Contract Review & Cooling-Off Cancellation Right",
         value:
-          "Borrower may cancel within 3 business days of execution by refunding net principal",
-        statutoryBasis: "CBN CPF §4.3.2",
+          "Minimum 2 working days to review draft contract pre-execution (Reg. 4.3.5); 3 working days post-execution cooling-off cancellation right by refunding net principal + pro-rata interest + max 0.25% fee",
+        statutoryBasis: "CBN CPR 2019 Regs. 4.3.5 & 4.3.6",
       },
       {
         field: "Dispute & Escalation Redress",
         value: `${supportContact} (24h SLA). Escalate unresolved complaints after 14 days to CBN CPD (cpd@cbn.gov.ng) or FCCPC.`,
-        statutoryBasis: "CBN CPF §7.1",
+        statutoryBasis: "CBN CPR Reg. 4.3.4(f) & DEON Reg. 24",
       },
     ];
 

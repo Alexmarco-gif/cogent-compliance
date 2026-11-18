@@ -137,6 +137,18 @@ export interface BlindSpotFindingItem {
   regulatory_clause_id?: string;
 }
 
+export interface ComputedLoanExample {
+  principal_ngn: number;
+  processing_fee_ngn: number;
+  insurance_fee_ngn: number;
+  management_fee_ngn: number;
+  total_upfront_fees_ngn: number;
+  net_disbursed_cash_ngn: number;
+  nominal_interest_ngn: number;
+  total_cost_of_credit_ngn: number;
+  total_repayable_ngn: number;
+}
+
 export interface ComputedFinancials {
   product_name: string;
   principal_ngn: number;
@@ -153,11 +165,49 @@ export interface ComputedFinancials {
   advertised_implied_apr_percent: number;
   total_cost_of_credit_ngn: number;
   total_repayable_ngn: number;
+  /** Annualized total cost of credit on gross principal: (TCC / Principal) * (365 / Tenor) */
   effective_apr_percent: number;
+  /** True simple annualised APR on actual net cash received (Actual/365): (TCC / NetDisbursed) * (365 / Tenor) */
   effective_net_disbursed_apr_percent: number;
+  /** Exact 6-decimal simple annualised APR on net cash (Actual/365) */
+  effective_net_disbursed_apr_exact_percent?: number;
+  /** Periodic borrowing cost over the loan tenor: (TCC / NetDisbursed) * 100 */
+  periodic_cost_rate_percent?: number;
+  /** Compounded Effective Annual Rate (EAR) on net cash (Actual/365): ((Repayment / NetDisbursed)^(365 / Tenor) - 1) * 100 */
+  effective_compound_ear_percent?: number;
+  /** Exact 6-decimal Compounded EAR (Actual/365) */
+  effective_compound_ear_exact_percent?: number;
+  /** Simple annualised APR on net cash under 360-day / twelve 30-day periods convention */
+  nominal_apr_360_percent?: number;
+  /** Compounded EAR on net cash under 360-day / twelve 30-day periods convention */
+  effective_ear_360_percent?: number;
+  daily_penalty_percent?: number;
+  monthly_equivalent_penalty_percent?: number;
   tenor_days: number;
   drip_pricing_detected: boolean;
   short_tenor_violation: boolean;
+  mfb_processing_fee_cap_violation?: boolean;
+  excessive_penalty_violation?: boolean;
+  unsubstantiated_insurance_fee?: boolean;
+  /** Cash-flow schedules for all loan amounts mentioned in the campaign (e.g. ₦200,000 & ₦500,000) */
+  loan_examples?: ComputedLoanExample[];
+  /** Lawfully repriced redesign schedule (removing unlawful >1% processing fee, unsubstantiated insurance, and >1%/mo penal charge) */
+  lawful_redesign_schedule?: {
+    assumed_interest_rate_percent: number;
+    tenor_days: number;
+    processing_fee_ngn: number;
+    insurance_fee_ngn: number;
+    default_penalty_ngn: number;
+    simple_annualised_apr_365_percent: number;
+    effective_annual_rate_365_percent: number;
+    examples: Array<{
+      principal_ngn: number;
+      net_received_ngn: number;
+      interest_payable_ngn: number;
+      total_cost_of_credit_ngn: number;
+      total_repayment_ngn: number;
+    }>;
+  };
 }
 
 export type ComplianceArtifactType = (typeof WORK_PRODUCT_ARTIFACT_TYPES)[number];
