@@ -371,4 +371,90 @@ describe("Work Product Anti-Hallucination Guardrails & PDF/DOCX Export", () => {
     expect(res.sanitized_markdown).not.toContain("internal_institutional_truth");
     expect(res.sanitized_markdown).toContain("NDPA 2023 Sections 26, 35");
   });
+
+  it("renders Markdown tables as bordered PDF cells instead of raw pipe-delimited text", async () => {
+    const sampleWp: WorkProductRecord = {
+      id: "wp_pdf_table",
+      tenant_id: "tenant_1",
+      conversation_id: null,
+      message_id: null,
+      workflow_type: "CROSS_BORDER_COMPARISON",
+      artifact_type: "cross_border_matrix",
+      title: "Pan-African Regulatory Matrix: NexaPay Borderless",
+      jurisdiction_scope: ["NG", "KE", "GH", "ZA"],
+      markdown_content: [
+        "### Executive Summary",
+        "",
+        "NexaPay Borderless scales across four key African markets.",
+        "",
+        "---",
+        "",
+        "### Pillar 1: Primary Financial & Payment Regulators",
+        "",
+        "| Jurisdiction | Central Bank & Payment Regulator | Data Protection Authority | Financial Conduct Authority |",
+        "| :--- | :--- | :--- | :--- |",
+        "| Nigeria (NG) | Central Bank of Nigeria (CBN) via Payments System Supervision | Nigeria Data Protection Commission (NDPC) under NDPA 2023 | Federal Competition and Consumer Protection Commission (FCCPC) |",
+        "| Kenya (KE) | Central Bank of Kenya (CBK) | Office of the Data Protection Commissioner (ODPC) | Capital Markets Authority (CMA) |",
+        "| Ghana (GH) | Bank of Ghana (BoG) | Data Protection Commission (DPC) | Securities and Exchange Commission (SEC Ghana) |",
+        "| South Africa (ZA) | South African Reserve Bank (SARB) | Information Regulator under POPIA | Financial Sector Conduct Authority (FSCA) |",
+        "",
+        "> Regulatory passporting across jurisdictions is strictly prohibited.",
+      ].join("\n"),
+      structured_payload: {},
+      citations: [],
+      evidence_gaps: [],
+      guardrail_report: { passed: true },
+      version_number: 1,
+      status: "DRAFT",
+      source_hash_sha256: "d".repeat(64),
+      created_by: "user_1",
+      updated_by: "user_1",
+      last_exported_at: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    vi.mocked(workProductService.getWorkProductWithRevisions).mockResolvedValue({
+      work_product: sampleWp,
+      revisions: [],
+    });
+    vi.mocked(entitlementsService.checkTenantEntitlement).mockResolvedValue({
+      allowed: true,
+      planSlug: "growth",
+      feature: "export_unwatermarked",
+    });
+    vi.mocked(entitlementsService.getTenantSubscriptionInfo).mockResolvedValue({
+      plan: { features: { work_product_docx_export: true } },
+    } as never);
+
+    const exporter = new WorkProductExportService();
+    const pdfRes = await exporter.exportWorkProduct("tenant_1", "user_1", "wp_pdf_table", "pdf");
+
+    expect(pdfRes.buffer.subarray(0, 5).toString("utf8")).toBe("%PDF-");
+
+    // Inspect PDF content streams to confirm raw markdown pipes/separators were not drawn literally
+    const { PDFDocument } = await import("pdf-lib");
+    const zlib = await import("zlib");
+    const doc = await PDFDocument.load(pdfRes.buffer);
+    const streamTexts: string[] = [];
+    for (const obj of doc.context.enumerateIndirectObjects()) {
+      const val = obj[1] as { contents?: Uint8Array };
+      if (val && val.contents instanceof Uint8Array) {
+        try {
+          streamTexts.push(zlib.inflateSync(Buffer.from(val.contents)).toString("latin1"));
+        } catch {
+          streamTexts.push(Buffer.from(val.contents).toString("latin1"));
+        }
+      }
+    }
+    const decodedStreams = streamTexts
+      .join("\n")
+      .replace(/<([0-9A-Fa-f]+)>/g, (_, hex: string) =>
+        Buffer.from(hex, "hex").toString("latin1")
+      );
+    expect(decodedStreams).not.toContain(":---");
+    expect(decodedStreams).not.toContain("| Jurisdiction |");
+    expect(decodedStreams).toContain("Central Bank of Nigeria");
+    expect(decodedStreams).toContain("Financial Conduct Authority");
+  });
 });
