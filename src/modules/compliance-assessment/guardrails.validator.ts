@@ -9,6 +9,7 @@ import { sanitizeAssistantOutput } from "@/lib/ai/output-sanitizer";
 import { logger } from "@/lib/logger";
 import { mechanicalLocksEngine, type MechanicalLocksInput } from "./mechanical-locks";
 import { canonicalizeUrl } from "@/modules/live-web-intelligence/africa-regulators";
+import { NIGERIAN_STATUTORY_PROVISIONS } from "@/modules/regulatory-vault/nigerian-statutory-matrix";
 import type {
   WorkflowType,
   WorkProductCitation,
@@ -275,15 +276,22 @@ export class GuardrailValidator {
       )
     );
 
-    const existingClauseIds = new Set<string>();
+    const existingClauseIds = new Set<string>(
+      NIGERIAN_STATUTORY_PROVISIONS.map((p) => p.id)
+    );
     if (vaultCandidateIds.length > 0) {
-      const { data: clauseRows } = await supabase
-        .from("regulatory_clauses")
-        .select("id")
-        .in("id", vaultCandidateIds);
+      const dbOnlyCandidateIds = vaultCandidateIds.filter(
+        (cid) => !existingClauseIds.has(cid)
+      );
+      if (dbOnlyCandidateIds.length > 0) {
+        const { data: clauseRows } = await supabase
+          .from("regulatory_clauses")
+          .select("id")
+          .in("id", dbOnlyCandidateIds);
 
-      for (const row of clauseRows || []) {
-        if (row.id) existingClauseIds.add(String(row.id));
+        for (const row of clauseRows || []) {
+          if (row.id) existingClauseIds.add(String(row.id));
+        }
       }
 
       for (const cid of vaultCandidateIds) {
@@ -295,8 +303,12 @@ export class GuardrailValidator {
       }
     }
 
-    // 2. Strict URL Citation Allowlist (against live_web_retrievals for this tenant + explicit allowedLiveUrls)
+    // 2. Strict URL Citation Allowlist (against live_web_retrievals for this tenant + explicit allowedLiveUrls + verified official regulator instruments)
     const allowedNormalizedUrls = new Set<string>();
+    for (const p of NIGERIAN_STATUTORY_PROVISIONS) {
+      const norm = canonicalizeUrl(p.officialUrl)?.canonicalUrl;
+      if (norm) allowedNormalizedUrls.add(norm);
+    }
     for (const u of context.allowedLiveUrls || []) {
       const norm = canonicalizeUrl(u)?.canonicalUrl;
       if (norm) allowedNormalizedUrls.add(norm);
@@ -484,7 +496,34 @@ export class GuardrailValidator {
 
     // 4. Policy Redline Legal Floor Enforcement
     if (candidate.workflow_type === "POLICY_GAP_REDLINE") {
-      const lower = sanitizedMarkdown.toLowerCase();
+      // Extract only proposed/replacement text (excluding the "Current Non-Compliant Text" column
+      // in Markdown redline tables so quoting offending SOP text like "notify NDPC within 30 days"
+      // does not cause a false positive on the replacement redline).
+      const replacementEvaluationLines: string[] = [];
+      for (const rawLine of sanitizedMarkdown.split(/\r?\n/)) {
+        const trimmed = rawLine.trim();
+        if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
+          const cells = trimmed
+            .slice(1, -1)
+            .split("|")
+            .map((c) => c.trim());
+          // In 5-col table: [Clause Reference, Current Non-Compliant Text, Specific Statutory Breach, Exact Compliant Replacement Text, Statutory Floor]
+          // In 4-col/other tables, skip column index 1 if it looks like a 4+ column redline table
+          if (cells.length >= 4) {
+            // Skip header/separator rows and skip cell[1] (Current Non-Compliant Text) & cell[2] (Breach summary)
+            const isHeaderOrSep =
+              /^[-:\s|]+$/.test(trimmed) ||
+              /current\s*(?:non-compliant\s*text|language)/i.test(cells[1] || "");
+            if (!isHeaderOrSep) {
+              replacementEvaluationLines.push(cells[3] || "");
+            }
+            continue;
+          }
+        }
+        replacementEvaluationLines.push(rawLine);
+      }
+
+      const lower = replacementEvaluationLines.join("\n").toLowerCase();
 
       // NFIU / MLPPA >= 5 years record retention floor
       const shortRetentionMatch = lower.match(
@@ -492,7 +531,7 @@ export class GuardrailValidator {
       );
       if (shortRetentionMatch) {
         legalFloorWarnings.push(
-          `LEGAL_FLOOR_BREACH_NFIU_RETENTION: Proposed clause states ${shortRetentionMatch[1]}-year retention, which falls below Nigeria's mandatory >= 5-year statutory retention floor (MLPPA 2022 §8 / CBN AML Regulations).`
+          `LEGAL_FLOOR_BREACH_NFIU_RETENTION: Proposed clause states ${shortRetentionMatch[1]}-year retention, which falls below Nigeria's mandatory >= 5-year statutory retention floor (MLPPA 2022 Section 8 / CBN AML Regulations).`
         );
       }
 
@@ -502,7 +541,7 @@ export class GuardrailValidator {
       );
       if (longBreachHoursMatch && Number(longBreachHoursMatch[1]) > 72) {
         legalFloorWarnings.push(
-          `LEGAL_FLOOR_BREACH_NDPC_72H: Proposed clause allows ${longBreachHoursMatch[1]} hours for breach notification, exceeding the NDPA 2023 §40 72-hour statutory ceiling.`
+          `LEGAL_FLOOR_BREACH_NDPC_72H: Proposed clause allows ${longBreachHoursMatch[1]} hours for breach notification, exceeding the NDPA 2023 Section 40 72-hour statutory ceiling.`
         );
       }
       const longBreachDaysMatch = lower.match(
@@ -510,7 +549,7 @@ export class GuardrailValidator {
       );
       if (longBreachDaysMatch) {
         legalFloorWarnings.push(
-          `LEGAL_FLOOR_BREACH_NDPC_72H: Proposed clause allows ${longBreachDaysMatch[1]} days for breach notification, exceeding the NDPA 2023 §40 72-hour statutory ceiling.`
+          `LEGAL_FLOOR_BREACH_NDPC_72H: Proposed clause allows ${longBreachDaysMatch[1]} days for breach notification, exceeding the NDPA 2023 Section 40 72-hour statutory ceiling.`
         );
       }
 

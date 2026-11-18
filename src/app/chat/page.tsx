@@ -341,6 +341,7 @@ function ChatWorkspaceContent() {
     };
   }, [clerkLoaded, isSignedIn, orgId, router]);
 
+  const hasAutoEnabledLiveWebRef = useRef(false);
   const refreshLiveSearchQuota = useCallback(async () => {
     try {
       const res = await fetch("/api/marketing-shield/v1/search/quota", { cache: "no-store" });
@@ -348,6 +349,10 @@ function ChatWorkspaceContent() {
       const snap = (json?.data?.quota || json?.data) as SearchQuotaSnapshot | undefined;
       if (res.ok && json?.success && snap && typeof snap.live_web_allowed === "boolean") {
         setLiveSearchQuota(snap);
+        if (!hasAutoEnabledLiveWebRef.current && snap.live_web_allowed && (snap.remaining ?? 1) > 0) {
+          hasAutoEnabledLiveWebRef.current = true;
+          setEnableLiveWebSearch(true);
+        }
       }
     } catch {
       // Non-blocking: quota indicator degrades silently

@@ -88,12 +88,54 @@ const mockSearchWeb = vi.fn().mockResolvedValue({
   ],
 });
 
+const mockComparePolicy = vi.fn().mockResolvedValue({
+  success: true,
+  policy_topic: "Collections, Data Privacy & Complaints SOP",
+  statutory_benchmarks: [
+    {
+      regulatory_clause_id: "ng-stat-ndpa-s25-26-consent",
+      instrument_title: "Nigeria Data Protection Act 2023 (NDPA 2023)",
+      regulator: "NDPC",
+      clause_reference: "Sections 25(1)(a) & 26(2)–(7)",
+      verbatim_excerpt: "Consent must be freely given, specific, informed, and unambiguous; conditional/bundled consent is invalid.",
+      official_url: "https://ndpc.gov.ng/wp-content/uploads/2025/05/NIGERIA-DATA-PROTECTION-ACT-2023.pdf",
+    },
+  ],
+  official_regulator_references: [
+    {
+      title: "NDPA 2023 — Official Act",
+      url: "https://ndpc.gov.ng/wp-content/uploads/2025/05/NIGERIA-DATA-PROTECTION-ACT-2023.pdf",
+      regulator: "NDPC",
+    },
+  ],
+  subclause_gap_matrix: [
+    {
+      subclause_ref: "1.1",
+      section_title: "Section 1 — Consent & Permissions",
+      statutory_floor: "NDPA 2023 Sections 25(1)(a) & 26(2)",
+      required_redline_anchor: "Unbundled granular consent",
+    },
+  ],
+  mandatory_operational_clocks: [
+    {
+      trigger: "Personal data breach awareness",
+      clock: "72 hours",
+      authority: "NDPA 2023 Section 40(1)",
+    },
+  ],
+  legal_floors: {
+    breach_notification_hours: 72,
+    aml_record_retention_years: 5,
+  },
+});
+
 vi.mock("@/modules/ai-orchestration/tools/statutory-tools", () => ({
   STATUTORY_TOOL_DECLARATIONS: [],
   statutoryToolExecutor: {
     searchRegulatoryEvidence: (...args: unknown[]) => mockSearchVault(...args),
     searchLiveWeb: (...args: unknown[]) => mockSearchWeb(...args),
     searchInstitutionalKnowledge: vi.fn().mockResolvedValue({ chunks: [], rules: [] }),
+    comparePolicyAgainstRegulation: (...args: unknown[]) => mockComparePolicy(...args),
   },
 }));
 
@@ -376,5 +418,72 @@ Please build a comprehensive Pan-African Cross-Border Regulatory Matrix comparin
     expect(passedWebQuery).toContain("Kenya");
     expect(passedWebQuery).toContain("Ghana");
     expect(passedWebQuery).toContain("South Africa");
+  });
+
+  it("executes POLICY_GAP_REDLINE with live web search default, statutory matrix injection, and clean redline output", async () => {
+    const generateContentStream = vi.fn().mockImplementation(async function* () {
+      yield {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: [
+                    "### Executive Decision: REJECT v1.0",
+                    "",
+                    "| Clause Reference | Current Non-Compliant Text | Specific Statutory Breach | Exact Compliant Replacement Text | Statutory Floor / Governing Authority |",
+                    "| :--- | :--- | :--- | :--- | :--- |",
+                    "| **Sub-clause 3.2 (Breach Protocol)** | \"Notify NDPC within 30 days if media coverage occurs.\" | Violates NDPA 2023 Section 40(1) 72-hour mandatory breach notification clock. | \"The Company shall notify the NDPC within 72 hours of becoming aware of a personal data breach and maintain AML records for at least five (5) years post-account closure.\" | NDPA 2023 Section 40(1); MLPPA 2022 Section 8 |",
+                  ].join("\n"),
+                },
+              ],
+            },
+          },
+        ],
+      };
+    });
+
+    const orchestrator = new CopilotOrchestrator({
+      models: { generateContentStream, generateContent: vi.fn() },
+    } as unknown as GoogleGenAI);
+
+    const events = [];
+    for await (const event of orchestrator.streamChat({
+      tenantId: "00000000-0000-0000-0000-000000000001",
+      userId: "user_1",
+      conversationId: "conv_policy_redline_1",
+      userPrompt:
+        "Perform a full Statutory Policy Gap Analysis & Section-by-Section Redline on Internal_Collections_Privacy_SOP_v1.pdf against NDPA 2023, GAID 2025, FCCPC DEON 2025, CBN CPR 2019, and NFIU/MLPPA 2022.",
+      workflowHint: "POLICY_GAP_REDLINE",
+    })) {
+      events.push(event);
+    }
+
+    expect(mockComparePolicy).toHaveBeenCalledTimes(1);
+    expect(mockSearchWeb).toHaveBeenCalledTimes(1);
+
+    const serializedPrompt = JSON.stringify(generateContentStream.mock.calls[0]?.[0]?.contents);
+    expect(serializedPrompt).toContain("policy_gap_redline_execution_blueprint");
+    expect(serializedPrompt).toContain("ng-stat-ndpa-s25-26-consent");
+
+    const wpEvent = events.find((e) => e.type === "work_product.created") as
+      | { type: "work_product.created"; data: { work_product_id: string } }
+      | undefined;
+    expect(wpEvent).toBeDefined();
+
+    const streamedText = events
+      .filter((e) => e.type === "assistant.delta")
+      .map((e) => e.data.text_delta)
+      .join("");
+    expect(streamedText).toContain("REJECT v1.0");
+    expect(streamedText).not.toContain("STATUTORY LEGAL FLOOR WARNING");
+
+    const completed = events.find((e) => e.type === "message.completed") as {
+      data: {
+        citations: Array<{ regulatory_clause_id?: string; retrieved_url?: string }>;
+      };
+    };
+    const citationIds = completed.data.citations.map((c) => c.regulatory_clause_id).filter(Boolean);
+    expect(citationIds).toContain("ng-stat-ndpa-s25-26-consent");
   });
 });

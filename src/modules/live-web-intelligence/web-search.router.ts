@@ -187,8 +187,8 @@ export class WebSearchRouter {
     const searchIntent =
       params.searchIntent || (jurisdictions.length > 1 ? "CROSS_BORDER" : "REGULATORY_CIRCULAR");
     const includeNews = params.includeNews ?? true;
-    const defaultLimit = isMultiJurisdiction ? Math.max(12, jurisdictions.length * 4) : 8;
-    const limit = Math.min(Math.max(params.limit ?? defaultLimit, 1), 24);
+    const defaultLimit = isMultiJurisdiction ? Math.max(20, jurisdictions.length * 6) : 20;
+    const limit = Math.min(Math.max(params.limit ?? defaultLimit, 1), 36);
     const configuredInteractiveMs =
       Number(process.env.LIVE_WEB_INTERACTIVE_TIMEOUT_MS) ||
       env.LIVE_WEB_INTERACTIVE_TIMEOUT_MS ||
@@ -466,7 +466,7 @@ export class WebSearchRouter {
     } else {
       const serpGooglePromise = this.serpClient.searchRegulatorsGoogle(params.query, jurisdictions, {
         timeoutMs: serpTimeout,
-        numResults: 8,
+        numResults: 12,
         dateFrom: params.dateFrom,
         searchIntent,
       });
@@ -474,7 +474,7 @@ export class WebSearchRouter {
       const serpNewsPromise = includeNews
         ? this.serpClient.searchRegulatoryNews(params.query, jurisdictions, {
             timeoutMs: Math.min(serpTimeout, 3500),
-            numResults: 5,
+            numResults: 8,
           })
         : Promise.resolve({ items: [] as SerpApiNormalizedItem[], costUsd: 0, latencyMs: 0 });
 
@@ -482,7 +482,7 @@ export class WebSearchRouter {
         typeof this.exa.searchOpenWebWithContents === "function"
           ? this.exa.searchOpenWebWithContents(params.query, jurisdictions, {
               timeoutMs: exaTimeout,
-              numResults: 8,
+              numResults: 12,
               dateFrom: params.dateFrom,
               searchIntent,
             })
@@ -490,7 +490,7 @@ export class WebSearchRouter {
 
       const exaCuratedPromise = this.exa.searchNeuralWithContents(params.query, jurisdictions, {
         timeoutMs: exaTimeout,
-        numResults: 6,
+        numResults: 10,
         dateFrom: params.dateFrom,
         searchIntent,
         scope: "CURATED_AUTHORITY",

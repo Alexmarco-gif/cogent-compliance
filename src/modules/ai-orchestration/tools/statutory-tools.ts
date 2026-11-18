@@ -32,6 +32,11 @@ import {
   planMultiJurisdictionSearchQueries,
   resolveJurisdictionDescriptor,
 } from "@/modules/live-web-intelligence/africa-regulators";
+import {
+  matchApplicableOperationalClocks,
+  matchAuthoritativeNigerianProvisions,
+  matchSubClauseGapTemplates,
+} from "@/modules/regulatory-vault/nigerian-statutory-matrix";
 import { KnowledgeDocumentType } from "@/contracts/knowledge-product.contracts";
 import { RewriteTone } from "@/contracts/remediation.contracts";
 import {
@@ -933,11 +938,17 @@ export class StatutoryToolExecutor {
   /**
    * Distills long prompts or marketing copy into a concise query suitable for
    * PostgreSQL websearch_to_tsquery and vector embedding.
+   * Scans the entire prompt and prioritizes high-signal statutory & regulatory keywords.
    */
   private buildConciseSearchQuery(rawQuery: string): string {
-    const clean = rawQuery.replace(/https?:\/\/\S+/gi, " ").replace(/[^\w\s%-]/g, " ").replace(/\s+/g, " ").trim();
+    const clean = rawQuery
+      .replace(/https?:\/\/\S+/gi, " ")
+      .replace(/\b[\w-]+\.(?:pdf|docx|doc|txt|md)\b/gi, " ")
+      .replace(/[^\w\s%-]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
     const words = clean.split(" ").filter(Boolean);
-    if (words.length <= 12) return clean || rawQuery.trim();
+    if (words.length <= 14) return clean || rawQuery.trim();
 
     const stopWords = new Set([
       "a", "an", "and", "are", "as", "at", "be", "by", "can", "could", "do", "does", "for",
@@ -945,19 +956,35 @@ export class StatutoryToolExecutor {
       "not", "of", "on", "or", "our", "please", "review", "check", "audit", "this", "that",
       "the", "their", "them", "they", "to", "us", "we", "what", "when", "where", "which",
       "who", "will", "with", "would", "you", "your", "copy", "promotional", "campaign",
+      "perform", "provide", "full", "attached", "internal", "showing", "every", "against",
     ]);
 
-    const keywords: string[] = [];
+    const priorityTerms = new Set([
+      "cbn", "ndpa", "ndpc", "fccpc", "deon", "gaid", "nfiu", "mlppa", "cpr", "sec",
+      "firs", "cac", "naicom", "pencom", "nitda", "bvn", "nin", "kyc", "aml", "cft",
+      "cpf", "str", "ctr", "ftr", "goaml", "consent", "bundled", "withdrawal", "dpia",
+      "contacts", "sms", "gps", "penalty", "penal", "grace", "charges", "collection",
+      "harassment", "retention", "breach", "localisation", "localization", "transfer",
+      "dispute", "complaint", "chargeback", "dispense", "eft", "pssp", "mfb", "tier",
+    ]);
+
+    const highSignal: string[] = [];
+    const generalKeywords: string[] = [];
     const seen = new Set<string>();
+
     for (const w of words) {
       const lower = w.toLowerCase();
       if (lower.length < 3 || stopWords.has(lower) || seen.has(lower)) continue;
       seen.add(lower);
-      keywords.push(w);
-      if (keywords.length >= 10) break;
+      if (priorityTerms.has(lower)) {
+        highSignal.push(w);
+      } else {
+        generalKeywords.push(w);
+      }
     }
 
-    return keywords.length >= 3 ? keywords.join(" ") : words.slice(0, 12).join(" ");
+    const combined = [...highSignal, ...generalKeywords].slice(0, 22);
+    return combined.length >= 3 ? combined.join(" ") : words.slice(0, 14).join(" ");
   }
 
   /**
@@ -974,7 +1001,7 @@ export class StatutoryToolExecutor {
     _ctx: ToolExecutionContext
   ): Promise<Record<string, unknown>> {
     const supabase = createAdminSupabaseClient();
-    const limit = Math.min(args.limit || 5, 15);
+    const limit = Math.min(args.limit || 5, 25);
     const searchQuery = this.buildConciseSearchQuery(args.query);
 
     try {
@@ -1074,6 +1101,40 @@ export class StatutoryToolExecutor {
     args: { regulatory_clause_id: string },
     _ctx: ToolExecutionContext
   ): Promise<Record<string, unknown>> {
+    const { NIGERIAN_STATUTORY_PROVISIONS } = await import(
+      "@/modules/regulatory-vault/nigerian-statutory-matrix"
+    );
+    const staticProv = NIGERIAN_STATUTORY_PROVISIONS.find(
+      (p) => p.id === args.regulatory_clause_id
+    );
+    if (staticProv) {
+      const crypto = await import("crypto");
+      const hash = crypto
+        .createHash("sha256")
+        .update(staticProv.verbatimRuleExtract)
+        .digest("hex");
+      return {
+        success: true,
+        regulatory_clause_id: staticProv.id,
+        clause_reference: staticProv.sectionCode,
+        verbatim_text: staticProv.verbatimRuleExtract,
+        page_number: null,
+        instrument_title: staticProv.documentTitle,
+        instrument_type: "STATUTE_OR_DIRECTIVE",
+        instrument_number: staticProv.sectionCode,
+        regulator_acronym: staticProv.authority,
+        regulator_name: staticProv.authority,
+        official_domain: staticProv.domain,
+        file_sha256: hash,
+        source_url: staticProv.officialUrl,
+        effective_date: staticProv.effectiveDate,
+        publication_date: staticProv.effectiveDate,
+        lifecycle_status: "CURRENT",
+        source_class: "VERIFIED_OFFICIAL_SOURCE",
+        badge_label: "Verified Statutory Vault",
+      };
+    }
+
     const supabase = createAdminSupabaseClient();
 
     const { data: clause, error } = await supabase
@@ -2071,7 +2132,7 @@ export class StatutoryToolExecutor {
       {
         query: args.regulation_query,
         regulators: args.regulators,
-        limit: 8,
+        limit: 12,
       },
       ctx
     );
@@ -2081,9 +2142,92 @@ export class StatutoryToolExecutor {
       args.policy_text ||
       policyChunks.map((c) => `[Section #${c.chunk_index + 1}] ${c.chunk_text}`).join("\n\n");
 
+    const fullAnalysisCorpus = `${combinedPolicyText}\n${args.regulation_query}`;
     const referenceProvisions = statutoryReferenceMatrix.extractApplicableProvisions(
       `${args.regulation_query}\n${combinedPolicyText}`
     );
+    const authoritativeProvisions = matchAuthoritativeNigerianProvisions(
+      fullAnalysisCorpus,
+      20
+    );
+
+    const existingClauseIds = new Set(
+      vaultResults.map((r) => String(r.regulatory_clause_id || ""))
+    );
+    const enrichedStatutoryBenchmarks = [
+      ...vaultResults,
+      ...authoritativeProvisions
+        .filter((p) => !existingClauseIds.has(p.id))
+        .map((p) => ({
+          regulatory_clause_id: p.id,
+          clause_reference: p.sectionCode,
+          instrument_title: p.documentTitle,
+          regulator: p.authority,
+          verbatim_excerpt: p.verbatimRuleExtract,
+          statutory_floor_summary: p.statutoryFloorSummary,
+          official_url: p.officialUrl,
+          effective_date: p.effectiveDate,
+          rrf_score: 0.95,
+          source_class: "VERIFIED_OFFICIAL_SOURCE",
+          badge_label: "Verified Statutory Vault",
+        })),
+    ];
+
+    const matchedSubClauseTemplates = matchSubClauseGapTemplates(fullAnalysisCorpus);
+    const matchedOperationalClocks = matchApplicableOperationalClocks(
+      fullAnalysisCorpus,
+      matchedSubClauseTemplates,
+      authoritativeProvisions
+    );
+
+    const activeCategories = new Set([
+      ...matchedSubClauseTemplates.map((t) => t.category),
+      ...authoritativeProvisions.map((p) => p.category),
+    ]);
+
+    const dynamicScopeGuidance: string[] = [];
+    if (
+      activeCategories.has("DEBT_COLLECTION_AND_PENALTIES") ||
+      /\b(pssp|lender\s+of\s+record|microfinance|mfb|lending|deon|loan|credit)\b/i.test(
+        fullAnalysisCorpus
+      )
+    ) {
+      dynamicScopeGuidance.push(
+        "PSSP vs. Licensed Lender of Record (FCCPC DEON Regulations 2025 Regs. 8 & 10–13, eff. 21 July 2025): A CBN Payment Solution Service Provider (PSSP) licence authorizes payment processing/switching, NOT balance-sheet consumer lending. Any credit product must designate a licensed Lender of Record (e.g., partner CBN-licensed Microfinance Bank or Finance Company) under an FCCPC-approved DEON partnership agreement.",
+        "Microfinance Bank Default Tariff Ceiling (CBN Guide to Charges eff. Jan 1, 2020 Part 2(A), Section 2.5 & Footnote 3; CBN CPR 2019 Reg. 4.6(b)–(c)): Default/penal rate is capped at 1% flat per month on the unpaid overdue amount and may only accrue after a mandatory minimum 3-day grace period following Day 1 default notice."
+      );
+    }
+    if (activeCategories.has("AML_CFT_KYC_AND_NFIU")) {
+      dynamicScopeGuidance.push(
+        "Direct Applicability of CBN AML/CFT/CPF Regulations 2022: Regulated Nigerian Financial Institutions, MFBs, and Payment Service Providers (PSPs/PSSPs) are directly bound as reporting institutions and cannot rely on a partner bank's AML controls to excuse KYC waivers or delayed STR/CTR/FTR filings."
+      );
+    }
+    if (
+      activeCategories.has("CONSENT_AND_PERMISSIONS") ||
+      activeCategories.has("DATA_RETENTION_LOCALISATION_AND_BREACH")
+    ) {
+      dynamicScopeGuidance.push(
+        "Operative Status of NDPA 2023 & NDPC GAID 2025: NDPA 2023 (eff. 12 June 2023) and the NDPC General Application and Implementation Directive (GAID) 2025 (issued 20 March 2025; commenced 19 September 2025; Article 10 annual CAR deadline 31 March, not 15 March) are actively in force; CBN Payments Data Localisation Circular (15 June 2026) & FAQ (4 Nov 2026) mandate full in-country hosting compliance by 1 January 2027."
+      );
+    }
+
+    const dynamicLegalFloors = Array.from(
+      new Set(
+        authoritativeProvisions.map(
+          (p) => `${p.documentTitle} ${p.sectionCode}: ${p.statutoryFloorSummary}`
+        )
+      )
+    );
+
+    const officialRegulatorReferences = authoritativeProvisions.map((p) => ({
+      id: p.id,
+      authority: p.authority,
+      title: `${p.documentTitle} — ${p.sectionCode}`,
+      url: p.officialUrl,
+      domain: p.domain,
+      effective_date: p.effectiveDate,
+      snippet: p.statutoryFloorSummary,
+    }));
 
     return {
       success: true,
@@ -2092,14 +2236,13 @@ export class StatutoryToolExecutor {
       knowledge_doc_id: args.knowledge_doc_id || null,
       policy_excerpt: combinedPolicyText.slice(0, 6000),
       policy_sections_count: policyChunks.length || (args.policy_text ? 1 : 0),
-      statutory_benchmarks: vaultResults,
+      statutory_benchmarks: enrichedStatutoryBenchmarks,
       statutory_reference_provisions: referenceProvisions,
-      legal_floors: [
-        "NFIU / MLPPA 2022 Section 8: Customer & transaction record retention at least 5 years.",
-        "NDPA 2023 Section 40 / GAID 2025: Personal data breach notification to NDPC within 72 hours.",
-        "NDPC GAID 2025 Article 10: Annual Compliance Audit Return (CAR) deadline is 31 March (not 15 March).",
-        "CBN CDD Regulations 2023 & Circular PSM/DIR/PUB/CIR/001/053: Mandatory validated BVN and NIN on Tier 2/3 & business accounts.",
-      ],
+      subclause_gap_matrix: matchedSubClauseTemplates,
+      mandatory_operational_clocks: matchedOperationalClocks,
+      official_regulator_references: officialRegulatorReferences,
+      institutional_scope_guidance: dynamicScopeGuidance,
+      legal_floors: dynamicLegalFloors,
     };
   }
 
