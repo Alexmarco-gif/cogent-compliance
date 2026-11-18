@@ -14,6 +14,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { WorkspaceShell } from "@/components/shell/WorkspaceShell";
+import { WorkspaceOrgPanel } from "@/components/auth/WorkspaceOrgPanel";
 import { ProfileTab } from "./ProfileTab";
 import { OrganizationTab } from "./OrganizationTab";
 import { TeamRolesTab } from "./TeamRolesTab";
@@ -58,7 +59,10 @@ export function SettingsShellView({ defaultTab = "organization" }: SettingsShell
       router.replace("/sign-in?redirect_url=/settings");
       return;
     }
-    if (!orgId) return;
+    if (!orgId) {
+      setLoading(false);
+      return;
+    }
 
     let active = true;
     setLoading(true);
@@ -153,7 +157,22 @@ export function SettingsShellView({ defaultTab = "organization" }: SettingsShell
           })}
         </div>
 
-        {loading && !workspace && activeTab !== "billing" ? (
+        {isLoaded && isSignedIn && !orgId ? (
+          <div className="bg-white rounded-xl border border-zinc-200 p-6 sm:p-8 space-y-5">
+            <div>
+              <h2 className="text-base font-semibold text-zinc-950">
+                Create or Select Your Organization
+              </h2>
+              <p className="text-xs text-zinc-500 mt-1">
+                You are signed in, but no workspace organization is active yet. Create a new organization below or select an existing one to access workspace settings.
+              </p>
+            </div>
+            <WorkspaceOrgPanel
+              afterCreateUrl="/onboarding"
+              afterSelectUrl="/settings?tab=organization"
+            />
+          </div>
+        ) : loading && !workspace && activeTab !== "billing" ? (
           <div className="bg-white rounded-xl border border-zinc-200 p-10 flex items-center justify-center gap-2 text-xs text-zinc-500">
             <RefreshCw className="h-4 w-4 animate-spin" />
             <span>Loading workspace settings...</span>

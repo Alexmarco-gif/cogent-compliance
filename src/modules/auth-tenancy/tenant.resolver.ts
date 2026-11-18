@@ -9,7 +9,8 @@ import { AuthTenancyError, CANONICAL_ROLES, CanonicalRole, TenantContext } from 
 import { getPermissionsForRole, mapClerkRoleToCanonical } from "./permissions";
 import { syncClerkOrganizationCreated } from "./clerk.sync";
 import {
-  parseInternalEnterpriseEmails,
+  hasInternalEnterpriseAllowlistConfigured,
+  parseInternalEnterpriseOrgIds,
   provisionEnterpriseForAllowlistedCreator,
 } from "@/modules/billing/enterprise-allowlist.service";
 import { logger } from "@/lib/logger";
@@ -67,7 +68,7 @@ export async function resolveTenantContext(
 
   const { userId, orgId, orgRole, orgSlug } = session;
 
-  if (process.env.NODE_ENV === "development" && (!userId || !orgId)) {
+  if (process.env.NODE_ENV === "development" && !userId) {
     const role: CanonicalRole = "CHIEF_COMPLIANCE_OFFICER";
     return {
       tenantId: "11111111-1111-1111-1111-111111111111",
@@ -397,15 +398,21 @@ export async function resolveTenantContext(
     string,
     unknown
   >;
-  const existingSub = tenantSettings.subscription as { status?: string } | undefined;
-  if (
+  const existingSub = tenantSettings.subscription as { plan_slug?: string; status?: string } | undefined;
+  const isOrgAllowlisted = parseInternalEnterpriseOrgIds().has(orgId);
+  const isAlreadyActiveEnterprise =
+    existingSub?.plan_slug === "enterprise" && existingSub?.status === "active";
+  const shouldEvaluateEnterpriseAllowlist =
     orgId !== "org_demo_1111" &&
-    parseInternalEnterpriseEmails().size > 0 &&
-    (resolvedRole === "CHIEF_COMPLIANCE_OFFICER" || resolvedRole === "WORKSPACE_ADMIN") &&
-    !tenantSettings.enterprise_comp_owner_user_id &&
-    !tenantSettings.enterprise_comp_checked_at &&
-    existingSub?.status !== "active"
-  ) {
+    hasInternalEnterpriseAllowlistConfigured() &&
+    !isAlreadyActiveEnterprise &&
+    (isOrgAllowlisted ||
+      ((resolvedRole === "CHIEF_COMPLIANCE_OFFICER" || resolvedRole === "WORKSPACE_ADMIN") &&
+        !tenantSettings.enterprise_comp_owner_user_id &&
+        !tenantSettings.enterprise_comp_checked_at &&
+        existingSub?.status !== "active"));
+
+  if (shouldEvaluateEnterpriseAllowlist) {
     try {
       const compResult = await provisionEnterpriseForAllowlistedCreator({
         tenantId: tenant.id,
@@ -414,9 +421,22 @@ export async function resolveTenantContext(
       });
       if (compResult.granted && resolvedRole === "WORKSPACE_ADMIN") {
         resolvedRole = "CHIEF_COMPLIANCE_OFFICER";
+      } else if (!compResult.granted) {
+        logger.info("Enterprise allowlist check skipped or rejected for tenant", {
+          tenantId: tenant.id,
+          clerkOrgId: orgId,
+          clerkUserId: userId,
+          role: resolvedRole,
+          reason: compResult.reason,
+        });
       }
-    } catch {
-      // Non-blocking Enterprise allowlist evaluation
+    } catch (allowlistErr) {
+      logger.warn("Enterprise allowlist evaluation failed non-fatally in resolveTenantContext", {
+        tenantId: tenant.id,
+        clerkOrgId: orgId,
+        clerkUserId: userId,
+        error: allowlistErr instanceof Error ? allowlistErr.message : String(allowlistErr),
+      });
     }
   }
 

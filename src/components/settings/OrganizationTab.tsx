@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { OrganizationList, useOrganization } from "@clerk/nextjs";
+import { useOrganization } from "@clerk/nextjs";
+import { WorkspaceOrgPanel } from "@/components/auth/WorkspaceOrgPanel";
 import {
   Building2,
   MapPin,
@@ -653,11 +654,14 @@ export function OrganizationTab({ workspace, onUpdated }: OrganizationTabProps) 
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="flex justify-center py-2">
-              <OrganizationList
-                hidePersonal
-                afterSelectOrganizationUrl="/settings?tab=organization"
-                afterCreateOrganizationUrl="/onboarding"
+            <div className="py-1">
+              <WorkspaceOrgPanel
+                afterCreateUrl="/onboarding"
+                afterSelectUrl="/settings?tab=organization"
+                onOrgActivated={() => {
+                  setOrgSwitcherOpen(false);
+                  window.location.href = "/settings?tab=organization";
+                }}
               />
             </div>
           </div>

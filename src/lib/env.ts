@@ -52,8 +52,9 @@ export const serverEnvSchema = z.object({
   // Paystack Billing
   PAYSTACK_SECRET_KEY: z.string().optional(),
 
-  // Internal / Founder Enterprise Allowlist (comma-separated verified emails)
+  // Internal / Founder Enterprise Allowlist (comma-separated verified emails and/or Clerk org IDs)
   INTERNAL_ENTERPRISE_EMAILS: z.string().optional(),
+  INTERNAL_ENTERPRISE_ORG_IDS: z.string().optional(),
 
   // Dual-Engine Regulatory Web Search (Document 14 & Document 15)
   EXA_API_KEY: z.string().optional(),
@@ -159,6 +160,7 @@ export function validateEnv(customEnv?: Record<string, string | undefined>): Env
         rawEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY || "mock_supabase_anon_key",
       PAYSTACK_SECRET_KEY: rawEnv.PAYSTACK_SECRET_KEY || "sk_test_mock_paystack_secret_key",
       INTERNAL_ENTERPRISE_EMAILS: rawEnv.INTERNAL_ENTERPRISE_EMAILS,
+      INTERNAL_ENTERPRISE_ORG_IDS: rawEnv.INTERNAL_ENTERPRISE_ORG_IDS,
       NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY:
         rawEnv.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "pk_test_mock_paystack_public_key",
       EXA_API_KEY: rawEnv.EXA_API_KEY,

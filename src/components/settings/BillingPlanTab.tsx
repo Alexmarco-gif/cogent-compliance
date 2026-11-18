@@ -125,7 +125,11 @@ export function BillingPlanTab() {
   }, []);
 
   useEffect(() => {
-    if (!clerkLoaded || !isSignedIn || !orgId) return;
+    if (!clerkLoaded || !isSignedIn) return;
+    if (!orgId) {
+      setLoadingSub(false);
+      return;
+    }
     loadBilling();
   }, [clerkLoaded, isSignedIn, orgId, loadBilling]);
 

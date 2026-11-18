@@ -8,7 +8,8 @@ import { mapClerkRoleToCanonical } from "./permissions";
 import { CANONICAL_ROLES, type CanonicalRole } from "./types";
 import { logger } from "@/lib/logger";
 import {
-  parseInternalEnterpriseEmails,
+  hasInternalEnterpriseAllowlistConfigured,
+  parseInternalEnterpriseOrgIds,
   provisionEnterpriseForAllowlistedCreator,
 } from "@/modules/billing/enterprise-allowlist.service";
 
@@ -121,14 +122,24 @@ export async function syncClerkOrganizationCreated(data: ClerkOrgEventData): Pro
         slug: candidateSlug,
       });
 
-      if (data.created_by && parseInternalEnterpriseEmails().size > 0) {
+      if (
+        hasInternalEnterpriseAllowlistConfigured() &&
+        (data.created_by || parseInternalEnterpriseOrgIds().has(data.id))
+      ) {
         try {
-          await provisionEnterpriseForAllowlistedCreator({
+          const compResult = await provisionEnterpriseForAllowlistedCreator({
             tenantId: tenant.id,
-            clerkUserId: data.created_by,
+            clerkUserId: data.created_by || undefined,
             clerkOrgId: data.id,
-            isCreatorHint: true,
+            isCreatorHint: Boolean(data.created_by),
           });
+          if (!compResult.granted) {
+            logger.info("Enterprise allowlist check skipped during organization sync", {
+              tenantId: tenant.id,
+              clerkOrgId: data.id,
+              reason: compResult.reason,
+            });
+          }
         } catch (allowlistErr) {
           logger.warn("Allowlist Enterprise check skipped during organization sync", {
             tenantId: tenant.id,
@@ -385,17 +396,26 @@ export async function syncClerkMembershipCreated(data: ClerkMembershipEventData)
     }
   }
 
+  const isOrgAllowlisted = parseInternalEnterpriseOrgIds().has(data.organization.id);
   if (
-    parseInternalEnterpriseEmails().size > 0 &&
-    !tenantSettings.enterprise_comp_owner_user_id &&
-    !tenantSettings.enterprise_comp_checked_at
+    hasInternalEnterpriseAllowlistConfigured() &&
+    (isOrgAllowlisted ||
+      (!tenantSettings.enterprise_comp_owner_user_id && !tenantSettings.enterprise_comp_checked_at))
   ) {
     try {
-      await provisionEnterpriseForAllowlistedCreator({
+      const compResult = await provisionEnterpriseForAllowlistedCreator({
         tenantId: tenant.id,
         clerkUserId: data.public_user_data.user_id,
         clerkOrgId: data.organization.id,
       });
+      if (!compResult.granted) {
+        logger.info("Enterprise allowlist check skipped during membership sync", {
+          tenantId: tenant.id,
+          clerkOrgId: data.organization.id,
+          clerkUserId: data.public_user_data.user_id,
+          reason: compResult.reason,
+        });
+      }
     } catch (allowlistErr) {
       logger.warn("Allowlist Enterprise check skipped during membership sync", {
         tenantId: tenant.id,

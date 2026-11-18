@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAuth, useOrganization, useUser, OrganizationList } from "@clerk/nextjs";
+import { useAuth, useOrganization, useUser } from "@clerk/nextjs";
+import { WorkspaceOrgPanel } from "@/components/auth/WorkspaceOrgPanel";
 import { extractApiError } from "@/lib/api-client";
 import { CogentLogo } from "@/components/brand/CogentLogo";
 import {
@@ -369,13 +370,10 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
             </p>
           </div>
 
-          <div className="flex justify-center">
-            <OrganizationList
-              hidePersonal
-              afterSelectOrganizationUrl="/"
-              afterCreateOrganizationUrl="/onboarding"
-            />
-          </div>
+          <WorkspaceOrgPanel
+            afterCreateUrl="/onboarding"
+            afterSelectUrl="/chat"
+          />
         </div>
       </div>
     );

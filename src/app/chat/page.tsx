@@ -1409,11 +1409,19 @@ function ChatWorkspaceContent() {
               )}
 
               {authIssue === "NO_ORG" && (
-                <OrganizationSwitcher
-                  hidePersonal
-                  afterSelectOrganizationUrl="/chat"
-                  afterCreateOrganizationUrl="/chat"
-                />
+                <div className="flex items-center gap-2">
+                  <Link
+                    href="/onboarding"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white font-medium text-[12px] transition-colors"
+                  >
+                    <span>Create Organization</span>
+                  </Link>
+                  <OrganizationSwitcher
+                    hidePersonal
+                    afterSelectOrganizationUrl="/chat"
+                    afterCreateOrganizationUrl="/chat"
+                  />
+                </div>
               )}
 
               <button

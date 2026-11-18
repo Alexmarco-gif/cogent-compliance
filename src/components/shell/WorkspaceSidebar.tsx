@@ -436,7 +436,7 @@ export function WorkspaceSidebar({
           className="w-full px-3 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-2"
         >
           <Building2 className="h-3.5 w-3.5 text-zinc-500" />
-          <span>Switch Organization</span>
+          <span>Switch / Create Org</span>
         </Link>
         <div className="my-1 border-t border-zinc-100" />
         <button

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import {
   parseInternalEnterpriseEmails,
+  parseInternalEnterpriseOrgIds,
   provisionEnterpriseForAllowlistedCreator,
 } from "@/modules/billing/enterprise-allowlist.service";
 import * as supabaseModule from "@/lib/supabase";
@@ -29,10 +30,12 @@ vi.mock("@clerk/nextjs/server", () => ({
 
 describe("Internal Enterprise Allowlist Provisioning", () => {
   const originalEnv = process.env.INTERNAL_ENTERPRISE_EMAILS;
+  const originalOrgEnv = process.env.INTERNAL_ENTERPRISE_ORG_IDS;
 
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.INTERNAL_ENTERPRISE_EMAILS;
+    delete process.env.INTERNAL_ENTERPRISE_ORG_IDS;
     vi.spyOn(paystackBillingService, "getPlan").mockResolvedValue(DEFAULT_PLANS.enterprise);
     vi.spyOn(auditService, "appendEvent").mockResolvedValue({} as never);
   });
@@ -42,6 +45,11 @@ describe("Internal Enterprise Allowlist Provisioning", () => {
       delete process.env.INTERNAL_ENTERPRISE_EMAILS;
     } else {
       process.env.INTERNAL_ENTERPRISE_EMAILS = originalEnv;
+    }
+    if (originalOrgEnv === undefined) {
+      delete process.env.INTERNAL_ENTERPRISE_ORG_IDS;
+    } else {
+      process.env.INTERNAL_ENTERPRISE_ORG_IDS = originalOrgEnv;
     }
   });
 
@@ -301,5 +309,145 @@ describe("Internal Enterprise Allowlist Provisioning", () => {
       }),
       { onConflict: "tenant_id,user_id" },
     );
+  });
+
+  it("parses INTERNAL_ENTERPRISE_ORG_IDS and grants Enterprise directly to allowlisted team orgs", async () => {
+    const parsedOrgs = parseInternalEnterpriseOrgIds(" org_team_1 , org_team_2 ");
+    expect(parsedOrgs.has("org_team_1")).toBe(true);
+    expect(parsedOrgs.has("org_team_2")).toBe(true);
+    expect(parsedOrgs.size).toBe(2);
+
+    process.env.INTERNAL_ENTERPRISE_ORG_IDS = "org_team_1";
+
+    const subUpsert = vi.fn().mockResolvedValue({ error: null });
+    const tenantUpdateEq = vi.fn().mockResolvedValue({ error: null });
+    const tenantUpdate = vi.fn().mockReturnValue({ eq: tenantUpdateEq });
+    const memUpsert = vi.fn().mockResolvedValue({ error: null });
+
+    vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue({
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === "tenants") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: {
+                id: "tenant-team-1",
+                clerk_org_id: "org_team_1",
+                status: "ACTIVE",
+                settings: { enterprise_comp_checked_at: "2026-11-10T00:00:00Z" },
+              },
+              error: null,
+            }),
+            update: tenantUpdate,
+          };
+        }
+        if (table === "tenant_subscriptions") {
+          return { upsert: subUpsert };
+        }
+        if (table === "tenant_memberships") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: { id: "mem-mkt", role: "MARKETING_GROWTH" },
+              error: null,
+            }),
+            upsert: memUpsert,
+          };
+        }
+        return {};
+      }),
+    } as never);
+
+    const res = await provisionEnterpriseForAllowlistedCreator({
+      tenantId: "tenant-team-1",
+      clerkUserId: "user_teammate",
+      clerkOrgId: "org_team_1",
+    });
+
+    expect(res.granted).toBe(true);
+    expect(res.planSlug).toBe("enterprise");
+    expect(res.matchedOrgId).toBe("org_team_1");
+    expect(subUpsert).toHaveBeenCalledOnce();
+    // Should NOT overwrite MARKETING_GROWTH member's role
+    expect(memUpsert).not.toHaveBeenCalled();
+  });
+
+  it("allows Dashboard-created orgs (missing createdBy) with multiple team members when user is an allowlisted admin", async () => {
+    process.env.INTERNAL_ENTERPRISE_EMAILS = "marcoalex201804@gmail.com";
+
+    const neqMock = vi.fn().mockReturnThis();
+    const subUpsert = vi.fn().mockResolvedValue({ error: null });
+    const tenantUpdateEq = vi.fn().mockResolvedValue({ error: null });
+    const tenantUpdate = vi.fn().mockReturnValue({ eq: tenantUpdateEq });
+    const memUpsert = vi.fn().mockResolvedValue({ error: null });
+
+    vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue({
+      from: vi.fn().mockImplementation((table: string) => {
+        if (table === "tenants") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            neq: neqMock,
+            or: vi.fn().mockReturnThis(),
+            limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: { id: "tenant-dash-org", clerk_org_id: "org_dash", status: "ACTIVE", settings: {} },
+              error: null,
+            }),
+            update: tenantUpdate,
+          };
+        }
+        if (table === "tenant_subscriptions") {
+          return { upsert: subUpsert };
+        }
+        if (table === "tenant_memberships") {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockReturnThis(),
+            maybeSingle: vi.fn().mockResolvedValue({
+              data: { id: "mem-1", role: "WORKSPACE_ADMIN" },
+              error: null,
+            }),
+            upsert: memUpsert,
+          };
+        }
+        return {};
+      }),
+    } as never);
+
+    mockGetUser.mockResolvedValue({
+      id: "user_marco",
+      emailAddresses: [
+        {
+          emailAddress: "marcoalex201804@gmail.com",
+          verification: { status: "verified" },
+        },
+      ],
+    });
+
+    mockGetOrganization.mockResolvedValue({
+      id: "org_dash",
+      createdBy: null,
+    });
+
+    mockGetOrganizationMembershipList.mockResolvedValue({
+      totalCount: 4,
+      data: [
+        { role: "org:member", publicUserData: { userId: "user_team_1" } },
+        { role: "org:workspace_admin", publicUserData: { userId: "user_marco" } },
+      ],
+    });
+
+    const res = await provisionEnterpriseForAllowlistedCreator({
+      tenantId: "tenant-dash-org",
+      clerkUserId: "user_marco",
+      clerkOrgId: "org_dash",
+    });
+
+    expect(res.granted).toBe(true);
+    expect(res.planSlug).toBe("enterprise");
+    expect(neqMock).toHaveBeenCalledWith("status", "INACTIVE");
   });
 });

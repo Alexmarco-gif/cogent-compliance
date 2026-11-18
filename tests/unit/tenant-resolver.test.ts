@@ -194,4 +194,39 @@ describe("Server-Side Tenant & RBAC Context Resolver (resolveTenantContext)", ()
     expect(ctx.permissions.has("user.manage")).toBe(true);
     expect(ctx.status).toBe("ACTIVE");
   });
+
+  it("should allow demo tenant fallback in development mode only when unauthenticated (!userId)", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    try {
+      mockAuth.mockResolvedValue({
+        userId: null,
+        orgId: null,
+      });
+
+      const ctx = await resolveTenantContext();
+      expect(ctx.clerkOrgId).toBe("org_demo_1111");
+      expect(ctx.orgName).toBe("First Bank of Nigeria (Demo)");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("should throw 403 TENANT_CONTEXT_INVALID in development mode when user is signed in but has no active org", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    try {
+      mockAuth.mockResolvedValue({
+        userId: "user_signed_in_no_org",
+        orgId: null,
+      });
+
+      await expect(resolveTenantContext()).rejects.toThrowError(
+        expect.objectContaining({
+          code: "TENANT_CONTEXT_INVALID",
+          statusCode: 403,
+        }),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });

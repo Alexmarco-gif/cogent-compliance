@@ -8,10 +8,12 @@ import { logger } from "@/lib/logger";
 export async function POST(req: NextRequest) {
   try {
     const tenantContext = await resolveTenantContext(req);
-    const [result, subInfo] = await Promise.all([
-      onboardingService.completeOnboarding(tenantContext.tenantId),
-      entitlementsService.getTenantSubscriptionInfo(tenantContext.tenantId),
-    ]);
+    const result = await onboardingService.completeOnboarding(
+      tenantContext.tenantId,
+      tenantContext.clerkUserId,
+      tenantContext.clerkOrgId,
+    );
+    const subInfo = await entitlementsService.getTenantSubscriptionInfo(tenantContext.tenantId);
 
     return NextResponse.json(
       {

@@ -124,3 +124,9 @@ Build and verify the first complete end-to-end vertical slice: a user logs in vi
    - Confirm that `GEMINI_API_KEY`, `INNGEST_EVENT_KEY`, and `INNGEST_SIGNING_KEY` are added under **Vercel Settings** $\rightarrow$ **Environment Variables**.
 3. **Clerk User Account:**
    - Ensure you have an active user account in Clerk with an assigned organization membership to test the `/chat` workspace.
+4. **Internal Team & Walkthrough Enterprise Access (Optional, No Payment Required):**
+   - To automatically put your internal/marketing/walkthrough organization on the **Enterprise** plan without paying via Paystack, add one or both of the following in **Vercel Settings** $\rightarrow$ **Environment Variables** and redeploy:
+     - `INTERNAL_ENTERPRISE_EMAILS`: Comma-separated verified Clerk user email(s) (e.g. `founder@company.com`). Upgrades the user's first active organization.
+     - `INTERNAL_ENTERPRISE_ORG_IDS`: Comma-separated Clerk Organization ID(s) (e.g. `org_2abc...` from Clerk Dashboard $\rightarrow$ Organizations). Directly upgrades that organization for you and your team regardless of who created it or how many members have joined.
+   - To inspect or immediately upgrade an existing organization from the CLI, run:
+     `pnpm exec tsx scripts/grant-enterprise.ts --org <clerk_org_id_or_slug> --apply` (or `--email <user_email> --apply`).
