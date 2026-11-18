@@ -13,15 +13,15 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 1.0,
     },
     {
-      url: `${baseUrl}/resources`,
+      url: `${baseUrl}/solutions`,
       lastModified,
       changeFrequency: "weekly",
       priority: 0.9,
     },
     {
-      url: `${baseUrl}/solutions`,
+      url: `${baseUrl}/resources`,
       lastModified,
-      changeFrequency: "monthly",
+      changeFrequency: "weekly",
       priority: 0.9,
     },
     {
@@ -34,7 +34,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: `${baseUrl}/resources/faq`,
       lastModified,
       changeFrequency: "monthly",
-      priority: 0.75,
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/legal`,
+      lastModified,
+      changeFrequency: "monthly",
+      priority: 0.7,
     },
   ];
 }
