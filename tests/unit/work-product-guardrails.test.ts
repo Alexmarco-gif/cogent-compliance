@@ -351,8 +351,11 @@ describe("Work Product Anti-Hallucination Guardrails & PDF/DOCX Export", () => {
     expect(mdText).toContain("# AML Policy Redline Memo");
     expect(mdText).toContain("EVALUATION PILOT WATERMARK");
     expect(mdText).toContain("## Clause 4.2 Update");
-    expect(mdText).toContain("## Statutory & Regulatory Citations Appendix");
-    expect(mdText).toContain("CBN AML/CFT Regs");
+    expect(mdText).not.toContain("Statutory & Regulatory Citations Appendix");
+    expect(mdText).not.toContain("CBN AML/CFT Regs");
+
+    const pdfRes = await exporter.exportWorkProduct("tenant_1", "user_1", "wp_789", "pdf");
+    expect(pdfRes.buffer.subarray(0, 5).toString("utf8")).toBe("%PDF-");
   });
 
   it("scrubs leaked internal XML tags and §§ section glyphs from work product markdown", async () => {

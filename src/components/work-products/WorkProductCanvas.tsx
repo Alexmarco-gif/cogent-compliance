@@ -12,11 +12,9 @@ import {
   ChevronDown,
   Copy,
   Download,
-  ExternalLink,
   Eye,
   FileCode2,
   FileText,
-  Globe,
   History,
   Loader2,
   Lock,
@@ -26,7 +24,6 @@ import {
 } from "lucide-react";
 import type {
   WorkflowType,
-  WorkProductCitation,
   WorkProductEvidenceGap,
   WorkProductGuardrailReport,
   WorkProductRecord,
@@ -98,7 +95,6 @@ function highlightInlineComplianceMarkers(text: string): React.ReactNode {
 
 export function WorkProductCanvas({
   workProductId,
-  onInspectEvidence,
   onWorkProductUpdated,
 }: WorkProductCanvasProps) {
   const [workProduct, setWorkProduct] = useState<WorkProductRecord | null>(null);
@@ -321,7 +317,6 @@ export function WorkProductCanvas({
     );
   }
 
-  const citations = (workProduct.citations || []) as WorkProductCitation[];
   const evidenceGaps = (workProduct.evidence_gaps || []) as WorkProductEvidenceGap[];
   const guardrails = (workProduct.guardrail_report || {}) as Partial<WorkProductGuardrailReport>;
   const needsEvidenceMatches = (draftMarkdown.match(/\[NEEDS_INTERNAL_EVIDENCE\]/g) || []).length;
@@ -608,50 +603,6 @@ export function WorkProductCanvas({
             </div>
           )}
 
-          {/* Grounded Citations Footer */}
-          {citations.length > 0 && (
-            <div className="pt-3 border-t border-zinc-200 space-y-2">
-              <p className="font-mono text-[10.5px] font-semibold uppercase tracking-wider text-zinc-500">
-                Verified Citations &amp; Provenance ({citations.length})
-              </p>
-              <div className="flex flex-wrap gap-1.5">
-                {citations.map((cit, idx) => {
-                  if (cit.retrieved_url) {
-                    return (
-                      <a
-                        key={idx}
-                        href={cit.retrieved_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 px-2.5 py-1 text-[11.5px] text-zinc-800"
-                      >
-                        <Globe className="h-3 w-3 text-zinc-500" />
-                        <span className="font-mono text-[10.5px] font-semibold">
-                          {cit.trust_tier === "OFFICIAL_REGULATOR_WEB" ? "OFFICIAL WEB" : "LIVE WEB"}
-                        </span>
-                        <span className="truncate max-w-[180px]">{cit.badge_label}</span>
-                        <ExternalLink className="h-3 w-3 text-zinc-400" />
-                      </a>
-                    );
-                  }
-                  return (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => cit.regulatory_clause_id && onInspectEvidence?.(cit.regulatory_clause_id)}
-                      className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-100 px-2.5 py-1 text-[11.5px] text-zinc-800 cursor-pointer"
-                    >
-                      <FileText className="h-3 w-3 text-zinc-500" />
-                      <span className="font-mono text-[10.5px] font-semibold">
-                        {cit.regulator || "VAULT"}
-                      </span>
-                      <span className="truncate max-w-[180px]">{cit.badge_label}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 

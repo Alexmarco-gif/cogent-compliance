@@ -543,37 +543,6 @@ export class WorkProductExportService {
       idx++;
     }
 
-    // Citations Appendix
-    if (wp.citations && wp.citations.length > 0) {
-      ensureSpace(44);
-      y -= 12;
-      page.drawText("STATUTORY & LIVE REGULATORY CITATIONS APPENDIX", {
-        x: marginX,
-        y,
-        size: 10,
-        font: fontBold,
-        color: colorAccent,
-      });
-      y -= 16;
-
-      for (const cit of wp.citations.slice(0, 30)) {
-        const label = this.toWinAnsiSafe(
-          `[${cit.badge_label}] ${cit.regulator || ""} ${cit.instrument_title || ""} ${cit.clause_reference || ""} ${cit.retrieved_url ? `(${cit.retrieved_url})` : ""}`
-        ).trim();
-        for (const l of this.wrapTextByWidth(label, fontRegular, 8, contentWidth - 8)) {
-          ensureSpace(12);
-          page.drawText(l, {
-            x: marginX + 4,
-            y,
-            size: 8,
-            font: fontRegular,
-            color: colorMuted,
-          });
-          y -= 11;
-        }
-      }
-    }
-
     const pdfBytes = await pdfDoc.save();
     return Buffer.from(pdfBytes);
   }
@@ -760,30 +729,6 @@ export class WorkProductExportService {
       i++;
     }
 
-    // Citations Appendix
-    if (wp.citations && wp.citations.length > 0) {
-      children.push(
-        new Paragraph({ text: "" }),
-        new Paragraph({
-          heading: HeadingLevel.HEADING_2,
-          children: [new TextRun({ text: "Statutory & Regulatory Citations Appendix", bold: true })],
-        })
-      );
-      for (const cit of wp.citations) {
-        children.push(
-          new Paragraph({
-            bullet: { level: 0 },
-            children: [
-              new TextRun({
-                text: `[${cit.badge_label}] ${cit.regulator || ""} ${cit.instrument_title || ""} ${cit.clause_reference || ""}${cit.retrieved_url ? ` — ${cit.retrieved_url}` : ""}`.trim(),
-                size: 18,
-              }),
-            ],
-          })
-        );
-      }
-    }
-
     const doc = new Document({
       creator: "Cogent Regulatory Intelligence Platform",
       title: wp.title,
@@ -817,18 +762,6 @@ export class WorkProductExportService {
     }
 
     lines.push("", "---", "", sanitizeAssistantOutput(wp.markdown_content).trim());
-
-    if (wp.citations && wp.citations.length > 0) {
-      lines.push("", "## Statutory & Regulatory Citations Appendix", "");
-      for (const cit of wp.citations) {
-        const label = `[${cit.badge_label}]`;
-        const meta = [cit.regulator, cit.instrument_title, cit.clause_reference]
-          .filter(Boolean)
-          .join(" — ");
-        const urlPart = cit.retrieved_url ? ` (${cit.retrieved_url})` : "";
-        lines.push(`- **${label}** ${meta}${urlPart}`.trim());
-      }
-    }
 
     return Buffer.from(`${lines.join("\n")}\n`, "utf-8");
   }
