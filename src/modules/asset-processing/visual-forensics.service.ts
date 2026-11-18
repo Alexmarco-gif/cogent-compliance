@@ -51,7 +51,7 @@ const COERCIVE_URGENCY_PATTERNS = [
 ];
 
 const RAFFLE_PROMO_PATTERN =
-  /\b(?:transact\s*(?:&|and)\s*win|raffle\s+draw|mega\s+holiday\s+raffle|automatically\s+enters\s+you\s+into)\b/i;
+  /\b(?:transact\s*(?:&|and)\s*win|spend\s*(?:&|and)\s*win|raffle\s+draw|lucky\s+draw|sweepstakes|automatically\s+enters\s+you\s+into)\b/i;
 
 export class VisualForensicsService {
   /**
@@ -178,32 +178,48 @@ export class VisualForensicsService {
     }
 
     if (hasCoerciveUrgencyLanguage) {
+      const matchedUrgencyPhrases = COERCIVE_URGENCY_PATTERNS.map((rx) => fullText.match(rx)?.[0])
+        .filter((m): m is string => Boolean(m));
+      const urgencyQuote =
+        matchedUrgencyPhrases.length > 0
+          ? matchedUrgencyPhrases.map((p) => `'${p}'`).join(", ")
+          : "high-pressure urgency / scarcity slogans";
       blindSpots.push({
         findingCode: "COERCIVE_URGENCY_MANIPULATION",
         severity: "HIGH",
-        exactQuoteOrMetric: "High-pressure urgency / FOMO borrowing & influencer baiting language detected ('run don\\'t walk', 'before slots finish', 'giving away free money', 'pay back almost nothing')",
+        exactQuoteOrMetric: `High-pressure urgency / FOMO borrowing & influencer baiting language detected (${urgencyQuote})`,
         whatYouMissed:
-          "The campaign uses artificial scarcity ('before slots finish'), false characterisation of debt as a gift ('giving away free money'), price minimisation ('pay back almost nothing'), and undisclosed commercial influencer endorsement to induce impulsive borrowing.",
+          "The campaign uses artificial scarcity, false characterisation of credit as a gift or low-cost windfall, or undisclosed commercial endorsement language to induce impulsive borrowing.",
         whatItCostsYou:
-          "Breaches CBN Consumer Protection Regulations 2019 Regs. 4.1.5, 4.2.2, 4.2.5, 5.3.1–5.3.2 & 5.3.6 (ban on unsolicited/high-pressure credit marketing), FCCPA 2018 §§ 115, 123 & 125, FCCPC DEON Regulations 2025 Regs. 17(1), 19 & 22 (up to ₦100,000,000 or 1% of turnover), and ARCON influencer vetting rules.",
+          "Breaches CBN Consumer Protection Regulations 2019 Regs. 4.1.5, 4.2.2, 4.2.5, 5.3.1–5.3.2 & 5.3.6 (ban on unsolicited/high-pressure credit marketing), FCCPA 2018 Sections 115, 123 & 125, FCCPC DEON Regulations 2025 Regs. 17(1), 19 & 22 (up to ₦100,000,000 or 1% of turnover), and ARCON influencer vetting rules.",
         oneClickFix:
-          "Remove all 'free money', 'pay back almost nothing', and 'before slots finish' claims. Require the influencer to open with an explicit 'Paid Advertisement for [Licensed Entity]' disclosure and state the representative example, fees, and APR on-screen and in voiceover.",
-        violatedStatute: "CBN CPR 2019 Regs. 4.1.5, 4.2.2, 5.3.1 / FCCPA 2018 §§ 115, 123, 125 / DEON 2025 Regs. 17, 19, 22 / ARCON Act 2022 §54",
+          "Remove all scarcity ('before slots finish'), 'free money', and price-minimising claims. Require any paid influencer script to open with an explicit 'Paid Advertisement for [Licensed Entity]' disclosure and state the representative example, fees, and APR on-screen and in voiceover.",
+        violatedStatute:
+          "CBN CPR 2019 Regs. 4.1.5, 4.2.2, 5.3.1 / FCCPA 2018 Sections 115, 123, 125 / DEON 2025 Regs. 17, 19, 22 / ARCON Act 2022 Section 54",
       });
     }
 
     if (hasUnregisteredRafflePromo) {
+      const matchedRaffleLine =
+        fullText
+          .split(/\n+/)
+          .find((line) => RAFFLE_PROMO_PATTERN.test(line))
+          ?.trim()
+          .slice(0, 240) ||
+        fullText.match(RAFFLE_PROMO_PATTERN)?.[0] ||
+        "Promotional raffle / prize draw callout";
       blindSpots.push({
         findingCode: "UNREGISTERED_RAFFLE_PROMOTION_AND_TIE_IN",
         severity: "HIGH",
-        exactQuoteOrMetric: `"TRANSACT & WIN ₦5,000,000 CASH! — Every transfer of ₦5,000+ between Nov 20 and Dec 31 automatically enters you into our Mega Holiday Raffle Draw!"`,
+        exactQuoteOrMetric: `"${matchedRaffleLine}"`,
         whatYouMissed:
-          "1) Unregistered Sales Promotion & Lottery: Running a chance-based cash raffle requires prior FCCPC Sales Promotion Registration (rules submitted at least 21 days before start; note also the Draft FCCPC Sales Promotion (Amended) Regulations 2026) and State/National Lotteries & Gaming Authority clearance. 2) Prize Pool vs. Single Prize Ambiguity: 'WIN ₦5,000,000 CASH' fails to clarify whether ₦5,000,000 is one grand prize or a shared pool, and omits draw date, cut-off time, qualifying transaction types (whether self-transfers or reversals count), and winner verification/payout rules. 3) Credit-Raffle Tie-In: Combining a high-cost loan ad and influencer borrow callout ('borrow ₦200k right now... plus win ₦5M') conflates borrowing with a lottery inducement.",
+          "1) Unregistered Sales Promotion & Lottery: Running a chance-based cash raffle requires prior FCCPC Sales Promotion Registration (rules submitted at least 21 days before start; note also the Draft FCCPC Sales Promotion (Amended) Regulations 2026) and State/National Lotteries & Gaming Authority clearance. 2) Prize Pool vs. Single Prize Ambiguity: Advertised cash prize figures must explicitly clarify whether the sum is a single grand prize or a shared pool, and must state draw dates, cut-off times, qualifying transaction types (whether self-transfers or reversals count), and winner verification/payout rules. 3) Credit-Raffle Tie-In: Combining a loan promotion or influencer borrow callout with a cash raffle conflates borrowing with a lottery inducement.",
         whatItCostsYou:
-          "FCCPC stop-order and sales promotion sanctions under FCCPA 2018 §§ 115, 120–125, gaming authority seal/fine for unpermitted lottery draw, and CBN Consumer Protection Regulations 2019 Regs. 4.1.5, 4.2.5, 5.3.1–5.3.2 & 5.3.6 enforcement.",
+          "FCCPC stop-order and sales promotion sanctions under FCCPA 2018 Sections 115 & 120–125, gaming authority seal/fine for unpermitted lottery draw, and CBN Consumer Protection Regulations 2019 Regs. 4.1.5, 4.2.5, 5.3.1–5.3.2 & 5.3.6 enforcement.",
         oneClickFix:
-          "Separate the transfer raffle from all loan advertising; hold the raffle until FCCPC Sales Promotion registration (filed >=21 days prior) and gaming permits are issued; and publish full draw rules specifying whether ₦5,000,000 is a single prize or total pool, qualifying transfers, exclusions, draw date, and payout timeline.",
-        violatedStatute: "FCCPA 2018 §§ 115, 120–125 / FCCPC Sales Promotion Rules / CBN CPR 2019 Regs. 4.1.5, 4.2.5, 5.3.1–5.3.2",
+          "Separate the transfer/transaction raffle from all loan advertising; hold the raffle until FCCPC Sales Promotion registration (filed >=21 days prior) and gaming permits are issued; and publish full draw rules specifying whether the headline amount is a single prize or total pool, qualifying transactions, exclusions, draw date, and payout timeline.",
+        violatedStatute:
+          "FCCPA 2018 Sections 115, 120–125 / FCCPC Sales Promotion Rules / CBN CPR 2019 Regs. 4.1.5, 4.2.5, 5.3.1–5.3.2",
       });
     }
 

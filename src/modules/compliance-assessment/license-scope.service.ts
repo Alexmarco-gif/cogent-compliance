@@ -278,7 +278,7 @@ export class LicenseScopeService {
         whatItCostsYou:
           "CBN Other Financial Institutions Supervision Department (OFISD) cease-and-desist order, revocation or administrative fine for operating outside approved geographic boundaries, suspension of NIBSS virtual account generation, and CBN CPR Reg. 4.2.5(c) / FCCPA §123 enforcement.",
         oneClickFix:
-          "Replace or augment the Unit/State MFB partner with a CBN-licensed National Microfinance Bank (₦5,000,000,000 minimum capital) or Commercial Bank (DMB) for nationwide distribution, or restrict solicitation to eligible customers within the MFB's licensed territory.",
+          "Replace or augment the Unit/State MFB partner with a CBN-licensed National Microfinance Bank (₦5,000,000,000 minimum capital) or Commercial Bank (DMB) for nationwide distribution, or restrict solicitation to eligible residents within the MFB's licensed territory ([Licensed State / Local Government Area]), subject to KYC, BVN, and creditworthiness assessment.",
         violatedStatute:
           "CBN Revised Regulatory and Supervisory Guidelines for Microfinance Banks in Nigeria 2020 Sections 2 & 5 / CBN CPR 2019 Reg. 4.2.5(c)",
       });
@@ -286,13 +286,13 @@ export class LicenseScopeService {
 
     // Rule 4b: Vague "CBN-regulated fintech" legend in a loan ad without naming the licensed lender of record
     if (hasVagueFintechLegendWithoutLenderName) {
-      const vagueSnippet =
-        text.match(/[^\n]*(?:cbn[- ]regulated\s+fintech|regulated\s+fintech)[^\n]*/i)?.[0]?.trim() ||
+      const matchedLegend =
+        text.match(/[^\n.]*\b(?:cbn[- ]regulated\s+fintech|regulated\s+fintech)\b[^\n.]*/i)?.[0]?.trim() ||
         "Vague 'CBN-regulated fintech' legend without naming licensed lender of record";
       blindSpots.push({
         findingCode: "INCOMPLETE_REGULATORY_LENDER_LEGEND",
         severity: "HIGH",
-        exactQuoteOrMetric: vagueSnippet.slice(0, 180),
+        exactQuoteOrMetric: `"${matchedLegend.slice(0, 180)}" (No licensed lender of record or licence category stated)`,
         whatYouMissed:
           "'Fintech' is not a statutory CBN licence class. A CBN Payment Solution Service Provider (PSSP) licence does not authorise lending on its own balance sheet. Under CBN Consumer Protection Regulations 2019 Reg. 4.2.4 (explicitly naming the CBN in an advert is restricted beyond stating the exact regulatory status) and FCCPC DEON Regulations 2025 Regs. 8, 10–12, 19(c), and 22(c), any digital lending campaign must identify the exact licensed lender of record (e.g., Unit/State/National MFB or Finance Company) and hold prior FCCPC approval for any PSSP-MFB lending partnership.",
         whatItCostsYou:

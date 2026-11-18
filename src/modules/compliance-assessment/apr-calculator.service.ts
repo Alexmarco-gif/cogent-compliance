@@ -320,11 +320,12 @@ export class AprCalculatorService {
     }
 
     if (mfbProcessingFeeCapViolation) {
+      const totalProcMgmtPct = processingFeePercent + managementFeePercent;
       blindSpots.push({
         findingCode: "MFB_PROCESSING_FEE_CAP_BREACH",
         severity: "CRITICAL",
-        exactQuoteOrMetric: `${processingFeePercent + managementFeePercent}% upfront processing/management fee vs. 1% statutory MFB ceiling`,
-        whatYouMissed: `The advertised ${processingFeePercent + managementFeePercent}% upfront processing/management fee breaches the CBN Guide to Charges tariff ceiling for Microfinance Banks (and Commercial Banks). Under Part 2(A), Section 2.6 (pp. 31–32) of the CBN Guide to Charges (effective Jan 1, 2020), processing, appraisal, ancillary, and management fees are negotiable subject to a maximum ceiling of 1% of principal disbursed, once per facility. Relabelling the fee as 'processing', 'platform', or 'convenience' does not alter its substance, and a KFS disclosure cannot make an unlawful 4% fee compliant.`,
+        exactQuoteOrMetric: `${totalProcMgmtPct}% upfront processing/management fee vs. 1% statutory MFB ceiling`,
+        whatYouMissed: `The advertised ${totalProcMgmtPct}% upfront processing/management fee breaches the CBN Guide to Charges tariff ceiling for Microfinance Banks (and Commercial Banks). Under Part 2(A), Section 2.6 (pp. 31–32) of the CBN Guide to Charges (effective Jan 1, 2020), processing, appraisal, ancillary, and management fees are negotiable subject to a maximum ceiling of 1% of principal disbursed, once per facility. Relabelling the fee as 'processing', 'platform', or 'convenience' does not alter its substance, and a KFS disclosure cannot make an unlawful ${totalProcMgmtPct}% fee compliant.`,
         whatItCostsYou:
           "Mandatory fee refund and customer restitution orders by the CBN Consumer Protection Department, regulatory sanctions under CBN Guide to Charges Section 2.2 and CBN Consumer Protection Regulations 2019 Regulation 3.2.2, and immediate hold on campaign clearance.",
         oneClickFix:
@@ -342,8 +343,7 @@ export class AprCalculatorService {
         whatYouMissed: `The campaign deducts a compulsory ${insuranceFeePercent}% insurance fee upfront without identifying a licensed insurer, policy cover, exclusions, actual premium invoice, or customer choice mechanism. Under CBN Consumer Protection Regulations 2019 Regulations 4.5.1(g), 5.1.9, and 5.2.6, mandatory credit insurance must not be used as a disguised lender fee or misdescribed as an NDIC deposit-insurance premium.`,
         whatItCostsYou:
           "CBN Consumer Protection enforcement for disguised fee loading, mandatory restitution of unremitted insurance deductions, and ARCON ASP pre-vetting rejection for unsubstantiated compulsory charges.",
-        oneClickFix:
-          "Either remove the compulsory 1.5% insurance charge or substantiate genuine insurance need by naming the NAICOM-licensed underwriter, disclosing policy cover/exclusions and exact premium in the KFS, and providing the borrower with the required choice of insurer under CBN Consumer Protection Regulations 5.1.9 and 5.2.6.",
+        oneClickFix: `Either remove the compulsory ${insuranceFeePercent}% insurance charge or substantiate genuine insurance need by naming the NAICOM-licensed underwriter, disclosing policy cover/exclusions and exact premium in the KFS, and providing the borrower with the required choice of insurer under CBN Consumer Protection Regulations 5.1.9 and 5.2.6.`,
         violatedStatute:
           "CBN Consumer Protection Regulations 2019 Regulations 4.5.1(g), 5.1.9 & 5.2.6",
       });
@@ -373,7 +373,7 @@ export class AprCalculatorService {
         whatYouMissed: `This loan product specifies a ${tenorDays}-day repayment window. Google Play Store's Personal Loans Policy for Nigeria strictly prohibits promoting short-term personal loans that require full repayment in 60 days or less.`,
         whatItCostsYou:
           "Immediate Google Play Store app suspension/removal in Nigeria and heightened FCCPC DEON predatory short-term lending enforcement scrutiny.",
-        oneClickFix: `Ensure the maximum repayment period offered and disclosed in both the ad and app store listing is at least 61 to 90 days (e.g., "Repayment tenors from 61 days to 180 days").`,
+        oneClickFix: `Ensure the maximum repayment period offered and disclosed in both the ad and app store listing is at least 61 days (e.g., "Repayment tenors from 61 days to 180 days").`,
         violatedStatute: "FCCPC DEON Guidelines 2025 §5 / Google Play Personal Loans Policy (Nigeria)",
       });
     }
@@ -387,8 +387,7 @@ export class AprCalculatorService {
         whatYouMissed: `A daily default penalty of ${dailyPenaltyPercent}% accrues to ${monthlyPenaltyEquiv}% over 30 days (${annualizedLateFeePercent}% per annum annualized), blatantly breaching the CBN Guide to Charges Part 2(A), Section 2.5 and Footnote 3 (p. 30) ceiling for Microfinance Banks, which caps penal charges at a maximum of 1% flat per month on the unpaid amount after a mandatory 3-day grace period. Furthermore, CBN Consumer Protection Regulations 2019 Regulation 4.6(b)–(c) requires first-day default notification, application only after 3 days, and separate statement disclosure. This breach cannot be cured by fine-print disclosure.`,
         whatItCostsYou:
           "Mandatory customer restitution order by CBN Consumer Protection Department, regulatory sanction under CBN Guide to Charges Part 2(A) Section 2.5, and FCCPC DEON enforcement for punitive debt-trap pricing.",
-        oneClickFix:
-          "Eliminate the excessive daily default charge or cap late-payment penal interest in the product schedule and KFS at no more than 1% flat per month on the unpaid amount only, applied strictly after a 3-day grace period and first-day default notice (CBN Guide to Charges Part 2(A) Section 2.5; CBN CPR Regulation 4.6(b)).",
+        oneClickFix: `Eliminate the ${dailyPenaltyPercent}% daily default charge or cap late-payment penal interest in the product schedule and KFS at no more than 1% flat per month on the unpaid amount only, applied strictly after a 3-day grace period and first-day default notice (CBN Guide to Charges Part 2(A) Section 2.5; CBN CPR Regulation 4.6(b)).`,
         violatedStatute:
           "CBN Guide to Charges (2020) Part 2(A), Section 2.5 & Footnote 3 (p. 30) / CBN Consumer Protection Regulations 2019 Regulation 4.6(b)–(c)",
       });
