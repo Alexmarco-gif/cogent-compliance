@@ -446,6 +446,27 @@ export class GuardrailValidator {
       }
     }
 
+    // 5. Cross-Border Comparison Universal Evidence Coverage Check
+    if (candidate.workflow_type === "CROSS_BORDER_COMPARISON") {
+      if (
+        (context.allowedLiveUrls && context.allowedLiveUrls.length > 0) &&
+        sanitizedCitations.filter((c) => c.source_class === "LIVE_WEB_INTELLIGENCE").length === 0 &&
+        verifiedUrls.length === 0
+      ) {
+        if (!evidenceGaps.some((g) => g.gap_code === "CROSS_BORDER_MISSING_LIVE_CITATIONS")) {
+          evidenceGaps.push({
+            gap_code: "CROSS_BORDER_MISSING_LIVE_CITATIONS",
+            section_or_question: "Cross-Border Live Regulatory Evidence",
+            description:
+              "Live regulatory web sources were retrieved for this comparison, but no verified URL citations were linked in the work product.",
+            severity: "LOW",
+            remediation_prompt:
+              "Include inline Markdown links to the verified regulatory sources retrieved during live search.",
+          });
+        }
+      }
+    }
+
     const passed =
       strippedVaultIds.length === 0 &&
       strippedUngroundedUrls.length === 0 &&

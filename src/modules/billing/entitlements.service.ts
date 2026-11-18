@@ -675,9 +675,11 @@ export class EntitlementsService {
     }
 
     const allowedJurisdictions = plan.allowed_search_jurisdictions ?? ["NG"];
-    const normalizedRequested =
-      requestedJurisdictions.length > 0 ? requestedJurisdictions : ["NG"];
-    const hasGlobal = allowedJurisdictions.includes("GLOBAL");
+    const normalizedRequested = (
+      requestedJurisdictions.length > 0 ? requestedJurisdictions : ["NG"]
+    ).map((c) => c.trim().toUpperCase());
+    const hasGlobal =
+      allowedJurisdictions.includes("GLOBAL") || Boolean(plan.features.cross_border_research);
     const disallowedJurisdictions = hasGlobal
       ? []
       : normalizedRequested.filter((code) => !allowedJurisdictions.includes(code));

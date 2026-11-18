@@ -204,8 +204,8 @@ export class ExaClient {
         body: JSON.stringify({
           urls: cleanUrls,
           livecrawl: "preferred",
-          text: { maxCharacters: 4000 },
-          highlights: { numSentences: 3, highlightsPerUrl: 2 },
+          text: { maxCharacters: 8000 },
+          highlights: { numSentences: 4, highlightsPerUrl: 3 },
         }),
         cache: "no-store",
       });

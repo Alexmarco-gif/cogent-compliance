@@ -115,7 +115,7 @@ export class SerpApiClient {
     const started = Date.now();
     const locale = getPrimarySerpLocale(jurisdictions);
     const timeoutMs = options.timeoutMs ?? 3000;
-    const useCircularDork = isCircularLookupQuery(query);
+    const useCircularDork = jurisdictions.length <= 1 && isCircularLookupQuery(query);
     const scopedQuery = useCircularDork
       ? this.buildRegulatorGoogleQuery(query, jurisdictions, options.searchIntent)
       : this.buildOpenWebGoogleQuery(query, jurisdictions);
@@ -125,7 +125,7 @@ export class SerpApiClient {
       q: scopedQuery,
       gl: locale.gl,
       hl: locale.hl,
-      location: locale.location,
+      ...(jurisdictions.length <= 1 ? { location: locale.location } : {}),
       num: String(options.numResults ?? 8),
       api_key: apiKey,
     });

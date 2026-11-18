@@ -15,7 +15,15 @@ export const SEARCH_JURISDICTIONS = [
   "EG",
   "AFRICA_REGIONAL",
 ] as const;
-export type SearchJurisdiction = (typeof SEARCH_JURISDICTIONS)[number];
+export type KnownSearchJurisdiction = (typeof SEARCH_JURISDICTIONS)[number];
+export type SearchJurisdiction = KnownSearchJurisdiction | (string & {});
+
+export const jurisdictionCodeSchema = z
+  .string()
+  .trim()
+  .min(2, "Jurisdiction code must be at least 2 characters")
+  .max(32)
+  .transform((val) => val.toUpperCase());
 
 export const LIVE_SEARCH_PROVIDERS = [
   "GEMINI_GOOGLE_SEARCH",
@@ -37,7 +45,7 @@ export const unifiedSearchRequestSchema = z.object({
   query: z.string().trim().min(2, "Search query must be at least 2 characters").max(1000),
   mode: z.enum(["COMMAND_CENTER", "VAULT_ONLY", "HYBRID_LIVE_WEB"]).default("HYBRID_LIVE_WEB"),
   enable_live_web: z.boolean().default(false),
-  jurisdictions: z.array(z.enum(SEARCH_JURISDICTIONS)).min(1).default(["NG"]),
+  jurisdictions: z.array(jurisdictionCodeSchema).min(1).default(["NG"]),
   regulators: z.array(z.string()).optional(),
   search_intent: z
     .enum(["REGULATORY_CIRCULAR", "LEGAL_ANALYSIS", "NEWS_ENFORCEMENT", "CROSS_BORDER"])

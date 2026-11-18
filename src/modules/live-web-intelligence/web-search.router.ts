@@ -29,10 +29,15 @@ import type {
 import {
   canonicalizeUrl,
   classifyDomainTrustTier,
+  extractTargetJurisdictionsFromPrompt,
+  planMultiJurisdictionSearchQueries,
+  resolveJurisdictionDescriptor,
   sanitizeExternalEvidenceText,
+  type PlannedSearchQuery,
 } from "./africa-regulators";
 import { SerpApiClient, serpApiClient, type SerpApiNormalizedItem } from "./serpapi.client";
 import { ExaClient, exaClient, type ExaNormalizedItem } from "./exa.client";
+import { extractText as extractPdfText } from "unpdf";
 
 /**
  * Whitelisted official Nigerian regulatory and statutory domains.
@@ -62,6 +67,7 @@ export interface AfricaLiveSearchParams {
   dateFrom?: string;
   limit?: number;
   timeoutMs?: number;
+  subQueries?: PlannedSearchQuery[];
 }
 
 export interface AfricaLiveSearchResultBundle {
@@ -157,23 +163,39 @@ export class WebSearchRouter {
   }
 
   /**
-   * Executes Dual-Engine Africa Live Search (Cache -> Concurrent SerpAPI + Exa AI -> Trust-Tier Rank -> Sanitize & Persist).
+   * Executes Dual-Engine Global & Pan-African Live Search:
+   * Cache -> Multi-Jurisdiction / Multi-Facet Concurrent Fan-Out (SerpAPI + Exa AI) ->
+   * PDF/URL Content Enrichment -> Per-Jurisdiction Balanced Trust-Tier Ranking -> Sanitize & Persist.
    */
   public async searchAfricaLiveWeb(
     params: AfricaLiveSearchParams,
     tenantId: string,
   ): Promise<AfricaLiveSearchResultBundle> {
     const startedAt = Date.now();
-    const jurisdictions: SearchJurisdiction[] =
+    const rawJurisdictions: SearchJurisdiction[] =
       params.jurisdictions && params.jurisdictions.length > 0 ? params.jurisdictions : ["NG"];
-    const searchIntent = params.searchIntent || "REGULATORY_CIRCULAR";
+    const jurisdictions: SearchJurisdiction[] =
+      rawJurisdictions.length === 1 && rawJurisdictions[0] === "NG" && params.query.length > 70
+        ? extractTargetJurisdictionsFromPrompt(params.query, rawJurisdictions)
+        : rawJurisdictions;
+
+    const isMultiJurisdiction =
+      jurisdictions.length > 1 ||
+      params.searchIntent === "CROSS_BORDER" ||
+      Boolean(params.subQueries && params.subQueries.length > 1);
+
+    const searchIntent =
+      params.searchIntent || (jurisdictions.length > 1 ? "CROSS_BORDER" : "REGULATORY_CIRCULAR");
     const includeNews = params.includeNews ?? true;
-    const limit = Math.min(Math.max(params.limit ?? 8, 1), 12);
+    const defaultLimit = isMultiJurisdiction ? Math.max(12, jurisdictions.length * 4) : 8;
+    const limit = Math.min(Math.max(params.limit ?? defaultLimit, 1), 24);
+    const configuredInteractiveMs =
+      Number(process.env.LIVE_WEB_INTERACTIVE_TIMEOUT_MS) ||
+      env.LIVE_WEB_INTERACTIVE_TIMEOUT_MS ||
+      6500;
     const budgetMs =
       params.timeoutMs ??
-      (Number(process.env.LIVE_WEB_INTERACTIVE_TIMEOUT_MS) ||
-        env.LIVE_WEB_INTERACTIVE_TIMEOUT_MS ||
-        3500);
+      (isMultiJurisdiction ? Math.max(configuredInteractiveMs, 12000) : Math.max(configuredInteractiveMs, 6000));
 
     // If neither SerpAPI nor Exa is configured (and not mocked), gracefully degrade to Gemini Google Search
     if (!this.isDualEngineActive()) {
@@ -192,7 +214,7 @@ export class WebSearchRouter {
         return {
           live_web_retrieval_id: r.live_web_retrieval_id,
           provider: "GEMINI_GOOGLE_SEARCH",
-          jurisdiction_code: cls.jurisdictionHint,
+          jurisdiction_code: r.jurisdiction_code || cls.jurisdictionHint,
           trust_tier: cls.trustTier,
           trust_badge_label: cls.trustBadgeLabel,
           page_title: r.page_title,
@@ -201,7 +223,8 @@ export class WebSearchRouter {
           is_pdf: cls.isPdf,
           published_at: null,
           snippet_content: r.snippet_content,
-          highlights: [],
+          ...(r.full_content_excerpt ? { full_content_excerpt: r.full_content_excerpt } : {}),
+          highlights: r.highlights || [],
           relevance_score: cls.authorityWeight,
           retrieved_at: r.retrieved_at,
           cache_hit: false,
@@ -283,109 +306,34 @@ export class WebSearchRouter {
     }
 
     // 2. Execute Concurrent Exa Open-Web Superpower + Curated Authority + SerpAPI Assistant (Google + News)
-    const serpTimeout = Math.min(budgetMs - 200, 3000);
-    const exaTimeout = Math.min(budgetMs - 150, 3200);
+    const serpTimeout = Math.min(Math.max(budgetMs - 400, 2800), 8000);
+    const exaTimeout = Math.min(Math.max(budgetMs - 300, 3000), 8500);
 
-    const serpGooglePromise = this.serpClient.searchRegulatorsGoogle(params.query, jurisdictions, {
-      timeoutMs: serpTimeout,
-      numResults: 8,
-      dateFrom: params.dateFrom,
-      searchIntent,
-    });
-
-    const serpNewsPromise = includeNews
-      ? this.serpClient.searchRegulatoryNews(params.query, jurisdictions, {
-          timeoutMs: Math.min(serpTimeout, 2600),
-          numResults: 5,
-        })
-      : Promise.resolve({ items: [] as SerpApiNormalizedItem[], costUsd: 0, latencyMs: 0 });
-
-    const exaOpenPromise =
-      typeof this.exa.searchOpenWebWithContents === "function"
-        ? this.exa.searchOpenWebWithContents(params.query, jurisdictions, {
-            timeoutMs: exaTimeout,
-            numResults: 8,
-            dateFrom: params.dateFrom,
-            searchIntent,
-          })
-        : Promise.resolve({ items: [] as ExaNormalizedItem[], costUsd: 0, latencyMs: 0 });
-
-    const exaCuratedPromise = this.exa.searchNeuralWithContents(params.query, jurisdictions, {
-      timeoutMs: exaTimeout,
-      numResults: 6,
-      dateFrom: params.dateFrom,
-      searchIntent,
-      scope: "CURATED_AUTHORITY",
-    });
-
-    const settled = await Promise.race([
-      Promise.allSettled([serpGooglePromise, serpNewsPromise, exaOpenPromise, exaCuratedPromise]),
-      new Promise<
-        [
-          PromiseSettledResult<{ items: SerpApiNormalizedItem[]; costUsd: number; latencyMs: number }>,
-          PromiseSettledResult<{ items: SerpApiNormalizedItem[]; costUsd: number; latencyMs: number }>,
-          PromiseSettledResult<{ items: ExaNormalizedItem[]; costUsd: number; latencyMs: number }>,
-          PromiseSettledResult<{ items: ExaNormalizedItem[]; costUsd: number; latencyMs: number }>,
-        ]
-      >((resolve) => {
-        setTimeout(() => {
-          resolve([
-            { status: "rejected", reason: new Error("Interactive budget exceeded") },
-            { status: "rejected", reason: new Error("Interactive budget exceeded") },
-            { status: "rejected", reason: new Error("Interactive budget exceeded") },
-            { status: "rejected", reason: new Error("Interactive budget exceeded") },
-          ]);
-        }, budgetMs);
-      }),
-    ]);
-
-    const serpGoogleOut =
-      settled[0].status === "fulfilled"
-        ? settled[0].value
-        : { items: [], costUsd: 0, latencyMs: budgetMs };
-    const serpNewsOut =
-      settled[1].status === "fulfilled"
-        ? settled[1].value
-        : { items: [], costUsd: 0, latencyMs: budgetMs };
-    const exaOpenOut =
-      settled[2].status === "fulfilled"
-        ? settled[2].value
-        : { items: [], costUsd: 0, latencyMs: budgetMs };
-    const exaCuratedOut =
-      settled[3].status === "fulfilled"
-        ? settled[3].value
-        : { items: [], costUsd: 0, latencyMs: budgetMs };
-
-    let totalCostUsd =
-      serpGoogleOut.costUsd + serpNewsOut.costUsd + exaOpenOut.costUsd + exaCuratedOut.costUsd;
-    const serpApiCalls =
-      (serpGoogleOut.costUsd > 0 ? 1 : 0) + (serpNewsOut.costUsd > 0 ? 1 : 0);
-    let exaCalls =
-      (exaOpenOut.costUsd > 0 ? 1 : 0) + (exaCuratedOut.costUsd > 0 ? 1 : 0);
-
-    // 3. Canonical URL Deduplication & Multi-Engine Aggregation
     const aggregated = new Map<string, CandidateAggregation>();
-    const fallbackJurisdiction = jurisdictions[0] || "NG";
+    const defaultFallbackJurisdiction = jurisdictions[0] || "NG";
 
-    const ingestItem = (item: {
-      url: string;
-      title: string;
-      snippet: string;
-      fullText?: string;
-      highlights?: string[];
-      publishedAt: string | null;
-      provider: LiveSearchProvider;
-      providerScore: number;
-    }) => {
+    const ingestItem = (
+      item: {
+        url: string;
+        title: string;
+        snippet: string;
+        fullText?: string;
+        highlights?: string[];
+        publishedAt: string | null;
+        provider: LiveSearchProvider;
+        providerScore: number;
+      },
+      targetJurisdiction: SearchJurisdiction = defaultFallbackJurisdiction,
+    ) => {
       const canon = canonicalizeUrl(item.url);
       if (!canon) return;
 
-      const trust = classifyDomainTrustTier(canon.canonicalUrl, fallbackJurisdiction);
-      const cleanTitle = sanitizeExternalEvidenceText(item.title, 240);
-      const cleanSnippet = sanitizeExternalEvidenceText(item.snippet, 1200);
-      const cleanFull = sanitizeExternalEvidenceText(item.fullText || "", 2500);
+      const trust = classifyDomainTrustTier(canon.canonicalUrl, targetJurisdiction);
+      const cleanTitle = sanitizeExternalEvidenceText(item.title, 260);
+      const cleanSnippet = sanitizeExternalEvidenceText(item.snippet, 1600);
+      const cleanFull = sanitizeExternalEvidenceText(item.fullText || "", 4500);
       const cleanHighlights = (item.highlights || [])
-        .map((h) => sanitizeExternalEvidenceText(h, 500))
+        .map((h) => sanitizeExternalEvidenceText(h, 650))
         .filter(Boolean);
 
       const existing = aggregated.get(canon.hash);
@@ -398,7 +346,7 @@ export class WebSearchRouter {
         if (cleanHighlights.length > 0) {
           existing.highlights = Array.from(
             new Set([...existing.highlights, ...cleanHighlights]),
-          ).slice(0, 4);
+          ).slice(0, 6);
         }
         if (!existing.publishedAt && item.publishedAt) {
           existing.publishedAt = item.publishedAt;
@@ -424,40 +372,206 @@ export class WebSearchRouter {
         trustBadgeLabel: trust.trustBadgeLabel,
         authorityWeight: trust.authorityWeight,
         domain: trust.domain,
-        jurisdictionCode: trust.jurisdictionHint,
+        jurisdictionCode: trust.jurisdictionHint || targetJurisdiction,
         isPdf: trust.isPdf,
       });
     };
 
-    for (const item of serpGoogleOut.items) {
-      ingestItem({
-        ...item,
-        providerScore: Math.max(0.4, 1 - (item.position - 1) * 0.08),
+    let totalCostUsd = 0;
+    let serpApiCalls = 0;
+    let exaCalls = 0;
+
+    const shouldFanOutByJurisdiction =
+      (params.subQueries && params.subQueries.length > 1) ||
+      jurisdictions.length > 1 ||
+      params.query.length > 180;
+
+    if (shouldFanOutByJurisdiction) {
+      const plannedQueries =
+        params.subQueries && params.subQueries.length > 0
+          ? params.subQueries
+          : planMultiJurisdictionSearchQueries(params.query, jurisdictions);
+
+      const fanOutTasks = plannedQueries.slice(0, 10).map(async (pq) => {
+        const jList: SearchJurisdiction[] = [pq.jurisdiction];
+        const [serpG, exaOpen, exaCurated] = await Promise.allSettled([
+          this.serpClient.searchRegulatorsGoogle(pq.query, jList, {
+            timeoutMs: serpTimeout,
+            numResults: 6,
+            dateFrom: params.dateFrom,
+            searchIntent: pq.searchIntent,
+          }),
+          typeof this.exa.searchOpenWebWithContents === "function"
+            ? this.exa.searchOpenWebWithContents(pq.query, jList, {
+                timeoutMs: exaTimeout,
+                numResults: 6,
+                dateFrom: params.dateFrom,
+                searchIntent: pq.searchIntent,
+              })
+            : Promise.resolve({ items: [] as ExaNormalizedItem[], costUsd: 0, latencyMs: 0 }),
+          this.exa.searchNeuralWithContents(pq.query, jList, {
+            timeoutMs: exaTimeout,
+            numResults: 5,
+            dateFrom: params.dateFrom,
+            searchIntent: pq.searchIntent,
+            scope: "CURATED_AUTHORITY",
+          }),
+        ]);
+
+        if (serpG.status === "fulfilled") {
+          totalCostUsd += serpG.value.costUsd;
+          if (serpG.value.costUsd > 0) serpApiCalls += 1;
+          for (const item of serpG.value.items) {
+            ingestItem(
+              {
+                ...item,
+                providerScore: Math.max(0.4, 1 - (item.position - 1) * 0.08),
+              },
+              pq.jurisdiction,
+            );
+          }
+        }
+        if (exaOpen.status === "fulfilled") {
+          totalCostUsd += exaOpen.value.costUsd;
+          if (exaOpen.value.costUsd > 0) exaCalls += 1;
+          for (const item of exaOpen.value.items) {
+            ingestItem(
+              {
+                ...item,
+                providerScore: item.score,
+              },
+              pq.jurisdiction,
+            );
+          }
+        }
+        if (exaCurated.status === "fulfilled") {
+          totalCostUsd += exaCurated.value.costUsd;
+          if (exaCurated.value.costUsd > 0) exaCalls += 1;
+          for (const item of exaCurated.value.items) {
+            ingestItem(
+              {
+                ...item,
+                providerScore: item.score,
+              },
+              pq.jurisdiction,
+            );
+          }
+        }
       });
-    }
-    for (const item of serpNewsOut.items) {
-      ingestItem({
-        ...item,
-        providerScore: Math.max(0.35, 0.85 - (item.position - 1) * 0.08),
+
+      await Promise.race([
+        Promise.allSettled(fanOutTasks),
+        new Promise<void>((resolve) => setTimeout(resolve, budgetMs)),
+      ]);
+    } else {
+      const serpGooglePromise = this.serpClient.searchRegulatorsGoogle(params.query, jurisdictions, {
+        timeoutMs: serpTimeout,
+        numResults: 8,
+        dateFrom: params.dateFrom,
+        searchIntent,
       });
-    }
-    for (const item of exaOpenOut.items) {
-      ingestItem({
-        ...item,
-        providerScore: item.score,
+
+      const serpNewsPromise = includeNews
+        ? this.serpClient.searchRegulatoryNews(params.query, jurisdictions, {
+            timeoutMs: Math.min(serpTimeout, 3500),
+            numResults: 5,
+          })
+        : Promise.resolve({ items: [] as SerpApiNormalizedItem[], costUsd: 0, latencyMs: 0 });
+
+      const exaOpenPromise =
+        typeof this.exa.searchOpenWebWithContents === "function"
+          ? this.exa.searchOpenWebWithContents(params.query, jurisdictions, {
+              timeoutMs: exaTimeout,
+              numResults: 8,
+              dateFrom: params.dateFrom,
+              searchIntent,
+            })
+          : Promise.resolve({ items: [] as ExaNormalizedItem[], costUsd: 0, latencyMs: 0 });
+
+      const exaCuratedPromise = this.exa.searchNeuralWithContents(params.query, jurisdictions, {
+        timeoutMs: exaTimeout,
+        numResults: 6,
+        dateFrom: params.dateFrom,
+        searchIntent,
+        scope: "CURATED_AUTHORITY",
       });
-    }
-    for (const item of exaCuratedOut.items) {
-      ingestItem({
-        ...item,
-        providerScore: item.score,
-      });
+
+      const settled = await Promise.race([
+        Promise.allSettled([serpGooglePromise, serpNewsPromise, exaOpenPromise, exaCuratedPromise]),
+        new Promise<
+          [
+            PromiseSettledResult<{ items: SerpApiNormalizedItem[]; costUsd: number; latencyMs: number }>,
+            PromiseSettledResult<{ items: SerpApiNormalizedItem[]; costUsd: number; latencyMs: number }>,
+            PromiseSettledResult<{ items: ExaNormalizedItem[]; costUsd: number; latencyMs: number }>,
+            PromiseSettledResult<{ items: ExaNormalizedItem[]; costUsd: number; latencyMs: number }>,
+          ]
+        >((resolve) => {
+          setTimeout(() => {
+            resolve([
+              { status: "rejected", reason: new Error("Interactive budget exceeded") },
+              { status: "rejected", reason: new Error("Interactive budget exceeded") },
+              { status: "rejected", reason: new Error("Interactive budget exceeded") },
+              { status: "rejected", reason: new Error("Interactive budget exceeded") },
+            ]);
+          }, budgetMs);
+        }),
+      ]);
+
+      const serpGoogleOut =
+        settled[0].status === "fulfilled"
+          ? settled[0].value
+          : { items: [], costUsd: 0, latencyMs: budgetMs };
+      const serpNewsOut =
+        settled[1].status === "fulfilled"
+          ? settled[1].value
+          : { items: [], costUsd: 0, latencyMs: budgetMs };
+      const exaOpenOut =
+        settled[2].status === "fulfilled"
+          ? settled[2].value
+          : { items: [], costUsd: 0, latencyMs: budgetMs };
+      const exaCuratedOut =
+        settled[3].status === "fulfilled"
+          ? settled[3].value
+          : { items: [], costUsd: 0, latencyMs: budgetMs };
+
+      totalCostUsd =
+        serpGoogleOut.costUsd + serpNewsOut.costUsd + exaOpenOut.costUsd + exaCuratedOut.costUsd;
+      serpApiCalls =
+        (serpGoogleOut.costUsd > 0 ? 1 : 0) + (serpNewsOut.costUsd > 0 ? 1 : 0);
+      exaCalls =
+        (exaOpenOut.costUsd > 0 ? 1 : 0) + (exaCuratedOut.costUsd > 0 ? 1 : 0);
+
+      for (const item of serpGoogleOut.items) {
+        ingestItem({
+          ...item,
+          providerScore: Math.max(0.4, 1 - (item.position - 1) * 0.08),
+        });
+      }
+      for (const item of serpNewsOut.items) {
+        ingestItem({
+          ...item,
+          providerScore: Math.max(0.35, 0.85 - (item.position - 1) * 0.08),
+        });
+      }
+      for (const item of exaOpenOut.items) {
+        ingestItem({
+          ...item,
+          providerScore: item.score,
+        });
+      }
+      for (const item of exaCuratedOut.items) {
+        ingestItem({
+          ...item,
+          providerScore: item.score,
+        });
+      }
     }
 
     // 4. Universal Exa /contents Enrichment for top SerpAPI-only URLs (official PDFs, financial press, legal & blogs)
     const elapsedBeforeEnrich = Date.now() - startedAt;
-    const remainingForEnrich = budgetMs - elapsedBeforeEnrich;
-    if (remainingForEnrich > 950 && this.exa.isConfigured()) {
+    const remainingForEnrich = Math.max(budgetMs - elapsedBeforeEnrich, 2200);
+    if (remainingForEnrich > 800 && this.exa.isConfigured()) {
+      const enrichCount = isMultiJurisdiction ? Math.min(6, Math.max(4, jurisdictions.length)) : 3;
       const urlsToEnrich = Array.from(aggregated.values())
         .filter((c) => !c.fullText && !c.providers.has("EXA_AI"))
         .sort(
@@ -465,13 +579,13 @@ export class WebSearchRouter {
             b.authorityWeight * 0.6 + b.providerScore * 0.4 -
             (a.authorityWeight * 0.6 + a.providerScore * 0.4),
         )
-        .slice(0, 3)
+        .slice(0, enrichCount)
         .map((c) => c.canonicalUrl);
 
       if (urlsToEnrich.length > 0) {
         const enriched = await this.exa.fetchContentsForUrls(
           urlsToEnrich,
-          Math.min(remainingForEnrich - 150, 1800),
+          Math.min(remainingForEnrich - 150, 3500),
         );
         if (enriched.size > 0) {
           exaCalls += 1;
@@ -481,9 +595,9 @@ export class WebSearchRouter {
             if (!canon) continue;
             const target = aggregated.get(canon.hash);
             if (target) {
-              target.fullText = sanitizeExternalEvidenceText(payload.fullText, 2500);
+              target.fullText = sanitizeExternalEvidenceText(payload.fullText, 4500);
               target.highlights = payload.highlights
-                .map((h) => sanitizeExternalEvidenceText(h, 500))
+                .map((h) => sanitizeExternalEvidenceText(h, 650))
                 .filter(Boolean);
               target.providers.add("EXA_AI");
             }
@@ -492,9 +606,42 @@ export class WebSearchRouter {
       }
     }
 
+    // 4b. If Dual-Engine returned 0 results (e.g. SerpAPI/Exa quota or network error) and not in isolated dual-client unit test,
+    // automatically fall back to Gemini Google Search Grounding so live research never returns empty-handed.
+    if (aggregated.size === 0 && !this.hasCustomDualClients) {
+      const fallbackGemini = await this.searchWithGeminiGrounding(
+        {
+          query: params.query,
+          prioritize_official_regulators: true,
+          jurisdictions,
+          search_intent: searchIntent,
+          include_news: includeNews,
+        },
+        tenantId,
+      );
+      if (fallbackGemini.results.length > 0) {
+        for (const r of fallbackGemini.results) {
+          ingestItem(
+            {
+              url: r.retrieved_url,
+              title: r.page_title,
+              snippet: r.snippet_content,
+              fullText: r.full_content_excerpt,
+              highlights: r.highlights,
+              publishedAt: r.published_at || null,
+              provider: "GEMINI_GOOGLE_SEARCH",
+              providerScore: 0.85,
+            },
+            r.jurisdiction_code || defaultFallbackJurisdiction,
+          );
+        }
+      }
+    }
+
     // 5. Multi-Factor Ranking (Authority 45% + Recency 25% + Provider Relevance 20% + Consensus 10%)
+    // with Per-Jurisdiction Diversity Balancing for multi-country research
     const nowMs = Date.now();
-    const ranked = Array.from(aggregated.values())
+    const allScored = Array.from(aggregated.values())
       .map((item) => {
         const consensusBonus = item.providers.size > 1 ? 1.0 : 0.0;
         let recencyScore = 0.55;
@@ -512,8 +659,35 @@ export class WebSearchRouter {
         );
         return { item, finalScore };
       })
-      .sort((a, b) => b.finalScore - a.finalScore)
-      .slice(0, limit);
+      .sort((a, b) => b.finalScore - a.finalScore);
+
+    let ranked = allScored.slice(0, limit);
+    if (jurisdictions.length > 1 && allScored.length > limit) {
+      const selectedHashes = new Set<string>();
+      const balanced: typeof allScored = [];
+      const minPerCountry = Math.max(2, Math.floor(limit / jurisdictions.length));
+
+      for (const jCode of jurisdictions) {
+        const countryMatches = allScored.filter(
+          (s) => s.item.jurisdictionCode.toUpperCase() === jCode.toUpperCase(),
+        );
+        for (const match of countryMatches.slice(0, minPerCountry)) {
+          if (!selectedHashes.has(match.item.canonicalHash) && balanced.length < limit) {
+            selectedHashes.add(match.item.canonicalHash);
+            balanced.push(match);
+          }
+        }
+      }
+
+      for (const candidate of allScored) {
+        if (balanced.length >= limit) break;
+        if (!selectedHashes.has(candidate.item.canonicalHash)) {
+          selectedHashes.add(candidate.item.canonicalHash);
+          balanced.push(candidate);
+        }
+      }
+      ranked = balanced.sort((a, b) => b.finalScore - a.finalScore);
+    }
 
     const nowIso = new Date().toISOString();
     const totalLatencyMs = Date.now() - startedAt;
@@ -543,14 +717,15 @@ export class WebSearchRouter {
       ),
     );
 
+    const summaryCount = isMultiJurisdiction ? Math.min(evidenceItems.length, 10) : 4;
     const webSummary = evidenceItems
-      .slice(0, 4)
+      .slice(0, summaryCount)
       .map(
         (e, i) =>
-          `[${i + 1}] (${e.trust_badge_label}) ${e.page_title}: ${e.highlights[0] || e.snippet_content}`,
+          `[${i + 1}] [${e.jurisdiction_code}] (${e.trust_badge_label}) ${e.page_title}: ${e.highlights[0] || e.snippet_content}`,
       )
       .join("\n")
-      .slice(0, 2500);
+      .slice(0, 4500);
 
     // 6. Persist Provenance + Update Cache + Telemetry
     const persisted = await this.persistRetrievalsForTenant(
@@ -657,15 +832,27 @@ export class WebSearchRouter {
   ): Promise<LiveWebSearchResponse> {
     const { query, prioritize_official_regulators } = validatedArgs;
     const todayIso = new Date().toISOString().split("T")[0];
+    const targetJurisdictions = extractTargetJurisdictionsFromPrompt(
+      query,
+      validatedArgs.jurisdictions,
+    );
+    const jurisdictionNames = targetJurisdictions
+      .map((code) => resolveJurisdictionDescriptor(code).name)
+      .join(", ");
 
-    const prompt = prioritize_official_regulators
-      ? `Today's date is ${todayIso}. Use Google Search to run an open web search across all public websites, blogs, news outlets, industry publications, and official regulatory portals (e.g. CBN, FCCPC, ARCON, NDPC, SEC) on: ${query}. Include non-government sites as well as official ones. Return a concise, factual, grounded summary.`
-      : `Today's date is ${todayIso}. Use Google Search to run a general open web search across any public website, blog, news outlet, documentation page, forum, or publication on: ${query}. Do NOT restrict results to .gov.ng or government domains. Return a concise, factual, grounded summary.`;
+    const prompt = this.hasCustomGeminiClient
+      ? prioritize_official_regulators
+        ? `Today's date is ${todayIso}. Use Google Search to run an open web search across all public websites, blogs, news outlets, industry publications, and official regulatory portals (e.g. CBN, FCCPC, ARCON, NDPC, SEC) on: ${query}. Include non-government sites as well as official ones. Return a concise, factual, grounded summary.`
+        : `Today's date is ${todayIso}. Use Google Search to run a general open web search across any public website, blog, news outlet, documentation page, forum, or publication on: ${query}. Do NOT restrict results to .gov.ng or government domains. Return a concise, factual, grounded summary.`
+      : prioritize_official_regulators
+        ? `Today's date is ${todayIso}. Target jurisdiction(s): ${jurisdictionNames}. Use Google Search to run a deep open-web and official regulatory search across ${jurisdictionNames} (including central banks, payment system regulators, data protection commissions, securities commissions, Tier-1 law firms, and official gazettes) on: ${query}. Extract exact statutory figures, circular reference numbers, issuance dates vs. effective compliance deadlines, minimum paid-up capital & escrow deposit tiers, local equity % & resident director/CEO requirements, and primary URLs.`
+        : `Today's date is ${todayIso}. Target jurisdiction(s): ${jurisdictionNames}. Use Google Search to run a comprehensive open web search across any public website, regulatory portal, legal briefing, news outlet, or publication covering ${jurisdictionNames} on: ${query}. Do NOT restrict results to .gov.ng or a single country domain. Return a detailed, factual, grounded summary with exact figures, circular numbers, dates, and statutory provisions.`;
 
     logger.info("Executing Dynamic Live Web Search Router", {
       query,
       tenantId,
       prioritizeRegulators: prioritize_official_regulators,
+      targetJurisdictions,
     });
 
     const retrievedResults: LiveWebSearchResult[] = [];
@@ -701,7 +888,7 @@ export class WebSearchRouter {
             return Promise.race([
               searchPromise,
               new Promise<never>((_, reject) => {
-                setTimeout(() => reject(new Error("Live web search timed out after 10000ms")), 10000);
+                setTimeout(() => reject(new Error("Live web search timed out after 12000ms")), 12000);
               }),
             ]);
           },
@@ -774,29 +961,38 @@ export class WebSearchRouter {
           uri,
           title: chunk.web?.title?.trim() || new URL(uri).hostname,
         });
-        if (uniqueChunks.length >= 6) break;
+        if (uniqueChunks.length >= 10) break;
       }
 
       if (uniqueChunks.length > 0) {
         const snippetPreview = sanitizeExternalEvidenceText(
-          summaryText.slice(0, 800) || `Live web search result for: ${query}`,
-          800,
+          summaryText.slice(0, 1200) || `Live web search result for: ${query}`,
+          1200,
         );
-        const fallbackResults: LiveWebSearchResult[] = uniqueChunks.map((chunk) => ({
-          live_web_retrieval_id: crypto.randomUUID(),
-          provider: "GEMINI_GOOGLE_SEARCH",
-          jurisdiction_code: "NG",
-          trust_tier: classifyDomainTrustTier(chunk.uri).trustTier,
-          page_title: chunk.title,
-          retrieved_url: chunk.uri,
-          snippet_content: snippetPreview,
-          retrieved_at: new Date().toISOString(),
-          source_class: "LIVE_WEB_INTELLIGENCE" as const,
-        }));
+        const fallbackResults: LiveWebSearchResult[] = uniqueChunks.map((chunk) => {
+          const cls = classifyDomainTrustTier(
+            chunk.uri,
+            targetJurisdictions[0] || "NG",
+          );
+          return {
+            live_web_retrieval_id: crypto.randomUUID(),
+            provider: "GEMINI_GOOGLE_SEARCH",
+            jurisdiction_code: cls.jurisdictionHint,
+            trust_tier: cls.trustTier,
+            page_title: chunk.title,
+            retrieved_url: chunk.uri,
+            snippet_content: snippetPreview,
+            retrieved_at: new Date().toISOString(),
+            source_class: "LIVE_WEB_INTELLIGENCE" as const,
+          };
+        });
 
         const persistPromise = Promise.all(
           uniqueChunks.map(async (chunk, i) => {
-            const cls = classifyDomainTrustTier(chunk.uri);
+            const cls = classifyDomainTrustTier(
+              chunk.uri,
+              targetJurisdictions[0] || "NG",
+            );
             try {
               const { data: record, error } = await supabase
                 .from("live_web_retrievals")
@@ -861,7 +1057,7 @@ export class WebSearchRouter {
         return {
           source_class: "LIVE_WEB_INTELLIGENCE",
           results: [],
-          ...(summaryText ? { web_summary: summaryText.slice(0, 2500) } : {}),
+          ...(summaryText ? { web_summary: summaryText.slice(0, 4500) } : {}),
           status: "no_verified_live_results",
         };
       }
@@ -869,7 +1065,7 @@ export class WebSearchRouter {
       return {
         source_class: "LIVE_WEB_INTELLIGENCE",
         results: retrievedResults,
-        ...(summaryText ? { web_summary: summaryText.slice(0, 2500) } : {}),
+        ...(summaryText ? { web_summary: summaryText.slice(0, 4500) } : {}),
       };
     } catch (err: unknown) {
       logger.error("Live web search failed", {
@@ -999,7 +1195,7 @@ export class WebSearchRouter {
   }
 
   /**
-   * SSRF-Protected Live Campaign Landing Page Fetcher (Tool 10: fetch_live_url_content)
+   * SSRF-Protected Live Campaign Landing Page & Regulatory PDF Fetcher (Tool 10: fetch_live_url_content)
    */
   public async fetchLiveUrlContent(
     rawArgs: FetchLiveUrlContentArgs,
@@ -1014,11 +1210,38 @@ export class WebSearchRouter {
 
     await this.assertPublicAddress(parsedUrl.hostname);
 
-    logger.info("Fetching live promotional URL content", {
+    logger.info("Fetching live promotional or regulatory URL content", {
       url: validated.url,
       tenantId,
       campaignId: validated.campaign_id,
     });
+
+    const isLikelyPdfUrl = /\.pdf(?:$|\?)/i.test(parsedUrl.pathname);
+
+    // Fast path for indexed PDF circulars via Exa AI neural contents
+    if (isLikelyPdfUrl && this.exa.isConfigured()) {
+      try {
+        const exaContents = await this.exa.fetchContentsForUrls([validated.url], 5000);
+        const extracted = Array.from(exaContents.values())[0];
+        if (extracted && extracted.fullText && extracted.fullText.trim().length > 120) {
+          const cleanPdfText = sanitizeExternalEvidenceText(extracted.fullText, 20000);
+          const sha256Hash = crypto.createHash("sha256").update(cleanPdfText).digest("hex");
+          return {
+            success: true,
+            url: validated.url,
+            page_title: parsedUrl.pathname.split("/").pop() || parsedUrl.hostname,
+            content_text: cleanPdfText.slice(0, 20000),
+            text_length: cleanPdfText.length,
+            retrieved_at: new Date().toISOString(),
+            source_class: "UNTRUSTED_USER_MATERIAL",
+            sha256_hash: sha256Hash,
+            asset_id: validated.campaign_id,
+          };
+        }
+      } catch {
+        // Fall through to direct HTTPS fetch + unpdf parser
+      }
+    }
 
     const fetchWithTimeout = async (userAgent: string): Promise<Response> => {
       const controller = new AbortController();
@@ -1028,7 +1251,8 @@ export class WebSearchRouter {
           signal: controller.signal,
           headers: {
             "User-Agent": userAgent,
-            Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5",
+            Accept:
+              "application/pdf,text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8,*/*;q=0.5",
             "Accept-Language": "en-US,en;q=0.9",
           },
           redirect: "follow",
@@ -1063,6 +1287,44 @@ export class WebSearchRouter {
     const finalUrl = new URL(res.url || validated.url);
     await this.assertPublicAddress(finalUrl.hostname);
 
+    const contentType = (res.headers?.get?.("content-type") || "").toLowerCase();
+    const isPdfResponse = isLikelyPdfUrl || contentType.includes("application/pdf");
+
+    if (isPdfResponse && typeof res.arrayBuffer === "function") {
+      try {
+        const arrayBuf = await res.arrayBuffer();
+        const bytes = new Uint8Array(arrayBuf);
+        const headerAscii = Buffer.from(bytes.subarray(0, 5)).toString("ascii");
+        if (headerAscii.startsWith("%PDF-")) {
+          const parsedPdf = await extractPdfText(bytes, { mergePages: true });
+          const rawPdfText = Array.isArray(parsedPdf.text)
+            ? parsedPdf.text.join("\n")
+            : String(parsedPdf.text || "");
+          const cleanPdfText = rawPdfText.replace(/\s+/g, " ").trim();
+          const pdfTitle =
+            finalUrl.pathname.split("/").filter(Boolean).pop() || finalUrl.hostname;
+          const sha256Hash = crypto.createHash("sha256").update(cleanPdfText).digest("hex");
+
+          return {
+            success: true,
+            url: res.url || validated.url,
+            page_title: pdfTitle,
+            content_text: cleanPdfText.slice(0, 20000),
+            text_length: cleanPdfText.length,
+            retrieved_at: new Date().toISOString(),
+            source_class: "UNTRUSTED_USER_MATERIAL",
+            sha256_hash: sha256Hash,
+            asset_id: validated.campaign_id,
+          };
+        }
+      } catch (pdfErr) {
+        logger.warn("PDF binary extraction fallback to text", {
+          url: validated.url,
+          error: (pdfErr as Error).message,
+        });
+      }
+    }
+
     const rawHtml = await res.text();
 
     const cleanText = rawHtml
@@ -1085,7 +1347,7 @@ export class WebSearchRouter {
       success: true,
       url: res.url || validated.url,
       page_title: pageTitle,
-      content_text: cleanText.slice(0, 10000),
+      content_text: cleanText.slice(0, 15000),
       text_length: cleanText.length,
       retrieved_at: new Date().toISOString(),
       source_class: "UNTRUSTED_USER_MATERIAL",

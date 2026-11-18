@@ -314,4 +314,67 @@ describe("CopilotOrchestrator Dual Grounding, Entitlements & Workflow Engine", (
     );
     expect(vaultCitations).toHaveLength(2);
   });
+
+  it("auto-expands UI default ['NG'] to all 4 target countries (NG, KE, GH, ZA) on Cross-Border Matrix prompts without truncating the prompt at 180 chars", async () => {
+    const generateContentStream = vi.fn().mockImplementation(async function* () {
+      yield {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: "### Pan-African Cross-Border Regulatory Matrix\n\nCovered Nigeria, Kenya, Ghana, and South Africa.",
+                },
+              ],
+            },
+          },
+        ],
+      };
+    });
+
+    const orchestrator = new CopilotOrchestrator({
+      models: { generateContentStream, generateContent: vi.fn() },
+    } as unknown as GoogleGenAI);
+
+    const nexaPayPrompt = `We are preparing a Board Expansion Strategy Memo to launch our fintech product—"NexaPay Borderless" (offering instant cross-border P2P remittances, multi-currency local wallets, and virtual USD debit cards)—across four target African jurisdictions:
+1. Nigeria (Home Market)
+2. Kenya
+3. Ghana
+4. South Africa
+Please build a comprehensive Pan-African Cross-Border Regulatory Matrix comparing all four jurisdictions across these 6 mandatory pillars:
+1. Primary Financial & Payment Regulators
+2. Required Local Operating Licenses & PSSP/IMTO passporting
+3. Minimum Paid-Up Capital & Local Equity / Director Residency Requirements
+4. Virtual USD Card & Cross-Border FX Settlement Rules
+5. Data Localization & Cross-Border Data Transfer Mandates
+6. Recommended Go-To-Market Entry Structure`;
+
+    const events = [];
+    for await (const event of orchestrator.streamChat({
+      tenantId: "00000000-0000-0000-0000-000000000001",
+      userId: "user_1",
+      conversationId: "conv_cross_border_nexapay",
+      userPrompt: nexaPayPrompt,
+      searchJurisdictions: ["NG"], // UI default chip
+    })) {
+      events.push(event);
+    }
+
+    expect(entitlementsService.authorizeAndConsumeLiveSearch).toHaveBeenCalledWith(
+      "00000000-0000-0000-0000-000000000001",
+      ["NG", "KE", "GH", "ZA"]
+    );
+    expect(mockSearchWeb).toHaveBeenCalledWith(
+      expect.objectContaining({
+        jurisdictions: ["NG", "KE", "GH", "ZA"],
+        prioritize_official_regulators: true,
+      }),
+      expect.anything()
+    );
+    const passedWebQuery = mockSearchWeb.mock.calls[0]?.[0]?.query as string;
+    expect(passedWebQuery.length).toBeGreaterThan(180);
+    expect(passedWebQuery).toContain("Kenya");
+    expect(passedWebQuery).toContain("Ghana");
+    expect(passedWebQuery).toContain("South Africa");
+  });
 });

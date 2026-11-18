@@ -10,6 +10,9 @@ import {
   canonicalizeUrl,
   sanitizeExternalEvidenceText,
   isCircularLookupQuery,
+  extractTargetJurisdictionsFromPrompt,
+  planMultiJurisdictionSearchQueries,
+  resolveJurisdictionDescriptor,
 } from "@/modules/live-web-intelligence/africa-regulators";
 import { SerpApiClient } from "@/modules/live-web-intelligence/serpapi.client";
 import { ExaClient } from "@/modules/live-web-intelligence/exa.client";
@@ -446,6 +449,151 @@ describe("Phase 2: Africa Regulators, SerpAPI, Exa AI & Dual-Engine Router", () 
       expect(res.live_web_results).toHaveLength(0);
       expect(res.vault_clauses).toHaveLength(1);
       expect(routerSpy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("Open-World Global & Pan-African Cross-Border Intelligence", () => {
+    it("extracts all 4 NexaPay target countries even when UI passes default ['NG'] and supports any global country without hardcoded limits", () => {
+      const nexaPayPrompt = `We are preparing a Board Expansion Strategy Memo to launch our fintech product—"NexaPay Borderless" across four target African jurisdictions:
+1. Nigeria (Home Market)
+2. Kenya
+3. Ghana
+4. South Africa
+Please build a comprehensive Pan-African Cross-Border Regulatory Matrix comparing all four jurisdictions across 6 pillars.`;
+
+      const detected = extractTargetJurisdictionsFromPrompt(nexaPayPrompt, ["NG"]);
+      expect(detected).toEqual(["NG", "KE", "GH", "ZA"]);
+
+      // Non-preset African & Global corridors (Senegal, United Kingdom, Singapore)
+      const globalPrompt =
+        "Compare remittance and EMI licensing requirements across Nigeria, Senegal, United Kingdom, and Singapore.";
+      const globalDetected = extractTargetJurisdictionsFromPrompt(globalPrompt, ["NG"]);
+      expect(globalDetected).toContain("NG");
+      expect(globalDetected).toContain("SN");
+      expect(globalDetected).toContain("GB");
+      expect(globalDetected).toContain("SG");
+
+      // Dynamic open-world descriptor synthesis for any arbitrary country (e.g., Brazil)
+      const brDesc = resolveJurisdictionDescriptor("Brazil");
+      expect(brDesc.code).toBe("BR");
+      expect(brDesc.name).toBe("Brazil");
+
+      // Universal sovereign TLD trust classification (.gov.uk, .gov.sg, bceao.int)
+      expect(classifyDomainTrustTier("https://www.fca.org.uk/publication/emi.pdf").trustTier).toBe(
+        "OFFICIAL_REGULATOR_WEB",
+      );
+      expect(classifyDomainTrustTier("https://www.mas.gov.sg/regulation/payments").trustTier).toBe(
+        "OFFICIAL_REGULATOR_WEB",
+      );
+      expect(classifyDomainTrustTier("https://www.bceao.int/fr/reglementation").trustTier).toBe(
+        "OFFICIAL_REGULATOR_WEB",
+      );
+    });
+
+    it("decomposes a multi-country 6-pillar prompt into targeted per-country statutory queries and balances results across all jurisdictions", async () => {
+      vi.stubEnv("ENABLE_DUAL_LIVE_WEB_SEARCH", "true");
+      vi.stubEnv("SERPAPI_API_KEY", "serpapi_test_active");
+      vi.stubEnv("EXA_API_KEY", "exa_test_active");
+
+      const nexaPayPrompt = `We are preparing a Board Expansion Strategy Memo to launch "NexaPay Borderless" across Nigeria, Kenya, Ghana, and South Africa:
+1. Primary Financial & Payment Regulators
+2. Required Local Operating Licenses (PSSP/IMTO passporting)
+3. Minimum Paid-Up Capital & Local Equity / Director Residency Requirements
+4. Virtual USD Card & Cross-Border FX Settlement Rules
+5. Data Localization & Cross-Border Data Transfer Mandates (NDPA 2023 vs Kenya DPA 2019 vs Ghana Act 843 vs POPIA)
+6. Recommended Go-To-Market Entry Structure`;
+
+      const planned = planMultiJurisdictionSearchQueries(
+        nexaPayPrompt,
+        ["NG", "KE", "GH", "ZA"],
+        "NexaPay Borderless",
+      );
+      expect(planned.length).toBeGreaterThanOrEqual(8);
+      const plannedJurisdictions = new Set(planned.map((p) => p.jurisdiction));
+      expect(plannedJurisdictions.has("NG")).toBe(true);
+      expect(plannedJurisdictions.has("KE")).toBe(true);
+      expect(plannedJurisdictions.has("GH")).toBe(true);
+      expect(plannedJurisdictions.has("ZA")).toBe(true);
+
+      const mockSupabase = {
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          gt: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: null }),
+          upsert: vi.fn().mockResolvedValue({ error: null }),
+          insert: vi.fn().mockReturnValue({
+            select: vi.fn().mockResolvedValue({ data: [], error: null }),
+          }),
+          update: vi.fn().mockReturnThis(),
+        }),
+      };
+      vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue(mockSupabase as any);
+
+      const mockSerp = new SerpApiClient();
+      vi.spyOn(mockSerp, "isConfigured").mockReturnValue(true);
+      vi.spyOn(mockSerp, "searchRegulatorsGoogle").mockImplementation(async (_query, jurisdictions) => {
+        const j = jurisdictions?.[0] || "NG";
+        const urlMap: Record<string, string> = {
+          NG: "https://www.cbn.gov.ng/Out/2026/PSS-DIR-PUB-CIR-001-004.pdf",
+          KE: "https://www.centralbank.go.ke/wp-content/uploads/2026/NPS-Bill-2026.pdf",
+          GH: "https://www.bog.gov.gh/wp-content/uploads/2026/Act-987-PSP-Licensing.pdf",
+          ZA: "https://www.resbank.co.za/content/dam/sarb/publications/directive-emoney-2026.pdf",
+        };
+        return {
+          items: [
+            {
+              provider: "SERPAPI_GOOGLE",
+              title: `${j} Official Regulatory Instrument`,
+              url: urlMap[j] || `https://www.regulator.gov.${j.toLowerCase()}/doc.pdf`,
+              snippet: `${j} minimum capital, local equity, and data localization mandate.`,
+              publishedAt: "2026-08-15T00:00:00.000Z",
+              position: 1,
+            },
+          ],
+          costUsd: 0.005,
+          latencyMs: 120,
+        };
+      });
+      vi.spyOn(mockSerp, "searchRegulatoryNews").mockResolvedValue({
+        items: [],
+        costUsd: 0,
+        latencyMs: 50,
+      });
+
+      const mockExa = new ExaClient();
+      vi.spyOn(mockExa, "isConfigured").mockReturnValue(true);
+      vi.spyOn(mockExa, "searchNeuralWithContents").mockResolvedValue({
+        items: [],
+        costUsd: 0,
+        latencyMs: 50,
+      });
+      vi.spyOn(mockExa, "searchOpenWebWithContents").mockResolvedValue({
+        items: [],
+        costUsd: 0,
+        latencyMs: 50,
+      });
+      vi.spyOn(mockExa, "fetchContentsForUrls").mockResolvedValue(new Map());
+
+      const router = new WebSearchRouter({
+        customSerpApiClient: mockSerp,
+        customExaClient: mockExa,
+      });
+
+      const bundle = await router.searchAfricaLiveWeb(
+        {
+          query: nexaPayPrompt,
+          jurisdictions: ["NG", "KE", "GH", "ZA"],
+          searchIntent: "CROSS_BORDER",
+        },
+        "11111111-1111-1111-1111-111111111111",
+      );
+
+      const returnedCodes = new Set(bundle.results.map((r) => r.jurisdiction_code));
+      expect(returnedCodes.has("NG")).toBe(true);
+      expect(returnedCodes.has("KE")).toBe(true);
+      expect(returnedCodes.has("GH")).toBe(true);
+      expect(returnedCodes.has("ZA")).toBe(true);
     });
   });
 });

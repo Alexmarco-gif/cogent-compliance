@@ -17,6 +17,7 @@ import {
   type SearchQuotaSnapshot,
 } from "@/contracts/search.contracts";
 import { webSearchRouter, type WebSearchRouter } from "./web-search.router";
+import { extractTargetJurisdictionsFromPrompt } from "./africa-regulators";
 
 export interface UnifiedSearchResponse {
   query: string;
@@ -48,6 +49,10 @@ export class UnifiedSearchService {
   ): Promise<UnifiedSearchResponse> {
     const startedAt = Date.now();
     const request = unifiedSearchRequestSchema.parse(rawRequest);
+    const effectiveJurisdictions = extractTargetJurisdictionsFromPrompt(
+      request.query,
+      request.jurisdictions,
+    );
     const supabase = createAdminSupabaseClient();
 
     // 1. Track A: Workspace Command Center + Hybrid Vault Search
@@ -77,7 +82,7 @@ export class UnifiedSearchService {
           ? await entitlementsService.checkTenantEntitlement(tenantId, "live_web_search")
           : await entitlementsService.authorizeAndConsumeLiveSearch(
               tenantId,
-              request.jurisdictions,
+              effectiveJurisdictions,
               1,
             );
 
@@ -92,11 +97,12 @@ export class UnifiedSearchService {
         const bundle = await this.router.searchAfricaLiveWeb(
           {
             query: request.query,
-            jurisdictions: request.jurisdictions,
-            searchIntent: request.search_intent,
+            jurisdictions: effectiveJurisdictions,
+            searchIntent:
+              effectiveJurisdictions.length > 1 ? "CROSS_BORDER" : request.search_intent,
             includeNews: request.include_news,
             dateFrom: request.date_from,
-            limit: Math.min(request.limit, 10),
+            limit: Math.min(request.limit, 12),
           },
           tenantId,
         );

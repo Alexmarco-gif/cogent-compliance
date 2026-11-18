@@ -4,7 +4,7 @@
  */
 
 import { z } from "zod";
-import { SEARCH_JURISDICTIONS } from "./search.contracts";
+import { jurisdictionCodeSchema } from "./search.contracts";
 import { WORKFLOW_TYPES, WORK_PRODUCT_ARTIFACT_TYPES } from "./work-product.contracts";
 
 export const conversationContextTypeEnum = z.enum([
@@ -51,7 +51,7 @@ export const sendMessageStreamSchema = z.object({
   referenced_product_id: z.string().uuid().nullable().optional(),
   referenced_knowledge_doc_id: z.string().uuid().nullable().optional(),
   enable_live_web_search: z.boolean().default(false).optional(),
-  search_jurisdictions: z.array(z.enum(SEARCH_JURISDICTIONS)).default(["NG"]).optional(),
+  search_jurisdictions: z.array(jurisdictionCodeSchema).default(["NG"]).optional(),
   workflow_hint: z.enum(WORKFLOW_TYPES).optional(),
 });
 

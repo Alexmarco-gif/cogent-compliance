@@ -5,7 +5,7 @@
  */
 
 import { z } from "zod";
-import { SEARCH_JURISDICTIONS } from "./search.contracts";
+import { jurisdictionCodeSchema } from "./search.contracts";
 
 export const WORKFLOW_TYPES = [
   "PRODUCT_STRUCTURING_MEMO",
@@ -73,7 +73,7 @@ export const createWorkProductSchema = z.object({
   workflow_type: z.enum(WORKFLOW_TYPES),
   artifact_type: z.enum(WORK_PRODUCT_ARTIFACT_TYPES),
   title: z.string().trim().min(3).max(240),
-  jurisdiction_scope: z.array(z.enum(SEARCH_JURISDICTIONS)).min(1).default(["NG"]),
+  jurisdiction_scope: z.array(jurisdictionCodeSchema).min(1).default(["NG"]),
   markdown_content: z.string().min(10).max(120000),
   structured_payload: z.record(z.unknown()).default({}),
   citations: z.array(workProductCitationSchema).default([]),

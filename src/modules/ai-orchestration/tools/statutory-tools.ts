@@ -27,11 +27,13 @@ import { entitlementsService } from "@/modules/billing/entitlements.service";
 import { workProductService } from "@/modules/work-products/work-product.service";
 import {
   AFRICA_JURISDICTION_REGISTRY,
+  extractTargetJurisdictionsFromPrompt,
+  planMultiJurisdictionSearchQueries,
+  resolveJurisdictionDescriptor,
 } from "@/modules/live-web-intelligence/africa-regulators";
 import { KnowledgeDocumentType } from "@/contracts/knowledge-product.contracts";
 import { RewriteTone } from "@/contracts/remediation.contracts";
 import {
-  SEARCH_JURISDICTIONS,
   type SearchJurisdiction,
 } from "@/contracts/search.contracts";
 import {
@@ -224,29 +226,29 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "search_live_web",
     description:
-      "Performs paid-tier real-time web search across open web sources (news portals, legal commentary, blogs, fintech documentation, and company sites) plus Nigeria and Pan-African regulatory portals (CBN, SEC, NDPC, FCCPC, NFIU, BoG, CBK, SARB/FSCA) using dual-engine SerpAPI & Exa AI retrieval. Fail-closed on unsubscribed evaluation plans.",
+      "Performs paid-tier real-time web search across open web sources (news portals, legal commentary, blogs, fintech documentation, and company sites) plus Nigerian, Pan-African, and Global regulatory portals (e.g. CBN, SEC, NDPC, FCCPC, NFIU, BoG, CBK, SARB/FSCA, BNR, CBE, FCA, MAS, BCEAO, and any central bank or authority worldwide) using dual-engine SerpAPI & Exa AI retrieval. Fail-closed on unsubscribed evaluation plans.",
     parameters: {
       type: Type.OBJECT,
       properties: {
         query: {
           type: Type.STRING,
           description:
-            "General live web search query for any website, blog, article, news, company info, market update, or regulatory topic.",
+            "Focused live web search query for any website, regulatory circular, act, bill, legal briefing, news, company info, or cross-border compliance topic.",
         },
         jurisdictions: {
           type: Type.ARRAY,
           items: { type: Type.STRING },
           description:
-            "Optional jurisdiction codes (NG, GH, KE, ZA, RW, EG, AFRICA_REGIONAL). Defaults to ['NG'].",
+            "Optional ISO country codes or jurisdiction identifiers for ANY country globally (e.g. NG, KE, GH, ZA, RW, EG, SN, CI, TZ, UG, GB, US, SG, AE, EU, GLOBAL). Defaults to ['NG'] or auto-detected countries in the query.",
         },
         include_news: {
           type: Type.BOOLEAN,
-          description: "Include live Nigerian/African regulatory enforcement news (default true).",
+          description: "Include live regulatory enforcement and legislative news (default true).",
         },
         prioritize_official_regulators: {
           type: Type.BOOLEAN,
           description:
-            "Optional flag (defaults to false). Leave false for general web search across all blogs and websites; set true only if official regulator publications should also be highlighted.",
+            "Optional flag (defaults to false). Set true when searching for primary central bank circulars, gazetted acts, or licensing schedules.",
         },
       },
       required: ["query"],
@@ -256,11 +258,14 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "fetch_live_url_content",
     description:
-      "Safely fetches, sanitizes, and snapshots visible promotional text and disclosures from a live HTTPS landing page URL with strict SSRF defense.",
+      "Safely fetches, parses (HTML or PDF regulatory circulars/guidelines), sanitizes, and snapshots visible text and disclosures from a live HTTPS URL with strict SSRF defense.",
     parameters: {
       type: Type.OBJECT,
       properties: {
-        url: { type: Type.STRING, description: "Full HTTPS URL of the promotional webpage." },
+        url: {
+          type: Type.STRING,
+          description: "Full HTTPS URL of the webpage or official PDF circular/guideline.",
+        },
         campaign_id: {
           type: Type.STRING,
           description: "Optional campaign UUID to attach the URL snapshot asset to.",
@@ -769,7 +774,7 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "compare_african_jurisdictions",
     description:
-      "Cross-references Nigerian statutory requirements against other African jurisdictions (Kenya CBK, Ghana BoG, South Africa SARB/FSCA, Rwanda BNR, Egypt CBE, AfCFTA/Regional) for cross-border expansion matrices. Requires Scale or Enterprise tier for multi-country live search.",
+      "Cross-references regulatory requirements across any African or global jurisdictions (e.g. Nigeria CBN, Kenya CBK, Ghana BoG, South Africa SARB/FSCA, Rwanda BNR, Egypt CBE, Senegal/UEMOA BCEAO, UK FCA, Singapore MAS, UAE, US, EU, or any country worldwide) for cross-border expansion matrices. Requires Scale or Enterprise tier for multi-country live search.",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -780,11 +785,12 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         jurisdictions: {
           type: Type.ARRAY,
           items: { type: Type.STRING },
-          description: "Jurisdiction codes to compare (e.g. ['NG', 'KE', 'GH']).",
+          description:
+            "Jurisdiction codes or country names to compare across any African or global markets (e.g. ['NG', 'KE', 'GH', 'ZA'] or ['NG', 'GB', 'SG']).",
         },
         product_type: {
           type: Type.STRING,
-          description: "Optional fintech product category (e.g. PSSP, MMO, DIGITAL_LENDING).",
+          description: "Optional fintech product category (e.g. PSSP, MMO, IMTO, DIGITAL_LENDING).",
         },
       },
       required: ["topic", "jurisdictions"],
@@ -819,7 +825,8 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         jurisdiction_scope: {
           type: Type.ARRAY,
           items: { type: Type.STRING },
-          description: "Jurisdictions covered (e.g. ['NG'] or ['NG', 'KE']).",
+          description:
+            "Jurisdictions covered across any African or global markets (e.g. ['NG'] or ['NG', 'KE', 'GH', 'ZA']).",
         },
         markdown_content: {
           type: Type.STRING,
@@ -1364,15 +1371,13 @@ export class StatutoryToolExecutor {
     },
     ctx: ToolExecutionContext
   ): Promise<Record<string, unknown>> {
-    const requestedJurisdictions = (
-      args.jurisdictions && args.jurisdictions.length > 0
-        ? args.jurisdictions
-        : ["NG"]
-    ).filter((j): j is SearchJurisdiction =>
-      (SEARCH_JURISDICTIONS as readonly string[]).includes(j)
+    const normalizedExplicit = (args.jurisdictions || [])
+      .map((j) => resolveJurisdictionDescriptor(j).code)
+      .filter((j) => j.length >= 2);
+    const jurisdictions: SearchJurisdiction[] = extractTargetJurisdictionsFromPrompt(
+      args.query,
+      normalizedExplicit.length > 0 ? normalizedExplicit : ["NG"]
     );
-    const jurisdictions: SearchJurisdiction[] =
-      requestedJurisdictions.length > 0 ? requestedJurisdictions : ["NG"];
 
     if (!ctx.quotaPreConsumed) {
       const auth = await entitlementsService.authorizeAndConsumeLiveSearch(
@@ -1387,7 +1392,7 @@ export class StatutoryToolExecutor {
           upgrade_required: true,
           reason:
             auth.reason ||
-            "Real-time Nigeria & Pan-African web search requires an active Growth, Scale, or Enterprise plan.",
+            "Real-time Nigeria, Pan-African & Global web search requires an active Growth, Scale, or Enterprise plan.",
           results: [],
         };
       }
@@ -1397,12 +1402,14 @@ export class StatutoryToolExecutor {
       typeof webSearchRouter.isDualEngineActive === "function" &&
       webSearchRouter.isDualEngineActive()
     ) {
+      const isMultiCountry = jurisdictions.length > 1;
       const africaResult = await webSearchRouter.searchAfricaLiveWeb(
         {
           query: args.query,
           jurisdictions,
-          searchIntent: "REGULATORY_CIRCULAR",
+          searchIntent: isMultiCountry ? "CROSS_BORDER" : "REGULATORY_CIRCULAR",
           includeNews: args.include_news !== false,
+          timeoutMs: isMultiCountry ? 14000 : 8000,
         },
         ctx.tenantId
       );
@@ -1418,7 +1425,9 @@ export class StatutoryToolExecutor {
           page_title: r.page_title,
           retrieved_url: r.retrieved_url,
           snippet_content: r.full_content_excerpt || r.snippet_content,
+          full_content_excerpt: r.full_content_excerpt,
           highlights: r.highlights,
+          published_at: r.published_at,
           retrieved_at: r.retrieved_at,
           provider: r.provider,
           jurisdiction_code: r.jurisdiction_code,
@@ -1431,6 +1440,7 @@ export class StatutoryToolExecutor {
     return webSearchRouter.searchLiveWeb(
       {
         query: args.query,
+        jurisdictions,
         prioritize_official_regulators: args.prioritize_official_regulators === true,
       },
       ctx.tenantId
@@ -2204,13 +2214,13 @@ export class StatutoryToolExecutor {
     },
     ctx: ToolExecutionContext
   ): Promise<Record<string, unknown>> {
-    const requested = args.jurisdictions
-      .map((j) => j.toUpperCase())
-      .filter((j): j is SearchJurisdiction =>
-        (SEARCH_JURISDICTIONS as readonly string[]).includes(j)
-      );
-    const jurisdictions: SearchJurisdiction[] =
-      requested.length > 0 ? requested : ["NG"];
+    const requested = (args.jurisdictions || [])
+      .map((j) => resolveJurisdictionDescriptor(j).code)
+      .filter((j) => j.length >= 2);
+    const jurisdictions: SearchJurisdiction[] = extractTargetJurisdictionsFromPrompt(
+      args.topic,
+      requested.length > 0 ? requested : ["NG"]
+    );
 
     const hasCrossBorder = jurisdictions.some((j) => j !== "NG");
     if (hasCrossBorder) {
@@ -2225,8 +2235,10 @@ export class StatutoryToolExecutor {
           feature: "cross_border_research",
           reason:
             gate.reason ||
-            "Pan-African cross-border comparison (Kenya, Ghana, South Africa, Rwanda, Egypt) requires the Scale or Enterprise plan.",
-          jurisdiction_profiles: jurisdictions.map((j) => AFRICA_JURISDICTION_REGISTRY[j]),
+            "Pan-African & Global cross-border comparison requires the Scale or Enterprise plan.",
+          jurisdiction_profiles: jurisdictions.map(
+            (j) => AFRICA_JURISDICTION_REGISTRY[j] || resolveJurisdictionDescriptor(j)
+          ),
           statutory_vault_ng: [],
           live_results: [],
         };
@@ -2239,14 +2251,69 @@ export class StatutoryToolExecutor {
         }))
       : Promise.resolve({ results: [] });
 
-    const liveSearchPromise = this.searchLiveWeb(
-      {
-        query: `${args.topic} ${args.product_type || ""}`.trim(),
-        jurisdictions,
-        include_news: true,
-      },
-      ctx
-    ).catch(() => ({ status: "error", results: [] }));
+    const combinedTopic = `${args.topic} ${args.product_type || ""}`.trim();
+    const plannedSubQueries = planMultiJurisdictionSearchQueries(
+      combinedTopic,
+      jurisdictions,
+      args.product_type
+    );
+
+    const liveSearchPromise = (async () => {
+      if (
+        typeof webSearchRouter.isDualEngineActive === "function" &&
+        webSearchRouter.isDualEngineActive()
+      ) {
+        if (!ctx.quotaPreConsumed) {
+          const auth = await entitlementsService.authorizeAndConsumeLiveSearch(
+            ctx.tenantId,
+            jurisdictions
+          );
+          if (!auth.allowed) {
+            return {
+              status: "upgrade_required",
+              results: [],
+            };
+          }
+        }
+        const africaResult = await webSearchRouter.searchAfricaLiveWeb(
+          {
+            query: combinedTopic,
+            jurisdictions,
+            searchIntent: "CROSS_BORDER",
+            includeNews: true,
+            timeoutMs: 14000,
+            subQueries: plannedSubQueries,
+          },
+          ctx.tenantId
+        );
+        return {
+          status: "ok",
+          web_summary: africaResult.webSummary,
+          results: africaResult.results.map((r) => ({
+            live_web_retrieval_id: r.live_web_retrieval_id,
+            page_title: r.page_title,
+            retrieved_url: r.retrieved_url,
+            snippet_content: r.full_content_excerpt || r.snippet_content,
+            full_content_excerpt: r.full_content_excerpt,
+            highlights: r.highlights,
+            published_at: r.published_at,
+            retrieved_at: r.retrieved_at,
+            provider: r.provider,
+            jurisdiction_code: r.jurisdiction_code,
+            trust_tier: r.trust_tier,
+            source_class: "LIVE_WEB_INTELLIGENCE",
+          })),
+        };
+      }
+      return this.searchLiveWeb(
+        {
+          query: combinedTopic,
+          jurisdictions,
+          include_news: true,
+        },
+        ctx
+      );
+    })().catch(() => ({ status: "error", results: [] }));
 
     const [vaultRes, liveRes] = await Promise.all([vaultPromise, liveSearchPromise]);
 
@@ -2254,7 +2321,9 @@ export class StatutoryToolExecutor {
       success: true,
       topic: args.topic,
       jurisdictions,
-      jurisdiction_profiles: jurisdictions.map((j) => AFRICA_JURISDICTION_REGISTRY[j]),
+      jurisdiction_profiles: jurisdictions.map(
+        (j) => AFRICA_JURISDICTION_REGISTRY[j] || resolveJurisdictionDescriptor(j)
+      ),
       statutory_vault_ng: (vaultRes.results as Array<Record<string, unknown>>) || [],
       live_web_status: liveRes.status || "ok",
       live_results: (liveRes.results as Array<Record<string, unknown>>) || [],
@@ -2290,13 +2359,13 @@ export class StatutoryToolExecutor {
       ? (args.artifact_type as WorkProductArtifactType)
       : "statutory_structuring_memo";
 
-    const jurisdictions = (
+    const jurisdictions: SearchJurisdiction[] = (
       args.jurisdiction_scope && args.jurisdiction_scope.length > 0
         ? args.jurisdiction_scope
         : ["NG"]
-    ).filter((j): j is SearchJurisdiction =>
-      (SEARCH_JURISDICTIONS as readonly string[]).includes(j)
-    );
+    )
+      .map((j) => resolveJurisdictionDescriptor(j).code)
+      .filter((j) => j.length >= 2);
 
     const status: WorkProductStatus =
       args.status === "REVIEWED" || args.status === "FINALIZED" || args.status === "ARCHIVED"
