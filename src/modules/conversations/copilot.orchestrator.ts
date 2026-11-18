@@ -182,7 +182,7 @@ CRITICAL OPERATIONAL RULES:
    * Executes a single Gemini generation pass (streaming or non-streaming) with:
    * - Fast first-token abort guard (18s) so stalled requests rotate instead of hanging 90s
    * - Automatic KEY_1 -> KEY_2 -> KEY_3 failover when zero chunks have streamed yet
-   * - Automatic GA model fallback (e.g. gemini-2.5-flash) if preview model hits 503 high demand
+   * - Automatic GA model fallback (e.g. gemini-3.8-flash / gemini-3.5-flash-lite) if primary model hits 503/404
    */
   private async *executeGeminiRoundWithFailover(params: {
     contents: Array<{ role: string; parts: Array<Record<string, unknown>> }>;

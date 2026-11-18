@@ -90,7 +90,7 @@ describe("Two-Step Live Web Search Router (WebSearchRouter)", () => {
     // Verify secondary call was made with googleSearch tool and natural prompt (no restrictive site: operators)
     expect(mockGenAi.models.generateContent).toHaveBeenCalledWith(
       expect.objectContaining({
-        model: "gemini-3.5-flash",
+        model: "gemini-3.6-flash",
         contents: expect.stringContaining("digital lending fee disclosure guidelines"),
         config: {
           tools: [{ googleSearch: {} }],

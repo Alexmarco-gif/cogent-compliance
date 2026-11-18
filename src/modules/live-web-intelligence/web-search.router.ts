@@ -672,7 +672,13 @@ export class WebSearchRouter {
     const supabase = createAdminSupabaseClient();
 
     const candidateModels = Array.from(
-      new Set([this.searchModel, AI_MODELS.PRO, "gemini-2.5-flash", "gemini-2.0-flash"]),
+      new Set([
+        this.searchModel,
+        AI_MODELS.PRO,
+        "gemini-3.6-flash",
+        AI_MODELS.FALLBACK_FLASH,
+        AI_MODELS.FALLBACK_FLASH_LITE,
+      ]),
     );
 
     try {

@@ -222,7 +222,12 @@ export class GeminiKeyPool {
   public getModelFallbackChain(primaryModel: string, includeFallbackModels = true): string[] {
     if (!includeFallbackModels) return [primaryModel];
     return Array.from(
-      new Set([primaryModel, AI_MODELS.FALLBACK_FLASH, AI_MODELS.FALLBACK_FLASH_LITE]),
+      new Set([
+        primaryModel,
+        "gemini-3.6-flash",
+        AI_MODELS.FALLBACK_FLASH,
+        AI_MODELS.FALLBACK_FLASH_LITE,
+      ]),
     );
   }
 

@@ -1,16 +1,46 @@
+function unwrapNestedErrorText(raw: string): string {
+  let current = raw;
+  for (let depth = 0; depth < 5; depth++) {
+    const trimmed = current.trim();
+    if (!trimmed.startsWith("{")) break;
+    try {
+      const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+      const nestedError =
+        parsed.error && typeof parsed.error === "object"
+          ? (parsed.error as Record<string, unknown>)
+          : null;
+      const next =
+        (nestedError && typeof nestedError.message === "string"
+          ? nestedError.message
+          : undefined) ??
+        (typeof parsed.message === "string" ? parsed.message : undefined) ??
+        (typeof parsed.error === "string" ? parsed.error : undefined);
+      if (next && next.trim()) {
+        current = next;
+        continue;
+      }
+      break;
+    } catch {
+      break;
+    }
+  }
+  return current;
+}
+
 /**
  * Client- and server-safe helper to turn raw AI SDK JSON errors into crisp,
  * actionable user-facing messages.
  */
 export function formatCleanAiError(rawInput: unknown): string {
-  const raw =
+  const initial =
     rawInput instanceof Error
       ? rawInput.message
       : typeof rawInput === "string"
         ? rawInput
         : String(rawInput || "Unknown error");
 
-  const lower = raw.toLowerCase();
+  const unwrapped = unwrapNestedErrorText(initial);
+  const lower = `${initial} ${unwrapped}`.toLowerCase();
 
   if (
     lower.includes("per day") ||
@@ -45,6 +75,15 @@ export function formatCleanAiError(rawInput: unknown): string {
   }
 
   if (
+    lower.includes("no longer available") ||
+    lower.includes("not_found") ||
+    lower.includes("invalid model") ||
+    (lower.includes("404") && lower.includes("model"))
+  ) {
+    return "The configured Gemini AI model is unavailable or deprecated for this API key. Please retry or verify your Gemini model configuration.";
+  }
+
+  if (
     lower.includes("timed out") ||
     lower.includes("timeout") ||
     lower.includes("did not respond")
@@ -52,15 +91,28 @@ export function formatCleanAiError(rawInput: unknown): string {
     return "The regulatory synthesis request timed out waiting for the AI model. Please retry or narrow the query scope.";
   }
 
-  // Strip nested escaped JSON wrappers such as {"error":{"message":"{\n \"error\"..."}}
-  const innerMsgMatch = raw.match(/"message"\s*:\s*"([^"\\]+(?:\\.[^"\\]*)*)"/);
-  if (innerMsgMatch?.[1]) {
-    const unescaped = innerMsgMatch[1].replace(/\\n/g, " ").replace(/\\"/g, '"').trim();
-    if (unescaped && !unescaped.startsWith("{")) {
-      return unescaped;
+  if (!unwrapped.trim().startsWith("{")) {
+    const clean = unwrapped.replace(/\s+/g, " ").trim();
+    return clean.length > 240 ? `${clean.slice(0, 237).trim()}...` : clean;
+  }
+
+  // Fallback for truncated/malformed nested JSON: find the innermost non-JSON "message" string
+  const matches = Array.from(
+    initial.matchAll(/\\?"message\\?"\s*:\s*\\?"((?:[^"\\]|\\.)*)/g),
+  );
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const candidate = matches[i]?.[1];
+    if (!candidate) continue;
+    const cleaned = candidate
+      .replace(/\\n/g, " ")
+      .replace(/\\"/g, '"')
+      .replace(/\s+/g, " ")
+      .trim();
+    if (cleaned && !cleaned.startsWith("{")) {
+      return cleaned.length > 240 ? `${cleaned.slice(0, 237).trim()}...` : cleaned;
     }
   }
 
-  const trimmed = raw.replace(/\s+/g, " ").trim();
+  const trimmed = initial.replace(/\s+/g, " ").trim();
   return trimmed.length > 240 ? `${trimmed.slice(0, 237).trim()}...` : trimmed;
 }

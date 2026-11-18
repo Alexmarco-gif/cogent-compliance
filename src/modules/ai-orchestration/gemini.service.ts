@@ -55,8 +55,10 @@ export interface EmbeddingOptions {
  * Standard Token Pricing reference per 1,000,000 tokens (USD)
  */
 const TOKEN_PRICING: Record<string, { inputRate: number; outputRate: number }> = {
+  "gemini-3.6-flash": { inputRate: 0.54, outputRate: 4.5 },
   "gemini-3.5-flash": { inputRate: 0.075, outputRate: 0.3 },
-  "gemini-3.8-flash": { inputRate: 0.075, outputRate: 0.3 },
+  "gemini-3.8-flash": { inputRate: 0.75, outputRate: 3.75 },
+  "gemini-3.5-flash-lite": { inputRate: 0.3, outputRate: 2.5 },
   "gemini-3.1-flash-lite": { inputRate: 0.0375, outputRate: 0.15 },
   "gemini-2.5-flash": { inputRate: 0.075, outputRate: 0.3 },
   "gemini-2.5-flash-lite": { inputRate: 0.0375, outputRate: 0.15 },
