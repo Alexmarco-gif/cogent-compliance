@@ -5,6 +5,7 @@
 
 import crypto from "crypto";
 import { createAdminSupabaseClient } from "@/lib/supabase";
+import { sanitizeAssistantOutput } from "@/lib/ai/output-sanitizer";
 import { logger } from "@/lib/logger";
 import { mechanicalLocksEngine, type MechanicalLocksInput } from "./mechanical-locks";
 import { canonicalizeUrl } from "@/modules/live-web-intelligence/africa-regulators";
@@ -257,7 +258,7 @@ export class GuardrailValidator {
     const supabase = createAdminSupabaseClient();
     const citations = [...(candidate.citations || [])];
     const evidenceGaps: WorkProductEvidenceGap[] = [...(candidate.evidence_gaps || [])];
-    let sanitizedMarkdown = candidate.markdown_content;
+    let sanitizedMarkdown = sanitizeAssistantOutput(candidate.markdown_content);
 
     const verifiedVaultIds: string[] = [];
     const strippedVaultIds: string[] = [];

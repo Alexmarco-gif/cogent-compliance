@@ -71,4 +71,25 @@ describe("deriveConversationTopicTitle", () => {
     expect(result.length).toBeLessThanOrEqual(56);
     expect(result.endsWith(" ")).toBe(false);
   });
+
+  it("assigns clean consultation title to pure greetings and strips emojis from headings", () => {
+    expect(
+      deriveConversationTopicTitle("Hi", {
+        assistantHeading: "🚀 Core Workflows & Capabilities",
+      }),
+    ).toBe("New Compliance Consultation");
+
+    expect(
+      deriveConversationTopicTitle("Hello!", {
+        productName: "Quick Cash Loan",
+        assistantHeading: "🚀 Welcome",
+      }),
+    ).toBe("Quick Cash Loan — Consultation");
+
+    expect(
+      deriveConversationTopicTitle("Please explain this long regulatory framework across multiple Nigerian agencies in full detail", {
+        assistantHeading: "🚀 CBN & FCCPC Licensing Requirements",
+      }),
+    ).toBe("CBN & FCCPC Licensing Requirements");
+  });
 });

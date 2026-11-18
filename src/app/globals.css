@@ -250,23 +250,29 @@ body {
   margin: 1.25rem 0;
 }
 
+.cogent-doc-editor .ProseMirror .tableWrapper {
+  overflow-x: auto;
+  margin: 0.9rem 0;
+  border: 1px solid #e4e4e7;
+  border-radius: 0.5rem;
+}
+
 .cogent-doc-editor .ProseMirror table {
   border-collapse: collapse;
   width: 100%;
-  margin: 0.9rem 0;
+  margin: 0;
   font-size: 13px;
-  border: 1px solid #e4e4e7;
-  border-radius: 0.5rem;
-  overflow: hidden;
 }
 
 .cogent-doc-editor .ProseMirror th,
 .cogent-doc-editor .ProseMirror td {
   border: 1px solid #e4e4e7;
-  padding: 0.5rem 0.7rem;
+  padding: 0.55rem 0.75rem;
   vertical-align: top;
   text-align: left;
-  min-width: 80px;
+  min-width: 120px;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 .cogent-doc-editor .ProseMirror th {

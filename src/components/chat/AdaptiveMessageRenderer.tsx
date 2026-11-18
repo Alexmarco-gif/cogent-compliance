@@ -32,6 +32,7 @@ import {
   ThinkingTraceHeader,
   type SearchTraceItem,
 } from "@/components/chat/ThinkingTraceHeader";
+import { sanitizeAssistantOutput } from "@/lib/ai/output-sanitizer";
 
 export interface MessageAttachmentChip {
   assetId?: string;
@@ -92,7 +93,8 @@ export interface AdaptiveMessageRendererProps {
  */
 export function sanitizeEditorialMarkdown(raw: string): string {
   if (!raw) return "";
-  return raw
+  const scrubbed = sanitizeAssistantOutput(raw);
+  return scrubbed
     .replace(/\r\n/g, "\n")
     .replace(/```(?:text|plaintext|markdown|md)?\n([\s\S]*?)```/gi, "$1")
     .split("\n")

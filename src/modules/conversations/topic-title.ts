@@ -61,6 +61,16 @@ function detectChannelLabel(text: string): string | null {
   return null;
 }
 
+function stripDecorativeEmojis(text: string): string {
+  return text
+    .replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}\u{200D}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+const PURE_GREETING_RE =
+  /^(?:hi|hello|hey|good\s+(?:morning|afternoon|evening)|howdy|greetings|yo|sup)[!.,?\s]*$/i;
+
 export interface TopicTitleOptions {
   productName?: string | null;
   attachmentName?: string | null;
@@ -74,7 +84,7 @@ export function deriveConversationTopicTitle(
   prompt: string,
   options?: TopicTitleOptions,
 ): string {
-  const trimmed = prompt.trim();
+  const trimmed = stripDecorativeEmojis(prompt.trim());
   const productName = options?.productName?.trim();
 
   // 1. Uploaded asset prompt (either explicit attachmentName or asset upload prompt)
@@ -90,6 +100,12 @@ export function deriveConversationTopicTitle(
     return productName
       ? `${productName} Compliance Audit`
       : "New Compliance Audit";
+  }
+
+  if (PURE_GREETING_RE.test(trimmed)) {
+    return productName
+      ? truncateAtWordBoundary(`${productName} — Consultation`)
+      : "New Compliance Consultation";
   }
 
   const channelLabel = detectChannelLabel(trimmed);
@@ -151,11 +167,13 @@ export function deriveConversationTopicTitle(
   }
 
   // If assistant provided a clean ### Heading and topic is still very generic or long
-  const assistantHeading = options?.assistantHeading
-    ?.replace(/^#+\s*/, "")
-    .replace(/^overview of\s+/i, "")
-    .replace(/\s+in nigeria$/i, "")
-    .trim();
+  const assistantHeading = stripDecorativeEmojis(
+    (options?.assistantHeading || "")
+      .replace(/^#+\s*/, "")
+      .replace(/^overview of\s+/i, "")
+      .replace(/\s+in nigeria$/i, "")
+      .trim()
+  );
 
   if (topic.length >= 4 && topic.length <= 56) {
     const formatted = toTitleCasePhrase(topic);

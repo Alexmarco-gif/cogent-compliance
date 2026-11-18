@@ -354,4 +354,21 @@ describe("Work Product Anti-Hallucination Guardrails & PDF/DOCX Export", () => {
     expect(mdText).toContain("## Statutory & Regulatory Citations Appendix");
     expect(mdText).toContain("CBN AML/CFT Regs");
   });
+
+  it("scrubs leaked internal XML tags and §§ section glyphs from work product markdown", async () => {
+    const validator = new GuardrailValidator();
+    const res = await validator.validateWorkProduct(
+      {
+        workflow_type: "POLICY_GAP_REDLINE",
+        markdown_content:
+          "Per the canonical computation engine (`<canonical_computed_financials>`), NDPA 2023 §§ 26, 35 applies alongside <internal_institutional_truth>.",
+        citations: [],
+      },
+      { tenantId: "tenant_1" }
+    );
+
+    expect(res.sanitized_markdown).not.toContain("canonical_computed_financials");
+    expect(res.sanitized_markdown).not.toContain("internal_institutional_truth");
+    expect(res.sanitized_markdown).toContain("NDPA 2023 Sections 26, 35");
+  });
 });
