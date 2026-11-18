@@ -9,10 +9,11 @@ import { AuthTenancyError, CANONICAL_ROLES, CanonicalRole, TenantContext } from 
 import { getPermissionsForRole, mapClerkRoleToCanonical } from "./permissions";
 import { syncClerkOrganizationCreated } from "./clerk.sync";
 import {
-  hasInternalEnterpriseAllowlistConfigured,
-  parseInternalEnterpriseOrgIds,
-  provisionEnterpriseForAllowlistedCreator,
-} from "@/modules/billing/enterprise-allowlist.service";
+  claimInternalWorkspaceIfOwnerCreated,
+  isInternalOverride,
+  isInternalWorkspaceRuntimeEnabled,
+  isPlatformOwner,
+} from "@/modules/billing/internal-workspace.service";
 import { logger } from "@/lib/logger";
 import { env } from "@/lib/env";
 
@@ -105,7 +106,7 @@ export async function resolveTenantContext(
   // Find tenant by clerk_org_id
   let { data: tenant, error: tenantError } = await supabase
     .from("tenants")
-    .select("id, name, slug, status, settings")
+    .select("*")
     .eq("clerk_org_id", orgId)
     .single();
 
@@ -142,7 +143,7 @@ export async function resolveTenantContext(
 
       const { data: reloadedTenant, error: reloadErr } = await supabase
         .from("tenants")
-        .select("id, name, slug, status, settings")
+        .select("*")
         .eq("id", provisioned.tenantId)
         .single();
 
@@ -394,48 +395,54 @@ export async function resolveTenantContext(
     }
   }
 
-  const tenantSettings = ((tenant as { settings?: Record<string, unknown> | null }).settings || {}) as Record<
-    string,
-    unknown
-  >;
-  const existingSub = tenantSettings.subscription as { plan_slug?: string; status?: string } | undefined;
-  const isOrgAllowlisted = parseInternalEnterpriseOrgIds().has(orgId);
-  const isAlreadyActiveEnterprise =
-    existingSub?.plan_slug === "enterprise" && existingSub?.status === "active";
-  const shouldEvaluateEnterpriseAllowlist =
+  // Owner-only Internal Workspace (demos, walkthroughs, marketing): unlimited Enterprise access.
+  // Only evaluated in production/preview with PLATFORM_OWNER_EMAIL configured; no-op for everyone else.
+  if (
     orgId !== "org_demo_1111" &&
-    hasInternalEnterpriseAllowlistConfigured() &&
-    !isAlreadyActiveEnterprise &&
-    (isOrgAllowlisted ||
-      ((resolvedRole === "CHIEF_COMPLIANCE_OFFICER" || resolvedRole === "WORKSPACE_ADMIN") &&
-        !tenantSettings.enterprise_comp_owner_user_id &&
-        !tenantSettings.enterprise_comp_checked_at &&
-        existingSub?.status !== "active"));
-
-  if (shouldEvaluateEnterpriseAllowlist) {
+    process.env.NODE_ENV !== "test" &&
+    isInternalWorkspaceRuntimeEnabled()
+  ) {
     try {
-      const compResult = await provisionEnterpriseForAllowlistedCreator({
-        tenantId: tenant.id,
-        clerkUserId: userId,
-        clerkOrgId: orgId,
-      });
-      if (compResult.granted && resolvedRole === "WORKSPACE_ADMIN") {
-        resolvedRole = "CHIEF_COMPLIANCE_OFFICER";
-      } else if (!compResult.granted) {
-        logger.info("Enterprise allowlist check skipped or rejected for tenant", {
-          tenantId: tenant.id,
-          clerkOrgId: orgId,
-          clerkUserId: userId,
-          role: resolvedRole,
-          reason: compResult.reason,
-        });
+      if (await isPlatformOwner(userId)) {
+        let isInternal = isInternalOverride(
+          (tenant as Record<string, unknown>).billing_override,
+        );
+        const wasExplicitlyConfigured = Boolean(
+          (tenant as Record<string, unknown>).billing_override_set_at,
+        );
+        if (!isInternal && !wasExplicitlyConfigured) {
+          isInternal = await claimInternalWorkspaceIfOwnerCreated({
+            tenantId: tenant.id,
+            clerkUserId: userId,
+            clerkOrgId: orgId,
+          });
+        }
+
+        // The owner always operates as Chief Compliance Officer inside internal workspaces
+        if (isInternal && resolvedRole !== "CHIEF_COMPLIANCE_OFFICER") {
+          resolvedRole = "CHIEF_COMPLIANCE_OFFICER";
+          try {
+            await supabase
+              .from("tenant_memberships")
+              .update({ role: resolvedRole, updated_at: new Date().toISOString() })
+              .eq("tenant_id", tenant.id)
+              .eq("user_id", userId);
+            const client = await clerkClient();
+            await client.organizations.updateOrganizationMembershipMetadata({
+              organizationId: orgId,
+              userId,
+              publicMetadata: { canonicalRole: resolvedRole },
+            });
+          } catch {
+            // Non-blocking role persistence
+          }
+        }
       }
-    } catch (allowlistErr) {
-      logger.warn("Enterprise allowlist evaluation failed non-fatally in resolveTenantContext", {
+    } catch (ownerErr) {
+      logger.warn("Internal workspace owner evaluation failed non-fatally", {
         tenantId: tenant.id,
         clerkOrgId: orgId,
-        clerkUserId: userId,
-        error: allowlistErr instanceof Error ? allowlistErr.message : String(allowlistErr),
+        error: ownerErr instanceof Error ? ownerErr.message : String(ownerErr),
       });
     }
   }

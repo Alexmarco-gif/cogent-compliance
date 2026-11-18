@@ -9,10 +9,6 @@ import { AppApiError } from "@/lib/api-handler";
 import { logger } from "@/lib/logger";
 import type { CanonicalRole } from "@/modules/auth-tenancy/types";
 import {
-  hasInternalEnterpriseAllowlistConfigured,
-  provisionEnterpriseForAllowlistedCreator,
-} from "@/modules/billing/enterprise-allowlist.service";
-import {
   OnboardingProductTruthRequest,
   OnboardingScopeRequest,
   OnboardingStatusResponse,
@@ -345,8 +341,8 @@ export class OnboardingService {
    */
   public async completeOnboarding(
     tenantId: string,
-    clerkUserId?: string,
-    clerkOrgId?: string,
+    _clerkUserId?: string,
+    _clerkOrgId?: string,
   ): Promise<{ success: boolean; completedAt: string }> {
     const supabase = createAdminSupabaseClient();
     const completedAt = new Date().toISOString();
@@ -377,18 +373,6 @@ export class OnboardingService {
     if (completeError) {
       logger.error("Failed to mark tenant onboarding completed", { tenantId, error: completeError });
       throw new Error("Failed to finalize institutional onboarding");
-    }
-
-    if (hasInternalEnterpriseAllowlistConfigured() && (clerkUserId || clerkOrgId)) {
-      try {
-        await provisionEnterpriseForAllowlistedCreator({
-          tenantId,
-          clerkUserId,
-          clerkOrgId,
-        });
-      } catch {
-        // Non-blocking allowlist evaluation during onboarding completion
-      }
     }
 
     logger.info("Tenant completed 60-second progressive onboarding", { tenantId, completedAt });

@@ -7,11 +7,7 @@ import { createAdminSupabaseClient } from "@/lib/supabase";
 import { mapClerkRoleToCanonical } from "./permissions";
 import { CANONICAL_ROLES, type CanonicalRole } from "./types";
 import { logger } from "@/lib/logger";
-import {
-  hasInternalEnterpriseAllowlistConfigured,
-  parseInternalEnterpriseOrgIds,
-  provisionEnterpriseForAllowlistedCreator,
-} from "@/modules/billing/enterprise-allowlist.service";
+import { claimInternalWorkspaceIfOwnerCreated } from "@/modules/billing/internal-workspace.service";
 
 export interface ClerkOrgEventData {
   id: string; // e.g. org_xxx
@@ -122,28 +118,19 @@ export async function syncClerkOrganizationCreated(data: ClerkOrgEventData): Pro
         slug: candidateSlug,
       });
 
-      if (
-        hasInternalEnterpriseAllowlistConfigured() &&
-        (data.created_by || parseInternalEnterpriseOrgIds().has(data.id))
-      ) {
+      // Owner-only Internal Workspace: auto-flag orgs created by the platform owner
+      if (data.created_by) {
         try {
-          const compResult = await provisionEnterpriseForAllowlistedCreator({
+          await claimInternalWorkspaceIfOwnerCreated({
             tenantId: tenant.id,
-            clerkUserId: data.created_by || undefined,
+            clerkUserId: data.created_by,
             clerkOrgId: data.id,
-            isCreatorHint: Boolean(data.created_by),
+            orgCreatedBy: data.created_by,
           });
-          if (!compResult.granted) {
-            logger.info("Enterprise allowlist check skipped during organization sync", {
-              tenantId: tenant.id,
-              clerkOrgId: data.id,
-              reason: compResult.reason,
-            });
-          }
-        } catch (allowlistErr) {
-          logger.warn("Allowlist Enterprise check skipped during organization sync", {
+        } catch (ownerErr) {
+          logger.warn("Internal workspace claim skipped during organization sync", {
             tenantId: tenant.id,
-            error: allowlistErr instanceof Error ? allowlistErr.message : String(allowlistErr),
+            error: ownerErr instanceof Error ? ownerErr.message : String(ownerErr),
           });
         }
       }
@@ -393,34 +380,6 @@ export async function syncClerkMembershipCreated(data: ClerkMembershipEventData)
       });
     } catch {
       // Non-blocking metadata sync
-    }
-  }
-
-  const isOrgAllowlisted = parseInternalEnterpriseOrgIds().has(data.organization.id);
-  if (
-    hasInternalEnterpriseAllowlistConfigured() &&
-    (isOrgAllowlisted ||
-      (!tenantSettings.enterprise_comp_owner_user_id && !tenantSettings.enterprise_comp_checked_at))
-  ) {
-    try {
-      const compResult = await provisionEnterpriseForAllowlistedCreator({
-        tenantId: tenant.id,
-        clerkUserId: data.public_user_data.user_id,
-        clerkOrgId: data.organization.id,
-      });
-      if (!compResult.granted) {
-        logger.info("Enterprise allowlist check skipped during membership sync", {
-          tenantId: tenant.id,
-          clerkOrgId: data.organization.id,
-          clerkUserId: data.public_user_data.user_id,
-          reason: compResult.reason,
-        });
-      }
-    } catch (allowlistErr) {
-      logger.warn("Allowlist Enterprise check skipped during membership sync", {
-        tenantId: tenant.id,
-        error: allowlistErr instanceof Error ? allowlistErr.message : String(allowlistErr),
-      });
     }
   }
 

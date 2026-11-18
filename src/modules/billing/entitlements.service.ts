@@ -10,6 +10,7 @@ import {
   DEFAULT_PLANS,
   paystackBillingService,
 } from "./paystack.service";
+import { buildInternalEnterprisePlan, isInternalOverride } from "./internal-workspace.service";
 import {
   EntitlementCheckResult,
   FeatureGateType,
@@ -28,9 +29,12 @@ export interface TenantSubscriptionInfo {
   trialEndsAt: Date;
   trialDaysRemaining: number;
   trialHoursRemaining: number;
+  /** True for owner-flagged Internal Workspaces (unlimited Enterprise, never billed). */
+  isInternal?: boolean;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const INTERNAL_PERIOD_MS = 10 * 365 * DAY_MS;
 const HOUR_MS = 60 * 60 * 1000;
 
 export class EntitlementsService {
@@ -96,16 +100,19 @@ export class EntitlementsService {
     let tenantSettings: Record<string, unknown> = {};
     let clerkOrgId: string | null = null;
     let hasTenantRow = false;
+    let billingOverride: unknown = null;
 
     try {
+      // select("*") so environments where the billing_override migration has not run yet still resolve
       const { data: tenant } = await supabase
         .from("tenants")
-        .select("created_at, clerk_org_id, settings")
+        .select("*")
         .eq("id", tenantId)
         .maybeSingle();
 
       if (tenant) {
         hasTenantRow = true;
+        billingOverride = (tenant as Record<string, unknown>).billing_override ?? null;
         if (tenant.created_at) {
           const parsedCreated = new Date(tenant.created_at);
           if (!Number.isNaN(parsedCreated.getTime())) {
@@ -121,6 +128,29 @@ export class EntitlementsService {
       }
     } catch (err) {
       logger.warn("Could not fetch tenant metadata for subscription resolution", { tenantId, err });
+    }
+
+    // 1b. Owner-flagged Internal Workspace: unlimited Enterprise, no trial, no Paystack.
+    if (isInternalOverride(billingOverride)) {
+      let basePlan: SubscriptionPlan = DEFAULT_PLANS.enterprise;
+      try {
+        basePlan = await paystackBillingService.getPlan("enterprise");
+      } catch {
+        // Fall back to the bundled Enterprise definition
+      }
+      const now = new Date();
+      return {
+        plan: buildInternalEnterprisePlan(basePlan),
+        status: "active",
+        currentPeriodEnd: new Date(now.getTime() + INTERNAL_PERIOD_MS),
+        isTrial: false,
+        isTrialExpired: false,
+        trialStartedAt: tenantCreatedAt,
+        trialEndsAt: tenantCreatedAt,
+        trialDaysRemaining: 0,
+        trialHoursRemaining: 0,
+        isInternal: true,
+      };
     }
 
     // Anchor trial start to explicit settings.trial_started_at, or earliest of tenant.created_at & Clerk org.createdAt

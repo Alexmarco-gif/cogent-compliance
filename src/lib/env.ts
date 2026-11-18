@@ -52,9 +52,10 @@ export const serverEnvSchema = z.object({
   // Paystack Billing
   PAYSTACK_SECRET_KEY: z.string().optional(),
 
-  // Internal / Founder Enterprise Allowlist (comma-separated verified emails and/or Clerk org IDs)
-  INTERNAL_ENTERPRISE_EMAILS: z.string().optional(),
-  INTERNAL_ENTERPRISE_ORG_IDS: z.string().optional(),
+  // Owner-only Internal Workspace (unlimited Enterprise for demos/walkthroughs/marketing).
+  // Honoured only on Vercel production & preview deployments (VERCEL_ENV), never locally.
+  PLATFORM_OWNER_EMAIL: z.string().optional(),
+  PLATFORM_OWNER_CLERK_USER_ID: z.string().optional(),
 
   // Dual-Engine Regulatory Web Search (Document 14 & Document 15)
   EXA_API_KEY: z.string().optional(),
@@ -159,8 +160,8 @@ export function validateEnv(customEnv?: Record<string, string | undefined>): Env
       NEXT_PUBLIC_SUPABASE_ANON_KEY:
         rawEnv.NEXT_PUBLIC_SUPABASE_ANON_KEY || "mock_supabase_anon_key",
       PAYSTACK_SECRET_KEY: rawEnv.PAYSTACK_SECRET_KEY || "sk_test_mock_paystack_secret_key",
-      INTERNAL_ENTERPRISE_EMAILS: rawEnv.INTERNAL_ENTERPRISE_EMAILS,
-      INTERNAL_ENTERPRISE_ORG_IDS: rawEnv.INTERNAL_ENTERPRISE_ORG_IDS,
+      PLATFORM_OWNER_EMAIL: rawEnv.PLATFORM_OWNER_EMAIL,
+      PLATFORM_OWNER_CLERK_USER_ID: rawEnv.PLATFORM_OWNER_CLERK_USER_ID,
       NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY:
         rawEnv.NEXT_PUBLIC_PAYSTACK_PUBLIC_KEY || "pk_test_mock_paystack_public_key",
       EXA_API_KEY: rawEnv.EXA_API_KEY,

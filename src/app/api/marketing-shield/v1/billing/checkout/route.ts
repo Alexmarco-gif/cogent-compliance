@@ -9,6 +9,7 @@ import {
 } from "@/modules/billing/paystack.service";
 import { createAdminSupabaseClient } from "@/lib/supabase";
 import { logger } from "@/lib/logger";
+import { isInternalWorkspace } from "@/modules/billing/internal-workspace.service";
 
 async function resolveBillingEmail(
   tenantId: string,
@@ -70,6 +71,18 @@ function resolveRequestOrigin(req: NextRequest): string {
 export async function POST(req: NextRequest) {
   try {
     const tenantContext = await resolveTenantContext(req);
+
+    // Internal Workspaces already have unlimited Enterprise; never charge them via Paystack.
+    if (await isInternalWorkspace(tenantContext.tenantId)) {
+      return NextResponse.json(
+        {
+          error: "This workspace already includes every Enterprise feature. No payment is required.",
+          code: "ALREADY_ENTITLED",
+        },
+        { status: 409 },
+      );
+    }
+
     let body: unknown;
     try {
       body = await req.json();

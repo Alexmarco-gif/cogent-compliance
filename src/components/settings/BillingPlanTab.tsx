@@ -84,22 +84,6 @@ function formatDetailedTrialRemaining(sub: SubscriptionData): string {
     : `7-day evaluation active: ${remainingLabel}.`;
 }
 
-interface EnterpriseDevDiagnostic {
-  isDemoTenant: boolean;
-  emailAllowlistConfigured: boolean;
-  emailAllowlistCount: number;
-  orgAllowlistConfigured: boolean;
-  clerkOrgId: string;
-  userEmails: Array<{ email: string; verified: boolean; matchesAllowlist: boolean }>;
-  orgCreatedByMatchesUser: boolean | null;
-  priorCompedCount: number;
-  skipReason: string | null;
-  provisionAttempt?: { granted: boolean; reason: string };
-}
-
-const IS_CLERK_DEV_RUNTIME =
-  (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "").startsWith("pk_test_");
-
 export function BillingPlanTab() {
   const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
   const searchParams = useSearchParams();
@@ -109,7 +93,12 @@ export function BillingPlanTab() {
   const [subData, setSubData] = useState<SubscriptionData | null>(null);
   const [searchQuota, setSearchQuota] = useState<SearchQuotaData | null>(null);
   const [loadingSub, setLoadingSub] = useState(true);
-  const [devDiagnostic, setDevDiagnostic] = useState<EnterpriseDevDiagnostic | null>(null);
+  const [ownerState, setOwnerState] = useState<{ isInternal: boolean; isDemoTenant?: boolean } | null>(
+    null,
+  );
+  const [ownerToggle, setOwnerToggle] = useState<{ saving: boolean; error?: string }>({
+    saving: false,
+  });
   const [verifyState, setVerifyState] = useState<{
     status: "idle" | "verifying" | "verified" | "failed";
     message?: string;
@@ -150,33 +139,51 @@ export function BillingPlanTab() {
     loadBilling();
   }, [clerkLoaded, isSignedIn, orgId, loadBilling]);
 
-  // In Clerk Development mode (pk_test_), if still on Trial, run non-secret diagnostic & retry allowlist
+  // Owner-only Internal Workspace control (endpoint returns 404 for everyone else, so nothing renders)
   useEffect(() => {
-    if (!IS_CLERK_DEV_RUNTIME || !clerkLoaded || !isSignedIn || !orgId) return;
-    if (!subData?.isTrial) {
-      setDevDiagnostic(null);
-      return;
-    }
+    if (!clerkLoaded || !isSignedIn || !orgId) return;
     let cancelled = false;
-    fetch("/api/marketing-shield/v1/billing/enterprise-diagnostic", { cache: "no-store" })
+    fetch("/api/marketing-shield/v1/admin/internal-workspace", { cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
-        if (cancelled || !json?.success || !json.data) return;
-        const diag = json.data as EnterpriseDevDiagnostic;
-        if (diag.provisionAttempt?.granted) {
-          loadBilling();
-          window.dispatchEvent(new Event("cogent:billing-updated"));
-          return;
-        }
-        setDevDiagnostic(diag);
+        if (cancelled) return;
+        setOwnerState(json?.isOwner ? { isInternal: Boolean(json.isInternal), isDemoTenant: json.isDemoTenant } : null);
       })
       .catch(() => {
-        // Non-blocking dev diagnostic
+        if (!cancelled) setOwnerState(null);
       });
     return () => {
       cancelled = true;
     };
-  }, [clerkLoaded, isSignedIn, orgId, subData?.isTrial, loadBilling]);
+  }, [clerkLoaded, isSignedIn, orgId]);
+
+  const toggleInternalWorkspace = useCallback(
+    async (enabled: boolean) => {
+      setOwnerToggle({ saving: true });
+      try {
+        const res = await fetch("/api/marketing-shield/v1/admin/internal-workspace", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setOwnerToggle({ saving: false, error: json.error || "Unable to update workspace." });
+          return;
+        }
+        setOwnerState((prev) => ({ ...(prev || {}), isInternal: Boolean(json.isInternal) }));
+        setOwnerToggle({ saving: false });
+        loadBilling();
+        window.dispatchEvent(new Event("cogent:billing-updated"));
+      } catch (err) {
+        setOwnerToggle({
+          saving: false,
+          error: err instanceof Error ? err.message : "Unable to update workspace.",
+        });
+      }
+    },
+    [loadBilling],
+  );
 
   // Verify Paystack transaction automatically whenever returning with a Paystack reference
   useEffect(() => {
@@ -247,46 +254,9 @@ export function BillingPlanTab() {
     plan?.features.work_product_docx_export ?? plan?.features.export_unwatermarked,
   );
 
-  const devDiagHint = (() => {
-    if (!devDiagnostic) return null;
-    if (devDiagnostic.isDemoTenant) {
-      return "You are viewing the Demo Tenant (org_demo_1111), which stays on Trial. Create or select a real organization.";
-    }
-    if (!devDiagnostic.emailAllowlistConfigured && !devDiagnostic.orgAllowlistConfigured) {
-      return "INTERNAL_ENTERPRISE_EMAILS is NOT set (empty) in this running server environment. Add INTERNAL_ENTERPRISE_EMAILS=your@email.com to your Development/Preview env vars (or .env.local) and restart/redeploy.";
-    }
-    const matchedUnverified = devDiagnostic.userEmails.find(
-      (e) => e.matchesAllowlist && !e.verified,
-    );
-    if (matchedUnverified) {
-      return `Your email (${matchedUnverified.email}) matches INTERNAL_ENTERPRISE_EMAILS, but Clerk verification status is unverified. Verify this email in Clerk.`;
-    }
-    const matchedVerified = devDiagnostic.userEmails.find((e) => e.matchesAllowlist && e.verified);
-    if (!matchedVerified) {
-      const signedInEmails = devDiagnostic.userEmails.map((e) => e.email).join(", ") || "none";
-      return `Your signed-in email (${signedInEmails}) does not match INTERNAL_ENTERPRISE_EMAILS on this server (allowlist has ${devDiagnostic.emailAllowlistCount} address${devDiagnostic.emailAllowlistCount === 1 ? "" : "es"}).`;
-    }
-    const reason = devDiagnostic.provisionAttempt?.reason || devDiagnostic.skipReason;
-    if (reason === "FIRST_ORG_ALREADY_COMPED") {
-      return `Another active workspace in the database (${devDiagnostic.priorCompedCount} found) already used your Enterprise allowance.`;
-    }
-    if (reason === "NOT_ORG_CREATOR") {
-      return "This account did not create the active Clerk organization (org.createdBy mismatch).";
-    }
-    return `Enterprise check returned: ${reason || "unknown"} (org: ${devDiagnostic.clerkOrgId}).`;
-  })();
 
   return (
     <div className="space-y-6">
-      {devDiagHint && (
-        <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 flex items-start gap-3">
-          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
-          <div className="text-xs space-y-1">
-            <div className="font-semibold">Development Mode Enterprise Check</div>
-            <div className="text-amber-900 leading-relaxed">{devDiagHint}</div>
-          </div>
-        </div>
-      )}
 
       {verifyState.status === "verifying" && (
         <div className="p-4 rounded-xl bg-zinc-50 border border-zinc-200 text-zinc-800 flex items-center gap-3">
@@ -644,6 +614,42 @@ export function BillingPlanTab() {
           </Link>
         </div>
       </div>
+
+      {/* Owner-only: Internal Workspace control (only rendered for the platform owner) */}
+      {ownerState && !ownerState.isDemoTenant && (
+        <div className="bg-white rounded-xl border border-zinc-200 p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-950">Internal Workspace</h3>
+              <p className="text-xs text-zinc-500 mt-1 max-w-xl">
+                Only you can see this. When on, this workspace has unlimited Enterprise access with
+                no trial or billing. Use it for walkthroughs, demos and marketing. Teammates you
+                invite get the same access here. Nothing in the app marks it as internal.
+              </p>
+              {ownerToggle.error && (
+                <p className="text-xs text-rose-700 mt-2">{ownerToggle.error}</p>
+              )}
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={ownerState.isInternal}
+              aria-label="Toggle Internal Workspace"
+              disabled={ownerToggle.saving}
+              onClick={() => toggleInternalWorkspace(!ownerState.isInternal)}
+              className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50 ${
+                ownerState.isInternal ? "bg-emerald-600" : "bg-zinc-300"
+              }`}
+            >
+              <span
+                className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                  ownerState.isInternal ? "translate-x-5" : "translate-x-0.5"
+                }`}
+              />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

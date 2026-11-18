@@ -124,9 +124,10 @@ Build and verify the first complete end-to-end vertical slice: a user logs in vi
    - Confirm that `GEMINI_API_KEY`, `INNGEST_EVENT_KEY`, and `INNGEST_SIGNING_KEY` are added under **Vercel Settings** $\rightarrow$ **Environment Variables**.
 3. **Clerk User Account:**
    - Ensure you have an active user account in Clerk with an assigned organization membership to test the `/chat` workspace.
-4. **Internal Team & Walkthrough Enterprise Access (Optional, No Payment Required):**
-   - To automatically put your internal/marketing/walkthrough organization on the **Enterprise** plan without paying via Paystack, add one or both of the following in **Vercel Settings** $\rightarrow$ **Environment Variables** and redeploy:
-     - `INTERNAL_ENTERPRISE_EMAILS`: Comma-separated verified Clerk user email(s) (e.g. `founder@company.com`). Upgrades the user's first active organization.
-     - `INTERNAL_ENTERPRISE_ORG_IDS`: Comma-separated Clerk Organization ID(s) (e.g. `org_2abc...` from Clerk Dashboard $\rightarrow$ Organizations). Directly upgrades that organization for you and your team regardless of who created it or how many members have joined.
-   - To inspect or immediately upgrade an existing organization from the CLI, run:
-     `pnpm exec tsx scripts/grant-enterprise.ts --org <clerk_org_id_or_slug> --apply` (or `--email <user_email> --apply`).
+4. **Owner-Only Internal Workspace (Demos, Walkthroughs & Marketing — Unlimited Enterprise, No Payment):**
+   - In **Vercel Settings** $\rightarrow$ **Environment Variables**, add `PLATFORM_OWNER_EMAIL` (your verified Clerk email) and tick **Production** and **Preview** only (not Development). Redeploy.
+   - Optional: add `PLATFORM_OWNER_CLERK_USER_ID` (`user_...`) per environment as an extra pin (Clerk dev and prod instances have different user IDs).
+   - Apply migration `supabase/migrations/20261118000001_internal_workspace_override.sql` to the Supabase project(s) used by Production and Preview.
+   - Any organization you create while signed in with that email becomes an Internal Workspace automatically. For an existing org, open **Settings** $\rightarrow$ **Billing** and use the owner-only **Internal Workspace** toggle (invisible to everyone else).
+   - Teammates you invite into an Internal Workspace get full Enterprise there; only the owner can create/flag Internal Workspaces.
+   - CLI fallback: `npx tsx scripts/grant-enterprise.ts --org <clerk_org_id_or_slug> --apply` (add `--disable` to remove, `--list` to view).
