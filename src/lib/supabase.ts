@@ -1,6 +1,21 @@
 import { createClient as createSupabaseJsClient } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
 
+const MOCK_SUPABASE_URL = "https://mock.supabase.co";
+
+function getMockGlobalOptions() {
+  if (env.NEXT_PUBLIC_SUPABASE_URL !== MOCK_SUPABASE_URL) {
+    return undefined;
+  }
+  return {
+    fetch: async () =>
+      new Response(
+        JSON.stringify({ message: "Mock Supabase client cannot perform network requests" }),
+        { status: 400, headers: { "content-type": "application/json" } },
+      ),
+  };
+}
+
 /**
  * Creates an anonymous public Supabase client for client-side queries.
  */
@@ -13,6 +28,7 @@ export function createBrowserSupabaseClient() {
         persistSession: true,
         autoRefreshToken: true,
       },
+      global: getMockGlobalOptions(),
     },
   );
 }
@@ -31,6 +47,7 @@ export function createAdminSupabaseClient() {
         persistSession: false,
         autoRefreshToken: false,
       },
+      global: getMockGlobalOptions(),
     },
   );
 }
