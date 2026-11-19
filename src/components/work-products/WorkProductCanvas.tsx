@@ -110,6 +110,7 @@ export function WorkProductCanvas({
   const [showGapsOnly, setShowGapsOnly] = useState(false);
 
   const [saving, setSaving] = useState(false);
+  const [hasLocalEdits, setHasLocalEdits] = useState(false);
   const [saveStateLabel, setSaveStateLabel] = useState<string | null>(null);
   const [exportingFormat, setExportingFormat] = useState<"pdf" | "docx" | "md" | null>(null);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
@@ -121,7 +122,19 @@ export function WorkProductCanvas({
 
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
+  const savingRef = useRef(false);
+  const draftTitleRef = useRef(draftTitle);
+  draftTitleRef.current = draftTitle;
+  const draftMarkdownRef = useRef(draftMarkdown);
+  draftMarkdownRef.current = draftMarkdown;
+  const onWorkProductUpdatedRef = useRef(onWorkProductUpdated);
+  onWorkProductUpdatedRef.current = onWorkProductUpdated;
+
   const lastSavedSnapshotRef = useRef<{ title: string; markdown: string }>({
+    title: "",
+    markdown: "",
+  });
+  const lastSubmittedSnapshotRef = useRef<{ title: string; markdown: string }>({
     title: "",
     markdown: "",
   });
@@ -138,6 +151,10 @@ export function WorkProductCanvas({
   }, [exportMenuOpen]);
 
   const loadWorkProduct = useCallback(async () => {
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
+    }
     setLoading(true);
     setLoadError(null);
     try {
@@ -157,10 +174,14 @@ export function WorkProductCanvas({
       setDraftMarkdown(wp.markdown_content);
       setPreviewVersion(null);
       setEditMode(true);
-      lastSavedSnapshotRef.current = {
+      setHasLocalEdits(false);
+      setSaveStateLabel(null);
+      const snapshot = {
         title: wp.title,
         markdown: wp.markdown_content,
       };
+      lastSavedSnapshotRef.current = snapshot;
+      lastSubmittedSnapshotRef.current = snapshot;
     } catch {
       setLoadError("Network error while loading work product.");
     } finally {
@@ -182,6 +203,20 @@ export function WorkProductCanvas({
       status?: WorkProductStatus;
       change_summary?: string;
     }) => {
+      if (savingRef.current) return;
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+
+      const submittedTitle = (payload.title ?? draftTitleRef.current).trim();
+      const submittedMarkdown = payload.markdown_content ?? draftMarkdownRef.current;
+      lastSubmittedSnapshotRef.current = {
+        title: submittedTitle,
+        markdown: submittedMarkdown,
+      };
+
+      savingRef.current = true;
       setSaving(true);
       setExportNotice(null);
       try {
@@ -202,37 +237,76 @@ export function WorkProductCanvas({
         if (newRev) {
           setRevisions((prev) => [newRev, ...prev.filter((r) => r.id !== newRev.id)]);
         }
-        lastSavedSnapshotRef.current = {
+        const savedSnapshot = {
           title: updated.title,
           markdown: updated.markdown_content,
         };
+        lastSavedSnapshotRef.current = savedSnapshot;
+        lastSubmittedSnapshotRef.current = savedSnapshot;
+
+        const noNewerLocalEdits =
+          draftMarkdownRef.current === submittedMarkdown &&
+          draftTitleRef.current.trim() === submittedTitle;
+        if (noNewerLocalEdits) {
+          setHasLocalEdits(false);
+          if (updated.markdown_content !== draftMarkdownRef.current) {
+            setDraftMarkdown(updated.markdown_content);
+          }
+          if (updated.title !== draftTitleRef.current) {
+            setDraftTitle(updated.title);
+          }
+        }
+
         setSaveStateLabel(`Saved v${updated.version_number}`);
-        onWorkProductUpdated?.(updated);
+        onWorkProductUpdatedRef.current?.(updated);
       } catch {
         setExportNotice({ type: "error", message: "Network error saving work product revision." });
       } finally {
+        savingRef.current = false;
         setSaving(false);
       }
     },
-    [workProductId, onWorkProductUpdated],
+    [workProductId],
   );
 
-  // Debounced auto-save when editing in the Word-style document canvas
+  const hasLoadedWorkProduct = Boolean(workProduct);
+
+  // Debounced auto-save only when the user has made local edits in the Word-style document canvas
   useEffect(() => {
-    if (!editMode || previewVersion !== null || showGapsOnly || !workProduct) return;
     if (
-      draftTitle === lastSavedSnapshotRef.current.title &&
+      !editMode ||
+      previewVersion !== null ||
+      showGapsOnly ||
+      !hasLoadedWorkProduct ||
+      !hasLocalEdits ||
+      saving
+    ) {
+      return;
+    }
+
+    const trimmedTitle = draftTitle.trim();
+    if (trimmedTitle.length < 3 || draftMarkdown.trim().length < 10) return;
+
+    if (
+      trimmedTitle === lastSavedSnapshotRef.current.title.trim() &&
       draftMarkdown === lastSavedSnapshotRef.current.markdown
     ) {
       return;
     }
-    if (draftTitle.trim().length < 3 || draftMarkdown.trim().length < 10) return;
+
+    if (
+      trimmedTitle === lastSubmittedSnapshotRef.current.title &&
+      draftMarkdown === lastSubmittedSnapshotRef.current.markdown
+    ) {
+      return;
+    }
 
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     setSaveStateLabel("Unsaved edits...");
     autoSaveTimerRef.current = setTimeout(() => {
+      if (savingRef.current) return;
       void persistPatch({
-        title: draftTitle.trim(),
+        title: trimmedTitle,
         markdown_content: draftMarkdown,
         change_summary: "Studio Canvas Word edit",
       });
@@ -241,7 +315,17 @@ export function WorkProductCanvas({
     return () => {
       if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     };
-  }, [editMode, previewVersion, showGapsOnly, draftTitle, draftMarkdown, workProduct, persistPatch]);
+  }, [
+    editMode,
+    previewVersion,
+    showGapsOnly,
+    hasLoadedWorkProduct,
+    hasLocalEdits,
+    saving,
+    draftTitle,
+    draftMarkdown,
+    persistPatch,
+  ]);
 
   const handleExport = async (format: "pdf" | "docx" | "md") => {
     if (exportingFormat) return;
@@ -319,7 +403,9 @@ export function WorkProductCanvas({
 
   const evidenceGaps = (workProduct.evidence_gaps || []) as WorkProductEvidenceGap[];
   const guardrails = (workProduct.guardrail_report || {}) as Partial<WorkProductGuardrailReport>;
-  const needsEvidenceMatches = (draftMarkdown.match(/\[NEEDS_INTERNAL_EVIDENCE\]/g) || []).length;
+  const needsEvidenceMatches = (
+    draftMarkdown.match(/\\?\[NEEDS\\?_INTERNAL\\?_EVIDENCE\\?\]/g) || []
+  ).length;
   const totalGapsCount = Math.max(evidenceGaps.length, needsEvidenceMatches);
   const isHistoricalPreview =
     previewVersion !== null && previewVersion !== workProduct.version_number;
@@ -404,7 +490,10 @@ export function WorkProductCanvas({
               type="text"
               aria-label="Document title"
               value={draftTitle}
-              onChange={(e) => setDraftTitle(e.target.value)}
+              onChange={(e) => {
+                setDraftTitle(e.target.value);
+                setHasLocalEdits(true);
+              }}
               className="flex-1 min-w-[200px] rounded-lg border border-transparent hover:border-zinc-200 focus:border-zinc-300 bg-transparent focus:bg-white px-2 py-1 -ml-2 text-[15px] font-semibold text-zinc-950 outline-none focus:outline-none focus-visible:outline-none transition-colors"
             />
           ) : (
@@ -534,6 +623,7 @@ export function WorkProductCanvas({
                 setDraftMarkdown(displayedMarkdown);
                 setPreviewVersion(null);
                 setEditMode(true);
+                setHasLocalEdits(true);
               }}
               className="font-medium underline cursor-pointer"
             >
@@ -571,6 +661,7 @@ export function WorkProductCanvas({
               onChange={(nextMd) => {
                 if (!isEditorReadOnly) {
                   setDraftMarkdown(nextMd);
+                  setHasLocalEdits(true);
                 }
               }}
               readOnly={isEditorReadOnly}

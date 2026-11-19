@@ -327,6 +327,28 @@ export class WorkProductService {
     const nextVersion = Number(existing.version_number || 1) + 1;
     const nextHash = this.computeSha256(validation.sanitized_markdown);
 
+    if (
+      input.change_summary === "Studio Canvas Word edit" &&
+      nextHash === existing.source_hash_sha256 &&
+      nextTitle === existing.title &&
+      nextStatus === existing.status
+    ) {
+      const { data: latestRev } = await supabase
+        .from("work_product_revisions")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("work_product_id", workProductId)
+        .eq("version_number", existing.version_number)
+        .maybeSingle();
+
+      if (latestRev) {
+        return {
+          workProduct: existing as WorkProductRecord,
+          revision: latestRev as WorkProductRevisionRecord,
+        };
+      }
+    }
+
     const { data: updated, error: updErr } = await supabase
       .from("work_product_artifacts")
       .update({

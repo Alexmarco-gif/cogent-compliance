@@ -491,5 +491,47 @@ describe("Work Product Anti-Hallucination Guardrails & PDF/DOCX Export", () => {
       )
     ).toBe(true);
   });
+
+  it("is idempotent across repeated validateWorkProduct runs and Tiptap-escaped markers", async () => {
+    const validator = new GuardrailValidator();
+    const initialDraft = [
+      "### Part A",
+      "Q3: NexaPay submits its annual CAR to NDPC on or before March 15 of every year.",
+      "### Part B",
+      "The spike in unauthorized wallet debits was traced to an anomalous deadlock during our database migration on October 12.",
+    ].join("\n");
+
+    const pass1 = await validator.validateWorkProduct(
+      {
+        workflow_type: "SUPERVISORY_DDQ_RESPONSE",
+        markdown_content: initialDraft,
+        citations: [],
+      },
+      { tenantId: "tenant_1", hasInternalKnowledgeRefs: false }
+    );
+
+    // Must only contain one warning header and one NEEDS_INTERNAL_EVIDENCE block
+    expect(pass1.sanitized_markdown.match(/REGULATORY INTEGRITY & ACCURACY WARNING/g)).toHaveLength(1);
+    expect(pass1.sanitized_markdown.match(/STATUTORY LEGAL FLOOR WARNING/g)).toBeNull();
+
+    // Simulate Tiptap Markdown round-trip escaping before second save
+    const tiptapEscaped = pass1.sanitized_markdown
+      .replace(/\[NEEDS_INTERNAL_EVIDENCE\]/g, "\\[NEEDS\\_INTERNAL\\_EVIDENCE\\]")
+      .replace(/REGULATORY INTEGRITY & ACCURACY WARNING/g, "REGULATORY INTEGRITY &amp; ACCURACY WARNING")
+      .replace(/BOFIA_2020_FACTUAL_INTEGRITY_RISK/g, "BOFIA\\_2020\\_FACTUAL\\_INTEGRITY\\_RISK")
+      .replace(/STATUTORY_ACCURACY_NDPC_CAR_DEADLINE/g, "STATUTORY\\_ACCURACY\\_NDPC\\_CAR\\_DEADLINE")
+      .replace(/STATUTORY_OMISSION_CYBERCRIMES_S37_3/g, "STATUTORY\\_OMISSION\\_CYBERCRIMES\\_S37\\_3");
+
+    const pass2 = await validator.validateWorkProduct(
+      {
+        workflow_type: "SUPERVISORY_DDQ_RESPONSE",
+        markdown_content: tiptapEscaped,
+        citations: [],
+      },
+      { tenantId: "tenant_1", hasInternalKnowledgeRefs: false }
+    );
+
+    expect(pass2.sanitized_markdown).toBe(tiptapEscaped);
+  });
 });
 

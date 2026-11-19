@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
 import StarterKit from "@tiptap/starter-kit";
@@ -42,12 +42,16 @@ export function WordStyleEditor({
   const [linkPopoverOpen, setLinkPopoverOpen] = useState(false);
   const [linkUrlInput, setLinkUrlInput] = useState("");
   const lastEmittedMarkdownRef = useRef<string>(markdown);
+  const lastEditorMarkdownRef = useRef<string | null>(null);
   const lastDocumentKeyRef = useRef<string>(documentKey);
+  const isSyncingFromPropRef = useRef<boolean>(false);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const readOnlyRef = useRef(readOnly);
+  readOnlyRef.current = readOnly;
 
-  const editor = useEditor({
-    immediatelyRender: false,
-    editable: !readOnly,
-    extensions: [
+  const extensions = useMemo(
+    () => [
       StarterKit.configure({
         heading: { levels: [1, 2, 3] },
         link: {
@@ -67,13 +71,33 @@ export function WordStyleEditor({
       }),
       Markdown,
     ],
+    [],
+  );
+
+  const editor = useEditor({
+    immediatelyRender: false,
+    editable: !readOnly,
+    extensions,
     content: markdown,
     contentType: "markdown",
-    onUpdate: ({ editor: ed }) => {
+    onCreate: ({ editor: ed }) => {
+      try {
+        lastEditorMarkdownRef.current = ed.getMarkdown();
+      } catch {
+        lastEditorMarkdownRef.current = null;
+      }
+    },
+    onUpdate: ({ editor: ed, transaction }) => {
+      if (isSyncingFromPropRef.current || readOnlyRef.current) return;
+      if (!transaction?.docChanged) return;
       try {
         const nextMd = ed.getMarkdown();
+        if (lastEditorMarkdownRef.current !== null && nextMd === lastEditorMarkdownRef.current) {
+          return;
+        }
+        lastEditorMarkdownRef.current = nextMd;
         lastEmittedMarkdownRef.current = nextMd;
-        onChange?.(nextMd);
+        onChangeRef.current?.(nextMd);
       } catch {
         // Fallback to plain text if serialization throws on intermediate edits
       }
@@ -83,7 +107,7 @@ export function WordStyleEditor({
   useEffect(() => {
     if (!editor) return;
     if (editor.isEditable !== !readOnly) {
-      editor.setEditable(!readOnly);
+      editor.setEditable(!readOnly, false);
     }
   }, [editor, readOnly]);
 
@@ -95,7 +119,17 @@ export function WordStyleEditor({
     if (keyChanged || externalChange) {
       lastDocumentKeyRef.current = documentKey;
       lastEmittedMarkdownRef.current = markdown;
-      editor.commands.setContent(markdown, { contentType: "markdown", emitUpdate: false });
+      isSyncingFromPropRef.current = true;
+      try {
+        editor.commands.setContent(markdown, { contentType: "markdown", emitUpdate: false });
+        try {
+          lastEditorMarkdownRef.current = editor.getMarkdown();
+        } catch {
+          lastEditorMarkdownRef.current = null;
+        }
+      } finally {
+        isSyncingFromPropRef.current = false;
+      }
     }
   }, [editor, markdown, documentKey]);
 

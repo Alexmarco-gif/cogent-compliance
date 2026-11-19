@@ -392,10 +392,14 @@ export class GuardrailValidator {
       const fabricatedIncidentFactPattern =
         /\b(?:was\s+traced\s+to|anomalous\s+deadlock|database\s+migration\s+on|credential[- ]stuffing\s+api\s+vector|has\s+been\s+credited\s+directly|tickets?\s+(?:were|was)\s+logged\s+within|have\s+been\s+filed\s+on\s+the\s+goaml|is\s+conducted\s+biannually)\b/i;
 
+      const normalizeForMarkerCheck = (text: string) =>
+        text.replace(/\\([_[\]*`~#>-])/g, "$1").replace(/&amp;/g, "&");
+      const normalizedBeforeAppend = normalizeForMarkerCheck(sanitizedMarkdown);
+
       if (!hasInternalSupport && (affirmativeInternalClaimPattern.test(sanitizedMarkdown) || fabricatedIncidentFactPattern.test(sanitizedMarkdown))) {
-        const alreadyMarked = sanitizedMarkdown.includes("[NEEDS_INTERNAL_EVIDENCE]");
+        const alreadyMarked = normalizedBeforeAppend.includes("[NEEDS_INTERNAL_EVIDENCE]");
         if (!alreadyMarked) {
-          sanitizedMarkdown = `${sanitizedMarkdown}\n\n> **[NEEDS_INTERNAL_EVIDENCE]**: Internal operational claims, past certifications, or incident/restitution figures above lack verified institutional records or engineering logs in the workspace. Under BOFIA 2020 and CBN Consumer Protection Regulations 2019 Regulation 7, replace unverified assertions with verified records or bracketed \`[insert ...]\` fields before submission.`;
+          sanitizedMarkdown = `${sanitizedMarkdown}\n\n> **[NEEDS_INTERNAL_EVIDENCE]**: Internal operational claims, past certifications, or incident/restitution figures above lack verified institutional records or engineering logs in the workspace. Under BOFIA 2020 and CBN Consumer Protection Regulations 2019 Regulation 7, replace unverified assertions with verified records or bracketed \`[insert...]\` fields before submission.`;
         }
         if (!evidenceGaps.some((g) => g.gap_code === "DDQ_UNVERIFIED_INTERNAL_CONTROL")) {
           evidenceGaps.push({
@@ -412,7 +416,7 @@ export class GuardrailValidator {
 
       if (!hasInternalSupport && fabricatedIncidentFactPattern.test(sanitizedMarkdown)) {
         legalFloorWarnings.push(
-          "BOFIA_2020_FACTUAL_INTEGRITY_RISK: Draft asserts unverified incident root causes, restitution counts, or regulatory filing completions without supplied operational logs. Verify and replace with actual logs or [insert ...] placeholders prior to CBN/sponsor bank submission."
+          "BOFIA_2020_FACTUAL_INTEGRITY_RISK: Draft asserts unverified incident root causes, restitution counts, or regulatory filing completions without supplied operational logs. Verify and replace with actual logs or [insert...] placeholders prior to CBN/sponsor bank submission."
         );
       }
 
@@ -444,9 +448,15 @@ export class GuardrailValidator {
       }
 
       if (legalFloorWarnings.length > 0) {
-        sanitizedMarkdown = `${sanitizedMarkdown}\n\n> **REGULATORY INTEGRITY & ACCURACY WARNING**:\n${legalFloorWarnings
-          .map((w) => `> - ${w}`)
-          .join("\n")}`;
+        const missingWarnings = legalFloorWarnings.filter((w) => {
+          const code = w.split(":")[0] || w;
+          return !normalizedBeforeAppend.includes(code);
+        });
+        if (missingWarnings.length > 0) {
+          sanitizedMarkdown = `${sanitizedMarkdown}\n\n> **REGULATORY INTEGRITY & ACCURACY WARNING**:\n${missingWarnings
+            .map((w) => `> - ${w}`)
+            .join("\n")}`;
+        }
       }
     }
 
@@ -566,9 +576,18 @@ export class GuardrailValidator {
     }
 
     if (legalFloorWarnings.length > 0) {
-      sanitizedMarkdown = `${sanitizedMarkdown}\n\n> **STATUTORY LEGAL FLOOR WARNING**:\n${legalFloorWarnings
-        .map((w) => `> - ${w}`)
-        .join("\n")}`;
+      const normalizedCurrent = sanitizedMarkdown
+        .replace(/\\([_[\]*`~#>-])/g, "$1")
+        .replace(/&amp;/g, "&");
+      const missingLegalFloorWarnings = legalFloorWarnings.filter((w) => {
+        const code = w.split(":")[0] || w;
+        return !normalizedCurrent.includes(code);
+      });
+      if (missingLegalFloorWarnings.length > 0) {
+        sanitizedMarkdown = `${sanitizedMarkdown}\n\n> **STATUTORY LEGAL FLOOR WARNING**:\n${missingLegalFloorWarnings
+          .map((w) => `> - ${w}`)
+          .join("\n")}`;
+      }
     }
 
     // 5. Cross-Border Comparison Universal Evidence Coverage Check
