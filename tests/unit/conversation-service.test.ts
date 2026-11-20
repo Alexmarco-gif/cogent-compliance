@@ -478,5 +478,24 @@ describe("ConversationService (Unit)", () => {
     });
     expect(invalid.success).toBe(false);
   });
+
+  it("permanently deletes a conversation scoped by tenant and id via deleteConversation", async () => {
+    const maybeSingleMock = vi.fn().mockResolvedValue({
+      data: { id: "conv_del_1" },
+      error: null,
+    });
+    const selectMock = vi.fn().mockReturnValue({ maybeSingle: maybeSingleMock });
+    const eqIdMock = vi.fn().mockReturnValue({ select: selectMock });
+    const eqTenantMock = vi.fn().mockReturnValue({ eq: eqIdMock });
+
+    mockSupabase.from.mockReturnValue({
+      delete: vi.fn().mockReturnValue({ eq: eqTenantMock }),
+    });
+
+    const deleted = await service.deleteConversation(testTenantId, "conv_del_1");
+    expect(deleted).toBe(true);
+    expect(eqTenantMock).toHaveBeenCalledWith("tenant_id", testTenantId);
+    expect(eqIdMock).toHaveBeenCalledWith("id", "conv_del_1");
+  });
 });
 

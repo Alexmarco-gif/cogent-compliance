@@ -682,6 +682,27 @@ function ChatWorkspaceContent() {
     }
   };
 
+  const handleDeleteConversation = async (id: string) => {
+    try {
+      const res = await fetch(`/api/marketing-shield/v1/conversations/${id}`, {
+        method: "DELETE",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success) {
+        applyApiFailure(res.status, json, "Failed to delete thread.");
+        return;
+      }
+      const remaining = conversations.filter((c) => c.id !== id);
+      setConversations(remaining);
+      if (activeConvId === id) {
+        handleNewConversation();
+      }
+    } catch (err) {
+      console.error("Failed to delete conversation", err);
+      setChatError("Network error while deleting thread.");
+    }
+  };
+
   const ensureActiveCampaignWithCopy = async (rewrittenCopy: string): Promise<{
     campaignId: string;
     revisionId: string;
@@ -1453,6 +1474,7 @@ function ChatWorkspaceContent() {
         onNewAudit={handleNewConversation}
         onRenameConversation={handleRename}
         onArchiveConversation={handleArchive}
+        onDeleteConversation={handleDeleteConversation}
         loadingConversations={loadingConversations}
         collapsed={sidebarCollapsed}
         onToggleCollapse={handleToggleSidebar}
@@ -1672,7 +1694,7 @@ function ChatWorkspaceContent() {
               <div ref={messagesEndRef} />
             </div>
 
-            <footer className="px-4 sm:px-6 py-3.5 bg-white border-t border-zinc-200 shrink-0">
+            <footer className="px-4 sm:px-6 pb-4 pt-2 bg-white shrink-0">
               <ChatComposer
                 onSendMessage={handleSendMessage}
                 conversationId={activeConvId || undefined}

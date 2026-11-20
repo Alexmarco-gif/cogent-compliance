@@ -71,6 +71,7 @@ export interface WorkspaceSidebarProps {
   onNewAudit?: () => void;
   onRenameConversation?: (id: string, newTitle: string) => Promise<void>;
   onArchiveConversation?: (id: string) => Promise<void>;
+  onDeleteConversation?: (id: string) => Promise<void>;
   loadingConversations?: boolean;
   collapsed?: boolean;
   onToggleCollapse?: () => void;
@@ -85,6 +86,7 @@ export function WorkspaceSidebar({
   onNewAudit,
   onRenameConversation,
   onArchiveConversation,
+  onDeleteConversation,
   loadingConversations = false,
   collapsed = false,
   onToggleCollapse,
@@ -108,6 +110,8 @@ export function WorkspaceSidebar({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [updatingAvatar, setUpdatingAvatar] = useState(false);
   const [subSummary, setSubSummary] = useState<SubscriptionSummary | null>(null);
@@ -209,18 +213,22 @@ export function WorkspaceSidebar({
     }
   }, [collapsed]);
 
-  // Close user menu on outside click
+  // Close user menu and thread options menu on outside click
   useEffect(() => {
-    if (!userMenuOpen) return;
+    if (!userMenuOpen && !menuOpenId) return;
     const onMouseDown = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
-      if (!target?.closest("[data-user-menu-root]")) {
+      if (userMenuOpen && !target?.closest("[data-user-menu-root]")) {
         setUserMenuOpen(false);
+      }
+      if (menuOpenId && !target?.closest("[data-thread-menu-root]")) {
+        setMenuOpenId(null);
+        setConfirmDeleteId(null);
       }
     };
     document.addEventListener("mousedown", onMouseDown);
     return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [userMenuOpen]);
+  }, [userMenuOpen, menuOpenId]);
 
   const handleAvatarFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -362,6 +370,29 @@ export function WorkspaceSidebar({
     });
     if (res.ok) {
       setSelfConversations((prev) => prev.filter((c) => c.id !== id));
+    }
+  };
+
+  const handleDeleteInternal = async (id: string) => {
+    setDeletingId(id);
+    try {
+      if (onDeleteConversation) {
+        await onDeleteConversation(id);
+        return;
+      }
+      const res = await fetch(`/api/marketing-shield/v1/conversations/${id}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        setSelfConversations((prev) => prev.filter((c) => c.id !== id));
+        if (pathname === "/chat" && activeConversationId === id) {
+          router.push("/chat?new=1");
+        }
+      }
+    } finally {
+      setDeletingId(null);
+      setConfirmDeleteId(null);
+      setMenuOpenId(null);
     }
   };
 
@@ -668,14 +699,19 @@ export function WorkspaceSidebar({
                           <Check className="h-3.5 w-3.5" />
                         </button>
                       ) : (
-                        <div className="relative shrink-0">
+                        <div className="relative shrink-0" data-thread-menu-root>
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
+                              setConfirmDeleteId(null);
                               setMenuOpenId(menuOpenId === conv.id ? null : conv.id);
                             }}
-                            className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-zinc-400 hover:text-zinc-900 transition-opacity"
+                            className={`p-0.5 rounded text-zinc-400 hover:text-zinc-900 transition-opacity cursor-pointer ${
+                              menuOpenId === conv.id || isActive
+                                ? "opacity-100"
+                                : "opacity-0 group-hover:opacity-100 focus:opacity-100"
+                            }`}
                             aria-label="Thread options"
                           >
                             <MoreHorizontal className="h-3.5 w-3.5" />
@@ -683,32 +719,70 @@ export function WorkspaceSidebar({
 
                           {menuOpenId === conv.id && (
                             <div
-                              className="absolute right-0 top-6 z-30 w-28 bg-white border border-zinc-200 rounded-md shadow-md py-1 text-[12px]"
+                              className="absolute right-0 top-6 z-30 w-36 bg-white border border-zinc-200 rounded-md shadow-md py-1 text-[12px]"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setEditingId(conv.id);
-                                  setEditTitle(conv.title);
-                                  setMenuOpenId(null);
-                                }}
-                                className="w-full text-left px-2.5 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-1.5"
-                              >
-                                <Edit2 className="h-3 w-3" />
-                                <span>Rename</span>
-                              </button>
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  setMenuOpenId(null);
-                                  await handleArchiveInternal(conv.id);
-                                }}
-                                className="w-full text-left px-2.5 py-1.5 text-rose-700 hover:bg-rose-50 flex items-center gap-1.5"
-                              >
-                                <Archive className="h-3 w-3" />
-                                <span>Archive</span>
-                              </button>
+                              {confirmDeleteId === conv.id ? (
+                                <div className="px-2.5 py-1.5 space-y-1.5">
+                                  <p className="text-[11px] font-medium text-zinc-700">
+                                    Delete this chat?
+                                  </p>
+                                  <div className="flex items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      disabled={deletingId === conv.id}
+                                      onClick={() => void handleDeleteInternal(conv.id)}
+                                      className="flex-1 rounded bg-rose-600 hover:bg-rose-700 disabled:opacity-50 px-2 py-1 text-[11px] font-medium text-white cursor-pointer"
+                                    >
+                                      {deletingId === conv.id ? "Deleting..." : "Delete"}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={deletingId === conv.id}
+                                      onClick={() => setConfirmDeleteId(null)}
+                                      className="rounded border border-zinc-200 bg-white hover:bg-zinc-50 px-2 py-1 text-[11px] font-medium text-zinc-700 cursor-pointer"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingId(conv.id);
+                                      setEditTitle(conv.title);
+                                      setMenuOpenId(null);
+                                      setConfirmDeleteId(null);
+                                    }}
+                                    className="w-full text-left px-2.5 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    <Edit2 className="h-3 w-3" />
+                                    <span>Rename</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      setMenuOpenId(null);
+                                      setConfirmDeleteId(null);
+                                      await handleArchiveInternal(conv.id);
+                                    }}
+                                    className="w-full text-left px-2.5 py-1.5 text-zinc-700 hover:bg-zinc-100 flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    <Archive className="h-3 w-3" />
+                                    <span>Archive</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setConfirmDeleteId(conv.id)}
+                                    className="w-full text-left px-2.5 py-1.5 text-rose-700 hover:bg-rose-50 flex items-center gap-1.5 cursor-pointer"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                    <span>Delete</span>
+                                  </button>
+                                </>
+                              )}
                             </div>
                           )}
                         </div>

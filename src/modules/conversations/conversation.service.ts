@@ -254,6 +254,34 @@ export class ConversationService {
   }
 
   /**
+   * Permanently deletes a conversation and cascades its messages/links within the tenant boundary.
+   */
+  public async deleteConversation(
+    tenantId: string,
+    conversationId: string
+  ): Promise<boolean> {
+    const supabase = createAdminSupabaseClient();
+    const { data, error } = await supabase
+      .from("marketing_conversations")
+      .delete()
+      .eq("tenant_id", tenantId)
+      .eq("id", conversationId)
+      .select("id")
+      .maybeSingle();
+
+    if (error) {
+      logger.error("Failed to delete conversation", {
+        tenantId,
+        conversationId,
+        error: error.message,
+      });
+      throw new Error(`Failed to delete conversation: ${error.message}`);
+    }
+
+    return Boolean(data);
+  }
+
+  /**
    * Lists chronological messages for a conversation.
    */
   public async listMessages(
