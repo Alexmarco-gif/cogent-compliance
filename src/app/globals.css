@@ -142,6 +142,78 @@ body {
   animation: cogentCaret 1s steps(1, end) infinite;
 }
 
+/* Modern High-Speed Loading Experience (Shimmer Skeletons + Harmonic Thinking Wave) */
+@keyframes cogentShimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.cogent-skeleton {
+  background: linear-gradient(
+    90deg,
+    #f4f4f5 0%,
+    #e4e4e7 45%,
+    #f4f4f5 90%
+  );
+  background-size: 200% 100%;
+  animation: cogentShimmer 1.35s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.cogent-upload-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(29, 78, 216, 0.06) 0%,
+    rgba(29, 78, 216, 0.16) 50%,
+    rgba(29, 78, 216, 0.06) 100%
+  );
+  background-size: 200% 100%;
+  animation: cogentShimmer 1.15s ease-in-out infinite;
+}
+
+@keyframes cogentWave {
+  0%, 100% {
+    transform: scaleY(0.4);
+    opacity: 0.45;
+  }
+  50% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+.cogent-wave-bar {
+  transform-origin: center;
+  animation: cogentWave 0.9s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes cogentTextSheen {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+.cogent-text-sheen {
+  background: linear-gradient(
+    90deg,
+    #52525b 0%,
+    #1d4ed8 45%,
+    #09090b 55%,
+    #52525b 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: cogentTextSheen 1.8s linear infinite;
+}
+
 /* Word-grade WYSIWYG Document Editor Surface */
 .cogent-doc-editor .ProseMirror {
   outline: none;

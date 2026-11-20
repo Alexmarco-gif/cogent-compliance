@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
+import { KnowledgeListSkeleton } from "@/components/shell/WorkspaceSkeletons";
 import {
   Plus,
   Percent,
@@ -17,10 +18,13 @@ import {
 import { extractApiError, unwrapApiList } from "@/lib/api-client";
 import type { CampaignProduct } from "@/contracts/knowledge-product.contracts";
 
+const productListCache = new Map<string, CampaignProduct[]>();
+
 export function ProductRateEditor() {
   const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
-  const [products, setProducts] = useState<CampaignProduct[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedProducts = orgId ? productListCache.get(orgId) : undefined;
+  const [products, setProducts] = useState<CampaignProduct[]>(() => cachedProducts || []);
+  const [loading, setLoading] = useState(!cachedProducts);
   const [error, setError] = useState<string | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -50,7 +54,8 @@ export function ProductRateEditor() {
       return;
     }
     try {
-      setLoading(true);
+      const hasCached = productListCache.has(orgId);
+      if (!hasCached) setLoading(true);
       const res = await fetch("/api/marketing-shield/v1/products");
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.success === false) {
@@ -58,7 +63,9 @@ export function ProductRateEditor() {
         setErrorStatus(parsed.status);
         throw new Error(parsed.message);
       }
-      setProducts(unwrapApiList<CampaignProduct>(json));
+      const list = unwrapApiList<CampaignProduct>(json);
+      productListCache.set(orgId, list);
+      setProducts(list);
       setError(null);
       setErrorStatus(null);
     } catch (err) {
@@ -70,6 +77,10 @@ export function ProductRateEditor() {
 
   useEffect(() => {
     if (!clerkLoaded) return;
+    if (orgId && productListCache.has(orgId)) {
+      setProducts(productListCache.get(orgId)!);
+      setLoading(false);
+    }
     fetchProducts();
   }, [clerkLoaded, isSignedIn, orgId, fetchProducts]);
 
@@ -251,7 +262,7 @@ export function ProductRateEditor() {
           )}
         </div>
       ) : loading ? (
-        <div className="p-8 text-center text-xs text-zinc-500">Loading product schedules...</div>
+        <KnowledgeListSkeleton rows={3} />
       ) : products.length === 0 ? (
         <div className="p-8 text-center border border-dashed border-zinc-200 rounded-lg">
           <FileCheck className="w-7 h-7 mx-auto text-zinc-400 mb-2" />

@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth, useOrganization, useUser } from "@clerk/nextjs";
 import { WorkspaceOrgPanel } from "@/components/auth/WorkspaceOrgPanel";
+import { useWorkspace } from "@/components/shell/WorkspaceProvider";
+import { ChatWorkspaceSkeleton } from "@/components/shell/WorkspaceSkeletons";
 import { extractApiError } from "@/lib/api-client";
 import { CogentLogo } from "@/components/brand/CogentLogo";
 import {
@@ -77,6 +79,8 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
   const [rewriteApplied, setRewriteApplied] = useState(false);
   const [completionModalOpen, setCompletionModalOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [skippingSample, setSkippingSample] = useState(false);
+  const workspace = useWorkspace();
   const [subscriptionPlan, setSubscriptionPlan] = useState<{
     slug: string;
     name: string;
@@ -139,6 +143,7 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
         }
         if (status.onboardingCompleted) {
           setAlreadyCompleted(true);
+          workspace?.markOnboardingCompleted();
           if (!stepParam) {
             router.replace("/chat");
           }
@@ -154,7 +159,7 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
     return () => {
       cancelled = true;
     };
-  }, [clerkLoaded, isSignedIn, orgId, stepParam, router, orgName]);
+  }, [clerkLoaded, isSignedIn, orgId, stepParam, router, orgName]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleScope = (scope: RegulatoryScopeKey) => {
     setSelectedScopes((prev) =>
@@ -279,7 +284,7 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
     setTimeout(() => {
       setAuditRunning(false);
       setAuditCompleted(true);
-    }, 900);
+    }, 650);
   };
 
   const handleAcceptRewrite = async () => {
@@ -289,6 +294,7 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
       const res = await fetch("/api/marketing-shield/v1/onboarding/complete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skipped_sample: false }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -300,6 +306,7 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
       if (json.subscriptionPlan) {
         setSubscriptionPlan(json.subscriptionPlan);
       }
+      workspace?.markOnboardingCompleted();
       setRewriteApplied(true);
       setRawCopy(
         "Loans up to ₦500,000 subject to credit assessment and eligibility. 4.5% monthly interest with a 1.5% one-off disbursement fee. Regulated in Nigeria."
@@ -311,17 +318,41 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
     }
   };
 
+  const handleSkipSample = async () => {
+    setSkippingSample(true);
+    setStepError(null);
+    setStepErrorStatus(null);
+    try {
+      const res = await fetch("/api/marketing-shield/v1/onboarding/complete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ skipped_sample: true }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const parsed = extractApiError(res.status, json, "Failed to finalize onboarding");
+        setStepErrorStatus(parsed.status);
+        setStepError(parsed.message);
+        return;
+      }
+      workspace?.markOnboardingCompleted();
+      router.push("/chat");
+    } catch (err) {
+      console.error("Failed to skip sample onboarding", err);
+      setStepError("Network error completing setup.");
+    } finally {
+      setSkippingSample(false);
+    }
+  };
+
   const handleFinishOnboarding = () => {
     setCompleting(true);
+    workspace?.markOnboardingCompleted();
     router.push("/chat?onboarding=true");
   };
 
   if (!clerkLoaded || !isSignedIn) {
-    return (
-      <div className="min-h-screen bg-[#FAFAFA] flex items-center justify-center text-[13px] font-medium text-zinc-500">
-        Verifying session...
-      </div>
-    );
+    return <ChatWorkspaceSkeleton />;
   }
 
   const userDisplayName =
@@ -1026,6 +1057,30 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
                 </button>
               </div>
             )}
+
+            {/* Step 3 Footer Navigation with Skip Option */}
+            {!rewriteApplied && (
+              <div className="pt-4 flex items-center justify-between border-t border-zinc-100">
+                <button
+                  type="button"
+                  onClick={() => setCurrentStep(2)}
+                  disabled={skippingSample}
+                  className="px-4 py-2 text-sm text-zinc-600 hover:text-zinc-900 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <ArrowLeft className="h-4 w-4" /> Back
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleSkipSample}
+                  disabled={skippingSample}
+                  className="px-4 py-2 rounded-md border border-zinc-300 hover:bg-zinc-50 text-zinc-700 font-medium text-sm flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+                >
+                  <span>{skippingSample ? "Opening Workspace..." : "Skip & Open Workspace"}</span>
+                  <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1042,7 +1097,7 @@ export function OnboardingFlow({ initialStep = 1 }: OnboardingFlowProps) {
             <p className="text-sm text-zinc-600 mt-1.5">
               {subscriptionPlan && !subscriptionPlan.isTrial
                 ? `Your ${subscriptionPlan.name} workspace is active with full regulatory intelligence and team access.`
-                : "Your 7-day evaluation includes 3 campaign reviews and access to Nigerian regulatory sources."}
+                : "Your 7-day evaluation includes 3 campaign reviews, 3 live regulatory web searches, and full Nigerian Statutory Vault access."}
             </p>
 
             <div className="my-5 p-4 rounded-lg bg-zinc-50 border border-zinc-200 text-left text-xs space-y-2">

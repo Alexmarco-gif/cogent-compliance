@@ -266,8 +266,20 @@ describe("EntitlementsService & Contextual Feature Gating", () => {
   });
 
   describe("Dual-Engine Live Search & Cross-Border Entitlements (Document 14 & 15)", () => {
-    it("blocks live_web_search on Evaluation Pilot without throwing", async () => {
+    it("grants Evaluation Pilot 3 Nigeria paid live web searches and signals Gemini fallback once exhausted", async () => {
+      const rpcMock = vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: [{ allowed: true, current_count: 1, remaining: 2 }],
+          error: null,
+        })
+        .mockResolvedValueOnce({
+          data: [{ allowed: false, current_count: 3, remaining: 0 }],
+          error: null,
+        });
+
       vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue({
+        rpc: rpcMock,
         from: vi.fn().mockImplementation((table: string) => {
           if (table === "tenants") {
             return {
@@ -289,10 +301,33 @@ describe("EntitlementsService & Contextual Feature Gating", () => {
         }),
       } as any);
 
-      const authRes = await entitlementsService.authorizeAndConsumeLiveSearch(tenantId, ["NG"]);
-      expect(authRes.allowed).toBe(false);
-      expect(authRes.planSlug).toBe("evaluation");
-      expect(authRes.limit).toBe(0);
+      // Cross-border KE is still blocked on Evaluation Pilot before hitting RPC
+      const blockedKe = await entitlementsService.authorizeAndConsumeLiveSearch(tenantId, ["KE"]);
+      expect(blockedKe.allowed).toBe(false);
+      expect(blockedKe.feature).toBe("cross_border_research");
+      expect(rpcMock).not.toHaveBeenCalled();
+
+      // Search 1 of 3 on NG is allowed with paid Dual-Engine
+      const firstSearch = await entitlementsService.authorizeAndConsumeLiveSearch(tenantId, ["NG"]);
+      expect(firstSearch.allowed).toBe(true);
+      expect(firstSearch.planSlug).toBe("evaluation");
+      expect(firstSearch.limit).toBe(3);
+      expect(firstSearch.remaining).toBe(2);
+      expect(rpcMock).toHaveBeenCalledWith(
+        "consume_live_search_quota",
+        expect.objectContaining({
+          p_tenant_id: tenantId,
+          p_billing_period: "0000-00",
+          p_monthly_limit: 3,
+        }),
+      );
+
+      // After all 3 paid searches are exhausted, signal standard Gemini fallback (no Exa/SerpAPI)
+      const fourthSearch = await entitlementsService.authorizeAndConsumeLiveSearch(tenantId, ["NG"]);
+      expect(fourthSearch.allowed).toBe(false);
+      expect(fourthSearch.fallbackToGeminiSearch).toBe(true);
+      expect(fourthSearch.limit).toBe(3);
+      expect(fourthSearch.remaining).toBe(0);
     });
 
     it("allows NG-only on Growth and blocks KE cross-border requests before hitting quota RPC", async () => {

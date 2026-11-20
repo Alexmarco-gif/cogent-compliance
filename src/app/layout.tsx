@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import React, { Suspense } from "react";
 import { ClerkProvider } from "@clerk/nextjs";
 import { getPublicSiteUrl } from "@/lib/site-url";
+import { WorkspaceProvider } from "@/components/shell/WorkspaceProvider";
+import { TopNavigationProgress } from "@/components/shell/TopNavigationProgress";
 import "./globals.css";
 
 const siteUrl = getPublicSiteUrl();
@@ -92,7 +95,12 @@ export default function RootLayout({
           />
         </head>
         <body className="min-h-screen bg-white text-[#0B1220] antialiased">
-          {children}
+          <WorkspaceProvider>
+            <Suspense fallback={null}>
+              <TopNavigationProgress />
+            </Suspense>
+            {children}
+          </WorkspaceProvider>
         </body>
       </html>
     </ClerkProvider>

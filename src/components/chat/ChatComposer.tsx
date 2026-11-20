@@ -4,7 +4,6 @@ import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import {
   ArrowUpRight,
-  Loader2,
   Globe,
   FileImage,
   FileText,
@@ -20,6 +19,7 @@ import {
   Check,
   Sparkles,
 } from "lucide-react";
+import { CogentPulseIndicator } from "@/components/shell/WorkspaceSkeletons";
 import { extractApiError } from "@/lib/api-client";
 import {
   resolveUploadMimeType,
@@ -204,6 +204,7 @@ export function ChatComposer({
 }: ChatComposerProps) {
   const [content, setContent] = useState("");
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
+  const [uploadingFiles, setUploadingFiles] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [upgradePopover, setUpgradePopover] = useState<"live_search" | "cross_border" | null>(
@@ -219,6 +220,7 @@ export function ChatComposer({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const plusMenuContainerRef = useRef<HTMLDivElement>(null);
   const dragDepthRef = useRef(0);
+  const r2DirectBlockedRef = useRef(false);
   const pendingAttachmentsRef = useRef<PendingAttachment[]>([]);
   pendingAttachmentsRef.current = pendingAttachments;
 
@@ -275,7 +277,12 @@ export function ChatComposer({
     !disabled &&
     !isUploading;
 
-  const liveSearchAllowed = Boolean(liveSearchQuota?.live_web_allowed);
+  const liveSearchAllowed = Boolean(
+    liveSearchQuota?.live_web_allowed || liveSearchQuota?.standard_fallback_available,
+  );
+  const isStandardWebFallback = Boolean(
+    !liveSearchQuota?.live_web_allowed && liveSearchQuota?.standard_fallback_available,
+  );
   const crossBorderAllowed = Boolean(liveSearchQuota?.cross_border_allowed);
   const activeJurisdiction = searchJurisdictions[0] || "NG";
   const selectedProduct = products.find((p) => p.id === selectedProductId) || null;
@@ -290,7 +297,7 @@ export function ChatComposer({
   };
 
   const handleToggleLiveSearchClick = () => {
-    if (liveSearchQuota && !liveSearchQuota.live_web_allowed) {
+    if (liveSearchQuota && !liveSearchAllowed) {
       setUpgradePopover((prev) => (prev === "live_search" ? null : "live_search"));
       onToggleLiveWebSearch?.(false);
       setPlusMenuOpen(false);
@@ -301,7 +308,7 @@ export function ChatComposer({
   };
 
   const handleSelectJurisdictionSource = (nextJur: SearchJurisdiction) => {
-    if (liveSearchQuota && !liveSearchQuota.live_web_allowed) {
+    if (liveSearchQuota && !liveSearchAllowed) {
       setUpgradePopover("live_search");
       setPlusMenuOpen(false);
       return;
@@ -392,24 +399,34 @@ export function ChatComposer({
     }
 
     const { asset_id, presigned_upload_url } = sessionJson.data;
+    let inlineExtractedText: string | undefined;
+    let inlineExtractionDone = false;
 
     if (!presigned_upload_url.includes("mock")) {
       let directUploadOk = false;
       let directUploadErrMsg: string | null = null;
-      try {
-        const putRes = await fetch(presigned_upload_url, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": mimeType },
-        });
-        if (putRes.ok) {
-          directUploadOk = true;
-        } else {
-          directUploadErrMsg = `Direct storage upload failed (HTTP ${putRes.status})`;
+
+      // Skip direct R2 PUT if CORS already blocked it in this session and file fits the fast inline proxy
+      const canSkipDirect =
+        r2DirectBlockedRef.current && file.size <= VERCEL_SERVER_PROXY_LIMIT_BYTES;
+
+      if (!canSkipDirect) {
+        try {
+          const putRes = await fetch(presigned_upload_url, {
+            method: "PUT",
+            body: file,
+            headers: { "Content-Type": mimeType },
+          });
+          if (putRes.ok) {
+            directUploadOk = true;
+          } else {
+            directUploadErrMsg = `Direct storage upload failed (HTTP ${putRes.status})`;
+          }
+        } catch (directErr) {
+          r2DirectBlockedRef.current = true;
+          directUploadErrMsg =
+            directErr instanceof Error ? directErr.message : "Direct storage upload failed";
         }
-      } catch (directErr) {
-        directUploadErrMsg =
-          directErr instanceof Error ? directErr.message : "Direct storage upload failed";
       }
 
       if (!directUploadOk) {
@@ -419,11 +436,15 @@ export function ChatComposer({
           );
         }
 
-        const proxyRes = await fetch(`/api/marketing-shield/v1/assets/${asset_id}/upload`, {
-          method: "PUT",
-          body: file,
-          headers: { "Content-Type": mimeType },
-        });
+        // Fast single-hop proxy upload + inline extraction (avoids R2 re-download & second HTTP call)
+        const proxyRes = await fetch(
+          `/api/marketing-shield/v1/assets/${asset_id}/upload?extract=1`,
+          {
+            method: "PUT",
+            body: file,
+            headers: { "Content-Type": mimeType },
+          },
+        );
         const proxyJson = await proxyRes.json().catch(() => ({}));
         if (!proxyRes.ok || !proxyJson.success) {
           const parsed = extractApiError(
@@ -433,29 +454,39 @@ export function ChatComposer({
           );
           throw new Error(parsed.message);
         }
+        if (proxyJson.data?.extraction) {
+          inlineExtractionDone = true;
+          if (typeof proxyJson.data.extraction.extractedText === "string") {
+            inlineExtractedText = proxyJson.data.extraction.extractedText;
+          }
+        }
       }
     }
 
-    const completeRes = await fetch(`/api/marketing-shield/v1/assets/${asset_id}/complete`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ auto_assess: true }),
-    });
+    let extractedText = inlineExtractedText;
+    if (!inlineExtractionDone) {
+      // Chat turn performs the compliance assessment; skip duplicate auto_assess during attachment upload
+      const completeRes = await fetch(`/api/marketing-shield/v1/assets/${asset_id}/complete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ auto_assess: false }),
+      });
 
-    const completeJson = await completeRes.json().catch(() => ({}));
-    if (!completeRes.ok || !completeJson.success) {
-      const parsed = extractApiError(
-        completeRes.status,
-        completeJson,
-        "Failed to process uploaded asset",
-      );
-      throw new Error(parsed.message);
+      const completeJson = await completeRes.json().catch(() => ({}));
+      if (!completeRes.ok || !completeJson.success) {
+        const parsed = extractApiError(
+          completeRes.status,
+          completeJson,
+          "Failed to process uploaded asset",
+        );
+        throw new Error(parsed.message);
+      }
+
+      extractedText =
+        typeof completeJson.data?.extraction?.extractedText === "string"
+          ? completeJson.data.extraction.extractedText
+          : undefined;
     }
-
-    const extractedText =
-      typeof completeJson.data?.extraction?.extractedText === "string"
-        ? completeJson.data.extraction.extractedText
-        : undefined;
 
     const previewUrl = mimeType.startsWith("image/")
       ? URL.createObjectURL(file)
@@ -475,20 +506,19 @@ export function ChatComposer({
     if (files.length === 0 || disabled) return;
 
     setIsUploading(true);
+    setUploadingFiles(files.map((f) => f.name));
     setUploadError(null);
 
     try {
-      const uploaded: PendingAttachment[] = [];
-      for (const file of files) {
-        const item = await uploadSingleFile(file);
-        uploaded.push(item);
-      }
+      // Upload all dropped/selected files in parallel instead of serially
+      const uploaded = await Promise.all(files.map((file) => uploadSingleFile(file)));
       setPendingAttachments((prev) => [...prev, ...uploaded]);
       textareaRef.current?.focus();
     } catch (err) {
       setUploadError((err as Error).message);
     } finally {
       setIsUploading(false);
+      setUploadingFiles([]);
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
@@ -594,8 +624,8 @@ export function ChatComposer({
               </p>
               <p className="text-zinc-600 mt-0.5">
                 {upgradePopover === "cross_border"
-                  ? "Scale unlocks Exa AI + SerpAPI cross-jurisdictional search across 6 African central banks ($449/mo)."
-                  : "Growth ($149/mo) unlocks real-time CBN, SEC, NDPC & FCCPC search alongside our verified Statutory Vault."}
+                  ? "Scale unlocks cross-jurisdictional regulatory search across 6 African central banks ($449/mo)."
+                  : "Growth ($149/mo) unlocks 100 monthly real-time CBN, SEC, NDPC & FCCPC searches alongside our verified Statutory Vault."}
               </p>
             </div>
           </div>
@@ -694,21 +724,25 @@ export function ChatComposer({
               </div>
             ))}
 
-            {isUploading && (
-              <div className="inline-flex items-center gap-1.5 rounded-lg border border-[#1D4ED8]/25 bg-blue-50/60 px-2.5 py-1 text-[12px] text-[#1D4ED8] font-medium">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-[#1D4ED8]" />
-                <span>Uploading &amp; extracting...</span>
-              </div>
-            )}
+            {isUploading &&
+              (uploadingFiles.length > 0 ? uploadingFiles : ["Document"]).map((name, idx) => (
+                <div
+                  key={`${name}-${idx}`}
+                  className="inline-flex items-center gap-2 rounded-lg border border-[#1D4ED8]/25 cogent-upload-shimmer px-2.5 py-1 text-[12px] text-[#1D4ED8] font-medium max-w-[240px]"
+                >
+                  <CogentPulseIndicator size="xs" tone="brand" />
+                  <span className="truncate">{name}</span>
+                </div>
+              ))}
 
             {enableLiveWebSearch && liveSearchAllowed && (
               <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#1D4ED8]/25 bg-blue-50/75 px-2.5 py-1 text-[12px] font-medium text-[#1E3A8A]">
                 <Globe className="h-3.5 w-3.5 text-[#1D4ED8] shrink-0" />
-                <span>Web search</span>
+                <span>{isStandardWebFallback ? "Standard web search" : "Web search"}</span>
                 <span className="font-mono text-[10.5px] text-[#1D4ED8] bg-white/90 border border-[#1D4ED8]/25 rounded px-1">
                   {activeJurisdiction === "AFRICA_REGIONAL" ? "AFRICA" : activeJurisdiction}
                 </span>
-                {liveSearchQuota && liveSearchQuota.monthly_limit > 0 && (
+                {!isStandardWebFallback && liveSearchQuota && liveSearchQuota.monthly_limit > 0 && (
                   <span className="font-mono text-[10px] text-[#1D4ED8]/80">
                     ({liveSearchQuota.remaining}/{liveSearchQuota.monthly_limit})
                   </span>
@@ -825,7 +859,7 @@ export function ChatComposer({
               title="Attach or drop files (flyers, PDFs, docs) or enable Web search sources"
             >
               {isUploading ? (
-                <Loader2 className="h-4 w-4 animate-spin text-[#1D4ED8]" />
+                <CogentPulseIndicator size="xs" tone="brand" />
               ) : (
                 <Plus className="h-4 w-4" />
               )}
@@ -1106,11 +1140,25 @@ export function ChatComposer({
                         ) : enableLiveWebSearch && liveSearchAllowed ? (
                           <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-[#1D4ED8]/25 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-[#1D4ED8]">
                             <Check className="h-3 w-3" />
-                            <span>ON</span>
+                            <span>
+                              {isStandardWebFallback
+                                ? "STANDARD"
+                                : liveSearchQuota && liveSearchQuota.monthly_limit > 0
+                                  ? `ON · ${liveSearchQuota.remaining}/${liveSearchQuota.monthly_limit}`
+                                  : "ON"}
+                            </span>
+                          </span>
+                        ) : isStandardWebFallback ? (
+                          <span className="text-[10.5px] font-mono text-zinc-400">
+                            Standard
+                          </span>
+                        ) : liveSearchQuota && liveSearchQuota.monthly_limit > 0 ? (
+                          <span className="text-[10.5px] font-mono text-zinc-400">
+                            {liveSearchQuota.remaining} left
                           </span>
                         ) : (
                           <span className="text-[10.5px] font-mono text-zinc-400">
-                            Exa + SerpAPI
+                            Live
                           </span>
                         )}
                       </button>
@@ -1184,7 +1232,7 @@ export function ChatComposer({
             }`}
             aria-label="Ask Cogent"
           >
-            {disabled ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            {disabled ? <CogentPulseIndicator size="xs" tone="neutral" /> : null}
             <span>Ask Cogent</span>
           </button>
         </div>

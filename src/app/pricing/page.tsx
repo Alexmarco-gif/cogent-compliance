@@ -32,15 +32,15 @@ const PLAN_MATRIX_ROWS = [
     enterprise: "Unlimited",
   },
   {
-    feature: "Live Web Search (Exa AI + SerpAPI)",
-    evaluation: "— (Vault Only)",
+    feature: "Live Regulatory Web Search",
+    evaluation: "3 Live Searches (NG)",
     growth: "100 / month",
     scale: "500 / month",
     enterprise: "Unlimited",
   },
   {
     feature: "Search Jurisdiction Scope",
-    evaluation: "141-PDF NG Vault",
+    evaluation: "Nigeria (NG) + Vault",
     growth: "Nigeria (NG)",
     scale: "Pan-African (NG, KE, GH, ZA, RW, EG)",
     enterprise: "Africa + Global",
@@ -249,7 +249,7 @@ export default function PlatformPricingPage() {
             Workspace Plans &amp; Upgrades
           </h1>
           <p className="max-w-xl mx-auto text-sm text-zinc-600 mt-2">
-            Upgrade your organization&apos;s workspace for higher audit quotas, paid Exa AI + SerpAPI live web search, Pan-African coverage, Word/PDF exports, and live URL drift monitoring.
+            Upgrade your organization&apos;s workspace for higher audit quotas, real-time live regulatory web search, Pan-African coverage, Word/PDF exports, and live URL drift monitoring.
           </p>
 
           {currentSub && (
@@ -701,7 +701,7 @@ export default function PlatformPricingPage() {
             Full Plan Entitlements Matrix
           </h3>
           <p className="text-xs text-zinc-500 mb-5">
-            Transparent quotas across seats, audit volume, live Exa AI + SerpAPI web search, work product exports, and dossier retention.
+            Transparent quotas across seats, audit volume, live regulatory web search, work product exports, and dossier retention.
           </p>
 
           <div className="overflow-x-auto">

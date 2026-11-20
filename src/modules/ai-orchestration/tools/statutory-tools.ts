@@ -58,6 +58,8 @@ export interface ToolExecutionContext {
   userId?: string;
   conversationId?: string;
   quotaPreConsumed?: boolean;
+  liveWebEngineMode?: "DUAL_ENGINE" | "STANDARD_GEMINI_FALLBACK";
+  planSlug?: string;
   allowedLiveUrls?: string[];
   hasInternalKnowledgeRefs?: boolean;
 }
@@ -1441,23 +1443,67 @@ export class StatutoryToolExecutor {
       normalizedExplicit.length > 0 ? normalizedExplicit : ["NG"]
     );
 
+    let engineMode: "DUAL_ENGINE" | "STANDARD_GEMINI_FALLBACK" =
+      ctx.liveWebEngineMode || "DUAL_ENGINE";
+    let effectivePlanSlug = ctx.planSlug;
+
     if (!ctx.quotaPreConsumed) {
       const auth = await entitlementsService.authorizeAndConsumeLiveSearch(
         ctx.tenantId,
         jurisdictions
       );
+      effectivePlanSlug = auth.planSlug ?? effectivePlanSlug;
 
       if (!auth.allowed) {
-        return {
-          source_class: "LIVE_WEB_INTELLIGENCE",
-          status: "upgrade_required",
-          upgrade_required: true,
-          reason:
-            auth.reason ||
-            "Real-time Nigeria, Pan-African & Global web search requires an active Growth, Scale, or Enterprise plan.",
-          results: [],
-        };
+        if (auth.fallbackToGeminiSearch) {
+          engineMode = "STANDARD_GEMINI_FALLBACK";
+        } else {
+          return {
+            source_class: "LIVE_WEB_INTELLIGENCE",
+            status: "upgrade_required",
+            upgrade_required: true,
+            reason:
+              auth.reason ||
+              "Real-time Nigeria, Pan-African & Global web search requires an active Growth, Scale, or Enterprise plan.",
+            results: [],
+          };
+        }
       }
+    }
+
+    if (engineMode === "STANDARD_GEMINI_FALLBACK") {
+      const isMultiCountry = jurisdictions.length > 1;
+      const fallbackResult = await webSearchRouter.searchWithStandardWebFallback(
+        {
+          query: args.query,
+          jurisdictions,
+          searchIntent: isMultiCountry ? "CROSS_BORDER" : "REGULATORY_CIRCULAR",
+          includeNews: args.include_news !== false,
+        },
+        ctx.tenantId
+      );
+
+      return {
+        source_class: "LIVE_WEB_INTELLIGENCE",
+        status: "ok",
+        web_summary: fallbackResult.webSummary,
+        cache_hit: fallbackResult.cacheHit,
+        providers_used: fallbackResult.providersUsed,
+        results: fallbackResult.results.map((r) => ({
+          live_web_retrieval_id: r.live_web_retrieval_id,
+          page_title: r.page_title,
+          retrieved_url: r.retrieved_url,
+          snippet_content: r.full_content_excerpt || r.snippet_content,
+          full_content_excerpt: r.full_content_excerpt,
+          highlights: r.highlights,
+          published_at: r.published_at,
+          retrieved_at: r.retrieved_at,
+          provider: r.provider,
+          jurisdiction_code: r.jurisdiction_code,
+          trust_tier: r.trust_tier,
+          source_class: "LIVE_WEB_INTELLIGENCE",
+        })),
+      };
     }
 
     if (
@@ -1472,6 +1518,7 @@ export class StatutoryToolExecutor {
           searchIntent: isMultiCountry ? "CROSS_BORDER" : "REGULATORY_CIRCULAR",
           includeNews: args.include_news !== false,
           timeoutMs: isMultiCountry ? 14000 : 8000,
+          allowGeminiFallback: effectivePlanSlug !== "evaluation",
         },
         ctx.tenantId
       );

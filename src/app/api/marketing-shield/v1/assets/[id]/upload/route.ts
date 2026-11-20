@@ -103,11 +103,25 @@ export async function PUT(
 
     await r2StorageService.putObjectBuffer(asset.storage_key, buffer, asset.mime_type);
 
+    const shouldInlineExtract = req.nextUrl.searchParams.get("extract") === "1";
+    let extraction: unknown = undefined;
+    if (shouldInlineExtract) {
+      const { assetExtractorService } = await import(
+        "@/modules/asset-processing/asset-extractor.service"
+      );
+      extraction = await assetExtractorService.extractAsset({
+        tenantId: tenant.tenantId,
+        assetId,
+        buffer,
+      });
+    }
+
     logger.info("Uploaded asset via server proxy to R2", {
       tenantId: tenant.tenantId,
       assetId,
       storageKey: asset.storage_key,
       sizeBytes: buffer.length,
+      inlineExtracted: shouldInlineExtract,
       requestId,
     });
 
@@ -117,6 +131,7 @@ export async function PUT(
         asset_id: assetId,
         storage_key: asset.storage_key,
         file_size_bytes: buffer.length,
+        ...(extraction ? { extraction } : {}),
       },
     });
   } catch (err) {

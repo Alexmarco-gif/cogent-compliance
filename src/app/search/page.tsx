@@ -22,6 +22,11 @@ import {
   Sparkles,
 } from "lucide-react";
 import { WorkspaceShell } from "@/components/shell/WorkspaceShell";
+import { useWorkspace } from "@/components/shell/WorkspaceProvider";
+import {
+  ChatWorkspaceSkeleton,
+  CogentPulseIndicator,
+} from "@/components/shell/WorkspaceSkeletons";
 import { EvidenceDrawer } from "@/components/chat/EvidenceDrawer";
 import { extractApiError } from "@/lib/api-client";
 import type {
@@ -77,7 +82,9 @@ function SearchWorkbenchContent() {
   const initialQuery = searchParams.get("q") || "";
 
   const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
-  const [onboardingReady, setOnboardingReady] = useState(false);
+  const workspace = useWorkspace();
+  const [localOnboardingReady, setLocalOnboardingReady] = useState(false);
+  const onboardingReady = workspace?.onboardingCompleted === true || localOnboardingReady;
 
   const [query, setQuery] = useState(initialQuery);
   const [enableLiveWeb, setEnableLiveWeb] = useState(false);
@@ -86,7 +93,9 @@ function SearchWorkbenchContent() {
     "REGULATORY_CIRCULAR" | "LEGAL_ANALYSIS" | "NEWS_ENFORCEMENT" | "CROSS_BORDER"
   >("REGULATORY_CIRCULAR");
   const [dateFrom, setDateFrom] = useState("");
-  const [quota, setQuota] = useState<SearchQuotaSnapshot | null>(null);
+  const [localQuota, setLocalQuota] = useState<SearchQuotaSnapshot | null>(null);
+  const quota = workspace ? workspace.searchQuota : localQuota;
+  const setQuota = workspace ? workspace.setSearchQuota : setLocalQuota;
 
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
@@ -107,20 +116,31 @@ function SearchWorkbenchContent() {
   const [promoteError, setPromoteError] = useState<string | null>(null);
 
   const loadQuota = useCallback(async () => {
+    if (workspace) {
+      await workspace.refreshSearchQuota();
+      return;
+    }
     try {
       const res = await fetch("/api/marketing-shield/v1/search/quota", { cache: "no-store" });
       const json = await res.json().catch(() => null);
       const snap = (json?.data?.quota || json?.data) as SearchQuotaSnapshot | undefined;
       if (res.ok && json?.success && snap && typeof snap.live_web_allowed === "boolean") {
         setQuota(snap);
-        if (snap.live_web_allowed && snap.remaining !== 0) {
-          setEnableLiveWeb(true);
-        }
       }
     } catch {
       // Non-blocking
     }
-  }, []);
+  }, [workspace, setQuota]);
+
+  const didAutoEnableRef = React.useRef(false);
+  useEffect(() => {
+    if (!quota || didAutoEnableRef.current) return;
+    // Paid plans auto-enable live web search; trial users stay opt-in to deliberately spend their 3 searches
+    if (quota.plan_slug !== "evaluation" && quota.live_web_allowed && quota.remaining !== 0) {
+      didAutoEnableRef.current = true;
+      setEnableLiveWeb(true);
+    }
+  }, [quota]);
 
   useEffect(() => {
     if (!clerkLoaded) return;
@@ -130,6 +150,15 @@ function SearchWorkbenchContent() {
     }
     if (!orgId) {
       router.replace("/onboarding");
+      return;
+    }
+
+    if (workspace) {
+      if (workspace.onboardingCompleted === false) {
+        router.replace("/onboarding");
+        return;
+      }
+      void workspace.ensureBootstrapped();
       return;
     }
 
@@ -151,21 +180,21 @@ function SearchWorkbenchContent() {
           router.replace("/onboarding");
           return;
         }
-        setOnboardingReady(true);
+        setLocalOnboardingReady(true);
       })
       .catch(() => {
-        if (!cancelled) setOnboardingReady(true);
+        if (!cancelled) setLocalOnboardingReady(true);
       });
 
     return () => {
       cancelled = true;
     };
-  }, [clerkLoaded, isSignedIn, orgId, router]);
+  }, [clerkLoaded, isSignedIn, orgId, workspace, workspace?.onboardingCompleted, router]);
 
   useEffect(() => {
-    if (!onboardingReady) return;
+    if (!onboardingReady || workspace) return;
     void loadQuota();
-  }, [onboardingReady, loadQuota]);
+  }, [onboardingReady, workspace, loadQuota]);
 
   const executeSearch = useCallback(
     async (overrideQuery?: string) => {
@@ -306,11 +335,7 @@ function SearchWorkbenchContent() {
   };
 
   if (!clerkLoaded || !isSignedIn || !orgId || !onboardingReady) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-white text-[13px] text-zinc-500">
-        Verifying session and workspace setup...
-      </div>
-    );
+    return <ChatWorkspaceSkeleton />;
   }
 
   const vaultClauses: VaultSearchClauseHit[] = result?.vault_clauses || [];
@@ -327,11 +352,13 @@ function SearchWorkbenchContent() {
             <div className="hidden sm:inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-[11.5px] font-mono text-zinc-700">
               <Globe className="h-3.5 w-3.5 text-zinc-500" />
               <span>
-                {!quota.live_web_allowed
-                  ? "Live Search: Trial Locked"
-                  : quota.monthly_limit === -1
-                    ? `Live Search: ${quota.used_this_month} (Unlimited)`
-                    : `Quota: ${quota.used_this_month}/${quota.monthly_limit}`}
+                {quota.standard_fallback_available
+                  ? "Live Search: Standard"
+                  : !quota.live_web_allowed
+                    ? "Live Search: Trial Locked"
+                    : quota.monthly_limit === -1
+                      ? `Live Search: ${quota.used_this_month} (Unlimited)`
+                      : `Quota: ${quota.used_this_month}/${quota.monthly_limit}`}
               </span>
             </div>
           )}
@@ -370,10 +397,10 @@ function SearchWorkbenchContent() {
             <button
               type="submit"
               disabled={searching}
-              className="inline-flex items-center justify-center gap-2 rounded-lg bg-zinc-950 hover:bg-zinc-800 px-5 py-2.5 text-[13px] font-medium text-white transition-colors cursor-pointer disabled:opacity-60 shrink-0"
+              className="inline-flex items-center justify-center gap-2 rounded-lg bg-[#1D4ED8] hover:bg-[#1E40AF] px-5 py-2.5 text-[13px] font-medium text-white transition-colors cursor-pointer disabled:opacity-60 shrink-0"
             >
               {searching ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <CogentPulseIndicator size="xs" tone="light" />
               ) : (
                 <Search className="h-4 w-4" />
               )}
@@ -481,7 +508,7 @@ function SearchWorkbenchContent() {
               Unified Vault + Live African Open-Web &amp; Regulator Search
             </h2>
             <p className="max-w-xl mx-auto text-[13px] text-zinc-500">
-              Track A queries verified statutory provisions &amp; your workspace playbooks. On Growth &amp; Scale plans, Exa AI (open-web blogs, law-firm commentary &amp; regulatory extraction) and SerpAPI (exact circulars, localized web &amp; financial news) run concurrently.
+              Queries verified statutory provisions and your workspace playbooks alongside real-time regulatory circulars, law-firm commentary, and financial enforcement news across Nigeria and Africa.
             </p>
             <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
               {[
@@ -606,7 +633,7 @@ function SearchWorkbenchContent() {
                     </h2>
                   </div>
                   <span className="font-mono text-[10.5px] uppercase tracking-wider text-zinc-500">
-                    SerpAPI + Exa AI
+                    Real-Time Web
                   </span>
                 </div>
 
@@ -620,7 +647,7 @@ function SearchWorkbenchContent() {
                         </h3>
                         <p className="text-[12.5px] text-amber-900 leading-relaxed">
                           {result.upgrade_required_reason ||
-                            "Real-time Nigerian & Pan-African Web Search (SerpAPI + Exa AI) is available on Growth ($149/mo) and Scale ($449/mo) plans."}
+                            "Real-time Nigerian & Pan-African Live Web Search is available on Growth ($149/mo) and Scale ($449/mo) plans."}
                         </p>
                       </div>
                     </div>
@@ -650,6 +677,17 @@ function SearchWorkbenchContent() {
                   </div>
                 ) : (
                   <div className="space-y-3">
+                    {result.upgrade_required_reason && (
+                      <div className="rounded-lg border border-blue-200 bg-blue-50/60 px-3.5 py-2.5 text-[12px] text-[#1E3A8A] flex items-center justify-between gap-3">
+                        <span>{result.upgrade_required_reason}</span>
+                        <Link
+                          href="/settings/billing?upgrade=growth"
+                          className="font-semibold underline shrink-0"
+                        >
+                          Upgrade
+                        </Link>
+                      </div>
+                    )}
                     {promoteError && (
                       <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-[12px] text-rose-800">
                         {promoteError}
@@ -837,13 +875,7 @@ function SearchWorkbenchContent() {
 
 export default function SearchPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex h-screen items-center justify-center bg-white text-[13px] text-zinc-400">
-          Loading Africa Regulatory Search...
-        </div>
-      }
-    >
+    <Suspense fallback={<ChatWorkspaceSkeleton />}>
       <SearchWorkbenchContent />
     </Suspense>
   );

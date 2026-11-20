@@ -34,6 +34,7 @@ import {
 } from "lucide-react";
 import { useAuth, useClerk, useUser } from "@clerk/nextjs";
 import { CogentLogo } from "@/components/brand/CogentLogo";
+import { useWorkspace } from "@/components/shell/WorkspaceProvider";
 import type { ConversationRecord } from "@/modules/conversations/conversation.service";
 import type { CommandCenterHit, SearchQuotaSnapshot } from "@/contracts/search.contracts";
 
@@ -100,13 +101,14 @@ export function WorkspaceSidebar({
   const { isLoaded, isSignedIn, orgId, userId } = useAuth();
   const { signOut } = useClerk();
   const { user } = useUser();
+  const workspace = useWorkspace();
 
   const [searchQuery, setSearchQuery] = useState("");
   const [commandModalOpen, setCommandModalOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
   const [commandHits, setCommandHits] = useState<CommandCenterHit[]>([]);
   const [commandLoading, setCommandLoading] = useState(false);
-  const [searchQuota, setSearchQuota] = useState<SearchQuotaSnapshot | null>(null);
+  const [localSearchQuota, setLocalSearchQuota] = useState<SearchQuotaSnapshot | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -114,7 +116,7 @@ export function WorkspaceSidebar({
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [updatingAvatar, setUpdatingAvatar] = useState(false);
-  const [subSummary, setSubSummary] = useState<SubscriptionSummary | null>(null);
+  const [localSubSummary, setLocalSubSummary] = useState<SubscriptionSummary | null>(null);
   const [selfConversations, setSelfConversations] = useState<ConversationRecord[]>([]);
   const [loadingSelfConversations, setLoadingSelfConversations] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -123,8 +125,15 @@ export function WorkspaceSidebar({
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   const managesOwnThreads = conversations === undefined;
-  const resolvedConversations = conversations ?? selfConversations;
-  const resolvedLoading = managesOwnThreads ? loadingSelfConversations : loadingConversations;
+  const resolvedConversations =
+    conversations ?? (workspace ? workspace.conversations : selfConversations);
+  const resolvedLoading = managesOwnThreads
+    ? workspace
+      ? !workspace.bootstrapped && workspace.bootstrapping
+      : loadingSelfConversations
+    : loadingConversations;
+  const subSummary = workspace ? workspace.subscription : localSubSummary;
+  const searchQuota = workspace ? workspace.searchQuota : localSearchQuota;
 
   const displayName =
     user?.fullName?.trim() ||
@@ -258,8 +267,15 @@ export function WorkspaceSidebar({
     }
   };
 
-  // Load saved threads on non-chat pages (e.g. /knowledge-base, /drift-monitors) so history stays accessible
+  // Trigger single consolidated workspace bootstrap when provider is active (0ms no-op if fresh)
   useEffect(() => {
+    if (!workspace || !isLoaded || !isSignedIn || !orgId) return;
+    void workspace.ensureBootstrapped();
+  }, [workspace, isLoaded, isSignedIn, orgId]);
+
+  // Fallback for standalone renders without WorkspaceProvider
+  useEffect(() => {
+    if (workspace) return;
     setSelfConversations([]);
     if (!managesOwnThreads || !isLoaded || !isSignedIn || !orgId) return;
     let active = true;
@@ -279,12 +295,12 @@ export function WorkspaceSidebar({
     return () => {
       active = false;
     };
-  }, [managesOwnThreads, isLoaded, isSignedIn, orgId, userId]);
+  }, [workspace, managesOwnThreads, isLoaded, isSignedIn, orgId, userId]);
 
-  // Load current plan & live search quota summary quietly when authenticated with an active org
   useEffect(() => {
-    setSubSummary(null);
-    setSearchQuota(null);
+    if (workspace) return;
+    setLocalSubSummary(null);
+    setLocalSearchQuota(null);
     if (!isLoaded || !isSignedIn || !orgId) return;
     let active = true;
 
@@ -302,7 +318,7 @@ export function WorkspaceSidebar({
             typeof sub.trialHoursRemaining === "number"
               ? sub.trialHoursRemaining
               : trialDays * 24;
-          setSubSummary({
+          setLocalSubSummary({
             planName: sub.plan?.name || "Evaluation Pilot",
             planSlug: sub.plan?.slug || "evaluation",
             status: sub.status || "trialing",
@@ -315,14 +331,14 @@ export function WorkspaceSidebar({
           });
         })
         .catch(() => {
-          // Silent fail so sidebar never flashes raw errors
+          // Silent fail
         });
 
       fetch("/api/marketing-shield/v1/search/quota", { cache: "no-store" })
         .then((res) => (res.ok ? res.json() : null))
         .then((json) => {
           if (!active || !json?.success || !json.data?.quota) return;
-          setSearchQuota(json.data.quota as SearchQuotaSnapshot);
+          setLocalSearchQuota(json.data.quota as SearchQuotaSnapshot);
         })
         .catch(() => {
           // Silent fail
@@ -337,7 +353,7 @@ export function WorkspaceSidebar({
       window.removeEventListener("cogent:billing-updated", loadSummary);
       window.removeEventListener("cogent:search-quota-updated", loadSummary);
     };
-  }, [isLoaded, isSignedIn, orgId, userId]);
+  }, [workspace, isLoaded, isSignedIn, orgId, userId]);
 
   const filteredConversations = resolvedConversations.filter((c) =>
     c.title.toLowerCase().includes(searchQuery.toLowerCase()),
@@ -354,9 +370,15 @@ export function WorkspaceSidebar({
       body: JSON.stringify({ title: newTitle }),
     });
     if (res.ok) {
-      setSelfConversations((prev) =>
-        prev.map((c) => (c.id === id ? { ...c, title: newTitle } : c)),
-      );
+      if (workspace) {
+        workspace.setConversations((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, title: newTitle } : c)),
+        );
+      } else {
+        setSelfConversations((prev) =>
+          prev.map((c) => (c.id === id ? { ...c, title: newTitle } : c)),
+        );
+      }
     }
   };
 
@@ -369,7 +391,11 @@ export function WorkspaceSidebar({
       method: "POST",
     });
     if (res.ok) {
-      setSelfConversations((prev) => prev.filter((c) => c.id !== id));
+      if (workspace) {
+        workspace.setConversations((prev) => prev.filter((c) => c.id !== id));
+      } else {
+        setSelfConversations((prev) => prev.filter((c) => c.id !== id));
+      }
     }
   };
 
@@ -384,7 +410,11 @@ export function WorkspaceSidebar({
         method: "DELETE",
       });
       if (res.ok) {
-        setSelfConversations((prev) => prev.filter((c) => c.id !== id));
+        if (workspace) {
+          workspace.setConversations((prev) => prev.filter((c) => c.id !== id));
+        } else {
+          setSelfConversations((prev) => prev.filter((c) => c.id !== id));
+        }
         if (pathname === "/chat" && activeConversationId === id) {
           router.push("/chat?new=1");
         }
@@ -562,6 +592,7 @@ export function WorkspaceSidebar({
             ) : (
               <Link
                 href="/chat?new=1"
+                prefetch={true}
                 onClick={onCloseMobile}
                 className={navLinkClass(pathname === "/chat")}
               >
@@ -572,6 +603,7 @@ export function WorkspaceSidebar({
 
             <Link
               href="/search"
+              prefetch={true}
               onClick={onCloseMobile}
               className={navLinkClass(pathname.startsWith("/search"))}
             >
@@ -581,6 +613,7 @@ export function WorkspaceSidebar({
 
             <Link
               href="/knowledge-base?tab=playbooks"
+              prefetch={true}
               onClick={onCloseMobile}
               className={navLinkClass(
                 pathname === "/knowledge-base" && activeKbTab === "playbooks",
@@ -592,6 +625,7 @@ export function WorkspaceSidebar({
 
             <Link
               href="/knowledge-base?tab=products"
+              prefetch={true}
               onClick={onCloseMobile}
               className={navLinkClass(
                 pathname === "/knowledge-base" && activeKbTab === "products",
@@ -610,6 +644,7 @@ export function WorkspaceSidebar({
 
             <Link
               href="/knowledge-base?tab=rules"
+              prefetch={true}
               onClick={onCloseMobile}
               className={navLinkClass(
                 pathname === "/knowledge-base" && activeKbTab === "rules",
@@ -621,6 +656,7 @@ export function WorkspaceSidebar({
 
             <Link
               href="/drift-monitors"
+              prefetch={true}
               onClick={onCloseMobile}
               className={navLinkClass(pathname.startsWith("/drift-monitors"))}
             >
@@ -637,8 +673,10 @@ export function WorkspaceSidebar({
               </div>
 
               {resolvedLoading && resolvedConversations.length === 0 ? (
-                <div className="px-2.5 py-2 text-[12px] text-zinc-400">
-                  Loading threads...
+                <div className="px-2 py-1.5 space-y-2">
+                  <div className="h-6 w-11/12 rounded-md cogent-skeleton" />
+                  <div className="h-6 w-4/5 rounded-md cogent-skeleton" />
+                  <div className="h-6 w-3/4 rounded-md cogent-skeleton" />
                 </div>
               ) : filteredConversations.length === 0 ? (
                 <div className="px-2.5 py-2 text-[12px] text-zinc-400">

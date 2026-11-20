@@ -54,6 +54,7 @@ interface SearchQuotaData {
   used_this_month: number;
   monthly_limit: number;
   remaining: number;
+  standard_fallback_available?: boolean;
 }
 
 function formatDetailedTrialRemaining(sub: SubscriptionData): string {
@@ -405,7 +406,7 @@ export function BillingPlanTab() {
               <Globe className="h-3.5 w-3.5 text-zinc-400" />
             </div>
             <div className="text-xl font-semibold text-zinc-950 tabular-nums">
-              {!liveSearchEnabled ? (
+              {!liveSearchEnabled && !searchQuota?.standard_fallback_available ? (
                 "Vault Only"
               ) : liveSearchLimit === -1 ? (
                 "Unlimited"
@@ -416,9 +417,11 @@ export function BillingPlanTab() {
               )}
             </div>
             <p className="text-[11px] text-zinc-500 mt-1">
-              {!liveSearchEnabled
-                ? "Exa + SerpAPI on Growth+"
-                : (searchQuota?.allowed_jurisdictions || plan?.allowed_search_jurisdictions || ["NG"]).join(", ")}
+              {searchQuota?.standard_fallback_available
+                ? "Standard search active · Upgrade for 100+/mo"
+                : !liveSearchEnabled
+                  ? "Included on Trial (3) & Paid Plans"
+                  : (searchQuota?.allowed_jurisdictions || plan?.allowed_search_jurisdictions || ["NG"]).join(", ")}
             </p>
           </div>
 
@@ -488,7 +491,7 @@ export function BillingPlanTab() {
 
           <div className="py-3 flex items-center justify-between gap-4">
             <div>
-              <span className="font-medium text-zinc-900">Live Regulatory Web Search (Exa AI + SerpAPI)</span>
+              <span className="font-medium text-zinc-900">Live Regulatory Web Search</span>
               <p className="text-zinc-500 text-[11px]">
                 Real-time search across official regulator portals, top African law firms, and breaking enforcement news
               </p>
@@ -503,7 +506,9 @@ export function BillingPlanTab() {
               {liveSearchEnabled
                 ? liveSearchLimit === -1
                   ? "UNLIMITED"
-                  : `${liveSearchLimit}/MO`
+                  : plan?.slug === "evaluation"
+                    ? `${liveSearchLimit} TRIAL`
+                    : `${liveSearchLimit}/MO`
                 : "GROWTH+"}
             </span>
           </div>

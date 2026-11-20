@@ -231,8 +231,46 @@ describe("OnboardingService & 60-Second Progressive Engine", () => {
       const res = await onboardingService.completeOnboarding(tenantId);
       expect(res.success).toBe(true);
       expect(res.completedAt).toBeDefined();
+      expect(res.skippedSample).toBe(false);
       expect(updatedSettings?.onboarding_step).toBe(3);
       expect(updatedSettings?.onboarding_completed_at).toBeDefined();
+    });
+
+    it("completes onboarding immediately when user skips the Step 3 sample check", async () => {
+      let updatedSettings: any = null;
+
+      vi.spyOn(supabaseModule, "createAdminSupabaseClient").mockReturnValue({
+        from: vi.fn().mockImplementation((table: string) => {
+          if (table === "tenants") {
+            return {
+              select: vi.fn().mockReturnThis(),
+              eq: vi.fn().mockReturnThis(),
+              single: vi.fn().mockResolvedValue({
+                data: { settings: { onboarding_step: 2 } },
+              }),
+              update: vi.fn().mockImplementation((payload: any) => {
+                updatedSettings = payload.settings;
+                return {
+                  eq: vi.fn().mockResolvedValue({ error: null }),
+                };
+              }),
+            };
+          }
+          return { select: vi.fn().mockReturnThis() };
+        }),
+      } as any);
+
+      const res = await onboardingService.completeOnboarding(
+        tenantId,
+        "user_skip_1",
+        "org_skip_1",
+        { skippedSample: true },
+      );
+      expect(res.success).toBe(true);
+      expect(res.skippedSample).toBe(true);
+      expect(updatedSettings?.onboarding_step).toBe(3);
+      expect(updatedSettings?.onboarding_completed_at).toBeDefined();
+      expect(updatedSettings?.onboarding_sample_skipped).toBe(true);
     });
 
     it("rejects non-admin post-onboarding scope edits and blocks creator_role privilege escalation", async () => {

@@ -10,10 +10,11 @@ import {
   Users,
   ShieldCheck,
   CreditCard,
-  RefreshCw,
   ArrowLeft,
 } from "lucide-react";
 import { WorkspaceShell } from "@/components/shell/WorkspaceShell";
+import { useWorkspace } from "@/components/shell/WorkspaceProvider";
+import { SettingsPanelSkeleton } from "@/components/shell/WorkspaceSkeletons";
 import { WorkspaceOrgPanel } from "@/components/auth/WorkspaceOrgPanel";
 import { ProfileTab } from "./ProfileTab";
 import { OrganizationTab } from "./OrganizationTab";
@@ -44,14 +45,18 @@ export function SettingsShellView({ defaultTab = "organization" }: SettingsShell
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isLoaded, isSignedIn, orgId } = useAuth();
+  const wsContext = useWorkspace();
 
   const tabParam = searchParams.get("tab") as SettingsTabId | null;
   const activeTab: SettingsTabId =
     tabParam && SETTINGS_TABS.some((t) => t.id === tabParam) ? tabParam : defaultTab;
 
-  const [authMe, setAuthMe] = useState<AuthMeData | null>(null);
-  const [workspace, setWorkspace] = useState<WorkspaceSettingsData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [localAuthMe, setLocalAuthMe] = useState<AuthMeData | null>(null);
+  const [localWorkspace, setLocalWorkspace] = useState<WorkspaceSettingsData | null>(null);
+  const authMe = wsContext?.authMe ?? localAuthMe;
+  const workspace = wsContext?.workspaceSettings ?? localWorkspace;
+  const setWorkspace = wsContext ? wsContext.setWorkspaceSettings : setLocalWorkspace;
+  const [loading, setLoading] = useState(!workspace);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -65,18 +70,29 @@ export function SettingsShellView({ defaultTab = "organization" }: SettingsShell
     }
 
     let active = true;
-    setLoading(true);
-    Promise.all([
-      fetch("/api/marketing-shield/v1/auth/me").then((r) => (r.ok ? r.json() : null)),
+    // If we already have cached workspace settings, revalidate silently without blocking UI
+    if (!workspace) {
+      setLoading(true);
+    }
+    const fetches: Array<Promise<unknown>> = [
       fetch("/api/marketing-shield/v1/settings/workspace").then((r) => (r.ok ? r.json() : null)),
-    ])
-      .then(([meJson, wsJson]) => {
+    ];
+    if (!authMe) {
+      fetches.push(
+        fetch("/api/marketing-shield/v1/auth/me").then((r) => (r.ok ? r.json() : null)),
+      );
+    }
+
+    Promise.all(fetches)
+      .then(([wsJson, meJson]) => {
         if (!active) return;
-        if (meJson?.success && meJson.data) {
-          setAuthMe(meJson.data);
+        const ws = wsJson as { success?: boolean; data?: WorkspaceSettingsData } | null;
+        const me = meJson as { success?: boolean; data?: AuthMeData } | null;
+        if (ws?.success && ws.data) {
+          setWorkspace(ws.data);
         }
-        if (wsJson?.success && wsJson.data) {
-          setWorkspace(wsJson.data);
+        if (me?.success && me.data) {
+          setLocalAuthMe(me.data);
         }
       })
       .catch(() => {
@@ -89,7 +105,7 @@ export function SettingsShellView({ defaultTab = "organization" }: SettingsShell
     return () => {
       active = false;
     };
-  }, [isLoaded, isSignedIn, orgId, router]);
+  }, [isLoaded, isSignedIn, orgId, router]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSelectTab = (tabId: SettingsTabId) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -107,6 +123,7 @@ export function SettingsShellView({ defaultTab = "organization" }: SettingsShell
       rightActions={
         <Link
           href="/chat?new=1"
+          prefetch={true}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 text-[12.5px] font-medium text-zinc-800 transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
@@ -173,10 +190,7 @@ export function SettingsShellView({ defaultTab = "organization" }: SettingsShell
             />
           </div>
         ) : loading && !workspace && activeTab !== "billing" ? (
-          <div className="bg-white rounded-xl border border-zinc-200 p-10 flex items-center justify-center gap-2 text-xs text-zinc-500">
-            <RefreshCw className="h-4 w-4 animate-spin" />
-            <span>Loading workspace settings...</span>
-          </div>
+          <SettingsPanelSkeleton />
         ) : (
           <>
             {activeTab === "organization" && (

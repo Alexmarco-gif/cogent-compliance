@@ -35,6 +35,27 @@ export interface ResolveTenantOptions {
  * - 403 TENANT_CONTEXT_INVALID if no organization is active or user is not a member.
  * - 403 TENANT_SUSPENDED if the tenant or membership is suspended.
  */
+const TENANT_CONTEXT_CACHE_TTL_MS = 30_000;
+const tenantContextCache = new Map<string, { context: TenantContext; expiresAt: number }>();
+
+/** Clears cached tenant contexts (call on role/org/membership mutations). */
+export function invalidateTenantContextCache(clerkOrgId?: string, clerkUserId?: string): void {
+  if (!clerkOrgId && !clerkUserId) {
+    tenantContextCache.clear();
+    return;
+  }
+  for (const key of tenantContextCache.keys()) {
+    const [kOrg, kUser] = key.split("::");
+    if (
+      (clerkOrgId && clerkUserId && kOrg === clerkOrgId && kUser === clerkUserId) ||
+      (clerkOrgId && !clerkUserId && kOrg === clerkOrgId) ||
+      (!clerkOrgId && clerkUserId && kUser === clerkUserId)
+    ) {
+      tenantContextCache.delete(key);
+    }
+  }
+}
+
 export async function resolveTenantContext(
   req?: Request,
   options?: ResolveTenantOptions,
@@ -98,6 +119,14 @@ export async function resolveTenantContext(
       "Multi-tenant context missing: No active organization selected in session. Users must belong to and select an authorized institution organization.",
       403,
     );
+  }
+
+  const cacheKey = `${orgId}::${userId}`;
+  if (process.env.NODE_ENV !== "test") {
+    const cached = tenantContextCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.context;
+    }
   }
 
   // 3. Query Supabase database authority
@@ -449,7 +478,7 @@ export async function resolveTenantContext(
 
   const permissions = getPermissionsForRole(resolvedRole);
 
-  return {
+  const resolvedContext: TenantContext = {
     tenantId: tenant.id,
     userId: resolvedMembershipId || userId,
     clerkOrgId: orgId,
@@ -460,4 +489,13 @@ export async function resolveTenantContext(
     permissions,
     status: membershipStatus,
   };
+
+  if (process.env.NODE_ENV !== "test") {
+    tenantContextCache.set(cacheKey, {
+      context: resolvedContext,
+      expiresAt: Date.now() + TENANT_CONTEXT_CACHE_TTL_MS,
+    });
+  }
+
+  return resolvedContext;
 }

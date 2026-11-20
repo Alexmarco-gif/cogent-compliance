@@ -10,6 +10,7 @@ import {
   Check,
 } from "lucide-react";
 import { extractApiError, unwrapApiList } from "@/lib/api-client";
+import { KnowledgeListSkeleton } from "@/components/shell/WorkspaceSkeletons";
 import type {
   MarketingKnowledgeRule,
   KnowledgeRuleType,
@@ -219,7 +220,7 @@ export function RuleActivationTable() {
           )}
         </div>
       ) : loading ? (
-        <div className="p-8 text-center text-xs text-zinc-500">Loading compliance rules...</div>
+        <KnowledgeListSkeleton rows={4} />
       ) : rules.length === 0 ? (
         <div className="p-8 text-center border border-dashed border-zinc-200 rounded-lg">
           <CheckCircle2 className="w-7 h-7 mx-auto text-zinc-400 mb-2" />

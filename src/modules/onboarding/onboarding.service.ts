@@ -343,9 +343,11 @@ export class OnboardingService {
     tenantId: string,
     _clerkUserId?: string,
     _clerkOrgId?: string,
-  ): Promise<{ success: boolean; completedAt: string }> {
+    options?: { skippedSample?: boolean },
+  ): Promise<{ success: boolean; completedAt: string; skippedSample: boolean }> {
     const supabase = createAdminSupabaseClient();
     const completedAt = new Date().toISOString();
+    const skippedSample = Boolean(options?.skippedSample);
 
     const { data: tenant } = await supabase
       .from("tenants")
@@ -366,6 +368,7 @@ export class OnboardingService {
           trial_started_at: trialStartedAt,
           onboarding_step: 3,
           onboarding_completed_at: completedAt,
+          onboarding_sample_skipped: skippedSample,
         },
       })
       .eq("id", tenantId);
@@ -375,9 +378,9 @@ export class OnboardingService {
       throw new Error("Failed to finalize institutional onboarding");
     }
 
-    logger.info("Tenant completed 60-second progressive onboarding", { tenantId, completedAt });
+    logger.info("Tenant completed progressive onboarding", { tenantId, completedAt, skippedSample });
 
-    return { success: true, completedAt };
+    return { success: true, completedAt, skippedSample };
   }
 }
 

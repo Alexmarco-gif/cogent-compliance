@@ -38,11 +38,11 @@ export async function POST(
     const tenant = await resolveTenantContext(req);
     requirePermission(tenant, "conversation.create");
 
-    // 1a. Verify conversation exists and caller owns it (or it is a shared sentinel incident thread)
-    const conversation = await conversationService.getConversation(
-      tenant.tenantId,
-      conversationId
-    );
+    // 1a & 1b. Load conversation ownership and subscription state concurrently to minimize TTFT
+    const [conversation, subInfo] = await Promise.all([
+      conversationService.getConversation(tenant.tenantId, conversationId),
+      entitlementsService.getTenantSubscriptionInfo(tenant.tenantId),
+    ]);
     if (!conversation) {
       return NextResponse.json(
         {
@@ -70,8 +70,7 @@ export async function POST(
       );
     }
 
-    // 1b. Enforce 7-day evaluation trial expiration
-    const subInfo = await entitlementsService.getTenantSubscriptionInfo(tenant.tenantId);
+    // Enforce 7-day evaluation trial expiration
     if (subInfo.isTrial && subInfo.isTrialExpired) {
       return NextResponse.json(
         {

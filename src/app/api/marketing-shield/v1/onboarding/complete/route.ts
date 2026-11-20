@@ -8,10 +8,12 @@ import { logger } from "@/lib/logger";
 export async function POST(req: NextRequest) {
   try {
     const tenantContext = await resolveTenantContext(req);
+    const body = await req.json().catch(() => ({})) as { skipped_sample?: boolean };
     const result = await onboardingService.completeOnboarding(
       tenantContext.tenantId,
       tenantContext.clerkUserId,
       tenantContext.clerkOrgId,
+      { skippedSample: Boolean(body?.skipped_sample) },
     );
     const subInfo = await entitlementsService.getTenantSubscriptionInfo(tenantContext.tenantId);
 

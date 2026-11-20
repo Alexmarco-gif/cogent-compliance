@@ -107,6 +107,8 @@ export const searchQuotaSnapshotSchema = z.object({
   monthly_limit: z.number().int(), // -1 = unlimited
   remaining: z.number().int(), // -1 = unlimited
   trial_locked_reason: z.string().nullable().optional(),
+  /** True when trial paid dual-engine credits are exhausted but standard web search fallback remains available. */
+  standard_fallback_available: z.boolean().optional(),
 });
 export type SearchQuotaSnapshot = z.infer<typeof searchQuotaSnapshotSchema>;
 

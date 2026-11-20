@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
+import { KnowledgeListSkeleton } from "@/components/shell/WorkspaceSkeletons";
 import {
   Upload,
   BookOpen,
@@ -18,10 +19,13 @@ import type {
   KnowledgeDocumentType,
 } from "@/contracts/knowledge-product.contracts";
 
+const playbookDocsCache = new Map<string, KnowledgeDocument[]>();
+
 export function PlaybookUploader() {
   const { isLoaded: clerkLoaded, isSignedIn, orgId } = useAuth();
-  const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cachedDocs = orgId ? playbookDocsCache.get(orgId) : undefined;
+  const [documents, setDocuments] = useState<KnowledgeDocument[]>(() => cachedDocs || []);
+  const [loading, setLoading] = useState(!cachedDocs);
   const [error, setError] = useState<string | null>(null);
   const [errorStatus, setErrorStatus] = useState<number | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
@@ -42,7 +46,7 @@ export function PlaybookUploader() {
       return;
     }
     try {
-      setLoading(true);
+      if (!playbookDocsCache.has(orgId)) setLoading(true);
       const res = await fetch("/api/marketing-shield/v1/knowledge-base/documents");
       const json = await res.json().catch(() => ({}));
       if (!res.ok || json.success === false) {
@@ -50,7 +54,9 @@ export function PlaybookUploader() {
         setErrorStatus(parsed.status);
         throw new Error(parsed.message);
       }
-      setDocuments(unwrapApiList<KnowledgeDocument>(json));
+      const list = unwrapApiList<KnowledgeDocument>(json);
+      playbookDocsCache.set(orgId, list);
+      setDocuments(list);
       setError(null);
       setErrorStatus(null);
     } catch (err) {
@@ -62,6 +68,10 @@ export function PlaybookUploader() {
 
   useEffect(() => {
     if (!clerkLoaded) return;
+    if (orgId && playbookDocsCache.has(orgId)) {
+      setDocuments(playbookDocsCache.get(orgId)!);
+      setLoading(false);
+    }
     fetchDocuments();
   }, [clerkLoaded, isSignedIn, orgId, fetchDocuments]);
 
@@ -174,7 +184,7 @@ export function PlaybookUploader() {
           )}
         </div>
       ) : loading ? (
-        <div className="p-8 text-center text-xs text-zinc-500">Loading playbooks...</div>
+        <KnowledgeListSkeleton rows={3} />
       ) : documents.length === 0 ? (
         <div className="p-8 text-center border border-dashed border-zinc-200 rounded-lg">
           <BookOpen className="w-7 h-7 mx-auto text-zinc-400 mb-2" />

@@ -18,6 +18,7 @@ import {
   SubscriptionPlan,
   SubscriptionStatus,
 } from "@/contracts/billing.contracts";
+import type { SearchQuotaSnapshot } from "@/contracts/search.contracts";
 
 export interface TenantSubscriptionInfo {
   plan: SubscriptionPlan;
@@ -36,6 +37,19 @@ export interface TenantSubscriptionInfo {
 const DAY_MS = 24 * 60 * 60 * 1000;
 const INTERNAL_PERIOD_MS = 10 * 365 * DAY_MS;
 const HOUR_MS = 60 * 60 * 1000;
+const SUB_INFO_CACHE_TTL_MS = 20_000;
+/** Fixed 7-char billing period key so a 7-day trial gets strictly 3 total searches even across month boundaries. */
+export const TRIAL_SEARCH_BILLING_PERIOD = "0000-00";
+
+const subInfoCache = new Map<string, { data: TenantSubscriptionInfo; expiresAt: number }>();
+
+export function invalidateTenantSubscriptionCache(tenantId?: string): void {
+  if (tenantId) {
+    subInfoCache.delete(tenantId);
+  } else {
+    subInfoCache.clear();
+  }
+}
 
 export class EntitlementsService {
   /**
@@ -91,7 +105,27 @@ export class EntitlementsService {
    * Resolves the authoritative subscription state for a tenant.
    * Checks database table `tenant_subscriptions` first, then tenant settings JSONB fallback.
    */
-  public async getTenantSubscriptionInfo(tenantId: string): Promise<TenantSubscriptionInfo> {
+  public async getTenantSubscriptionInfo(
+    tenantId: string,
+    options?: { bypassCache?: boolean },
+  ): Promise<TenantSubscriptionInfo> {
+    if (process.env.NODE_ENV !== "test" && !options?.bypassCache) {
+      const cached = subInfoCache.get(tenantId);
+      if (cached && cached.expiresAt > Date.now()) {
+        return cached.data;
+      }
+    }
+    const result = await this.loadTenantSubscriptionInfoFromDb(tenantId);
+    if (process.env.NODE_ENV !== "test") {
+      subInfoCache.set(tenantId, {
+        data: result,
+        expiresAt: Date.now() + SUB_INFO_CACHE_TTL_MS,
+      });
+    }
+    return result;
+  }
+
+  private async loadTenantSubscriptionInfoFromDb(tenantId: string): Promise<TenantSubscriptionInfo> {
     const supabase = createAdminSupabaseClient();
     const evaluationPlan = DEFAULT_PLANS.evaluation;
 
@@ -321,8 +355,9 @@ export class EntitlementsService {
   public async checkTenantEntitlement(
     tenantId: string,
     feature: FeatureGateType,
+    preloadedSubInfo?: TenantSubscriptionInfo,
   ): Promise<EntitlementCheckResult> {
-    const subInfo = await this.getTenantSubscriptionInfo(tenantId);
+    const subInfo = preloadedSubInfo ?? (await this.getTenantSubscriptionInfo(tenantId));
     const { plan, status, isTrial, trialDaysRemaining } = subInfo;
 
     // 1. If trial has expired and account has no active subscription
@@ -490,20 +525,26 @@ export class EntitlementsService {
       };
     }
 
-    // 6. Feature: live_web_search (Paid Exa AI + SerpAPI Nigeria & Africa)
+    // 6. Feature: live_web_search (Paid Dual-Engine for Growth/Scale/Enterprise + 3 Trial Searches for Evaluation)
     if (feature === "live_web_search") {
       const limit =
         typeof plan.monthly_live_search_limit === "number"
           ? plan.monthly_live_search_limit
           : plan.features.monthly_live_search_limit ?? 0;
-      const allowedJurisdictions = plan.allowed_search_jurisdictions ?? [];
+      const allowedJurisdictions =
+        plan.allowed_search_jurisdictions && plan.allowed_search_jurisdictions.length > 0
+          ? plan.allowed_search_jurisdictions
+          : plan.slug === "evaluation"
+            ? ["NG"]
+            : [];
+      const isTrialPlan = plan.slug === "evaluation";
 
-      if (plan.slug === "evaluation" || !plan.features.live_web_search || limit === 0) {
+      if (!plan.features.live_web_search || limit === 0) {
         return {
           allowed: false,
           feature,
           reason:
-            "Real-time Nigerian & Pan-African Web Search (Exa AI + SerpAPI) requires a Growth ($149/mo) or Scale ($449/mo) plan. Your query will search our 141 verified Nigerian statutory documents.",
+            "Real-time Nigerian & Pan-African Live Web Search requires a Growth ($149/mo) or Scale ($449/mo) plan. Your query will search our 141 verified Nigerian statutory documents.",
           currentCount: 0,
           limit: 0,
           remaining: 0,
@@ -514,8 +555,24 @@ export class EntitlementsService {
         };
       }
 
-      const currentCount = await this.getCurrentMonthLiveSearchCount(tenantId);
+      const billingPeriod = this.getLiveSearchBillingPeriod(plan.slug);
+      const currentCount = await this.getCurrentMonthLiveSearchCount(tenantId, billingPeriod);
       if (limit !== -1 && currentCount >= limit) {
+        if (isTrialPlan) {
+          return {
+            allowed: false,
+            feature,
+            fallbackToGeminiSearch: true,
+            reason: `You've used all ${limit} deep live web searches included in your trial. Standard web search remains available, or upgrade to Growth for 100 deep searches/month.`,
+            currentCount,
+            limit,
+            remaining: 0,
+            allowedJurisdictions,
+            planSlug: plan.slug,
+            status,
+            trialDaysRemaining,
+          };
+        }
         return {
           allowed: false,
           feature,
@@ -585,8 +642,15 @@ export class EntitlementsService {
     return now.toISOString().slice(0, 7); // 'YYYY-MM' UTC
   }
 
-  public async getCurrentMonthLiveSearchCount(tenantId: string): Promise<number> {
-    const billingPeriod = this.getCurrentBillingPeriod();
+  public getLiveSearchBillingPeriod(planSlug: PlanSlug, now: Date = new Date()): string {
+    return planSlug === "evaluation" ? TRIAL_SEARCH_BILLING_PERIOD : this.getCurrentBillingPeriod(now);
+  }
+
+  public async getCurrentMonthLiveSearchCount(
+    tenantId: string,
+    billingPeriodOverride?: string,
+  ): Promise<number> {
+    const billingPeriod = billingPeriodOverride || this.getCurrentBillingPeriod();
     try {
       const supabase = createAdminSupabaseClient();
       const { data, error } = await supabase
@@ -608,10 +672,14 @@ export class EntitlementsService {
   /**
    * Returns complete live search quota snapshot for UI pills, sidebar meter, and /search/quota endpoint.
    */
-  public async getLiveSearchQuotaSnapshot(tenantId: string) {
+  public async getLiveSearchQuotaSnapshot(
+    tenantId: string,
+    preloadedSubInfo?: TenantSubscriptionInfo,
+  ): Promise<SearchQuotaSnapshot> {
+    const subInfo = preloadedSubInfo ?? (await this.getTenantSubscriptionInfo(tenantId));
     const [liveCheck, crossBorderCheck] = await Promise.all([
-      this.checkTenantEntitlement(tenantId, "live_web_search"),
-      this.checkTenantEntitlement(tenantId, "cross_border_research"),
+      this.checkTenantEntitlement(tenantId, "live_web_search", subInfo),
+      this.checkTenantEntitlement(tenantId, "cross_border_research", subInfo),
     ]);
 
     return {
@@ -623,12 +691,15 @@ export class EntitlementsService {
       monthly_limit: liveCheck.limit ?? 0,
       remaining: liveCheck.remaining ?? 0,
       trial_locked_reason: liveCheck.allowed ? null : (liveCheck.reason ?? null),
+      standard_fallback_available: Boolean(liveCheck.fallbackToGeminiSearch),
     };
   }
 
   /**
    * Atomically authorizes live search (plan + jurisdiction scope) and consumes 1 quota credit via PostgreSQL RPC.
    * Zero client trust; fail-closed if quota RPC fails or is exhausted.
+   * Trial users get strictly 3 paid dual-engine searches; once exhausted, `fallbackToGeminiSearch: true`
+   * signals callers to fall back to standard Gemini web search without calling Exa/SerpAPI.
    */
   public async authorizeAndConsumeLiveSearch(
     tenantId: string,
@@ -657,13 +728,14 @@ export class EntitlementsService {
       typeof plan.monthly_live_search_limit === "number"
         ? plan.monthly_live_search_limit
         : plan.features.monthly_live_search_limit ?? 0;
+    const isTrialPlan = plan.slug === "evaluation";
 
-    if (plan.slug === "evaluation" || !plan.features.live_web_search || limit === 0) {
+    if (!plan.features.live_web_search || limit === 0) {
       return {
         allowed: false,
         feature: "live_web_search",
         reason:
-          "Live Nigerian & Pan-African Web Search (Exa AI + SerpAPI) is available on Growth and Scale plans.",
+          "Live Nigerian & Pan-African Web Search is available on Growth and Scale plans.",
         currentCount: 0,
         limit: 0,
         remaining: 0,
@@ -674,7 +746,10 @@ export class EntitlementsService {
       };
     }
 
-    const allowedJurisdictions = plan.allowed_search_jurisdictions ?? ["NG"];
+    const allowedJurisdictions =
+      plan.allowed_search_jurisdictions && plan.allowed_search_jurisdictions.length > 0
+        ? plan.allowed_search_jurisdictions
+        : ["NG"];
     const normalizedRequested = (
       requestedJurisdictions.length > 0 ? requestedJurisdictions : ["NG"]
     ).map((c) => c.trim().toUpperCase());
@@ -696,7 +771,7 @@ export class EntitlementsService {
       };
     }
 
-    const billingPeriod = this.getCurrentBillingPeriod();
+    const billingPeriod = this.getLiveSearchBillingPeriod(plan.slug);
     const supabase = createAdminSupabaseClient();
 
     const { data, error } = await supabase.rpc("consume_live_search_quota", {
@@ -729,6 +804,21 @@ export class EntitlementsService {
     const remaining = typeof row?.remaining === "number" ? row.remaining : 0;
 
     if (!allowed) {
+      if (isTrialPlan) {
+        return {
+          allowed: false,
+          feature: "live_web_search",
+          fallbackToGeminiSearch: true,
+          reason: `You've used all ${limit} deep live web searches included in your trial. Falling back to standard web search — upgrade to Growth for 100 deep searches/month.`,
+          currentCount,
+          limit,
+          remaining: 0,
+          allowedJurisdictions,
+          planSlug: plan.slug,
+          status,
+          trialDaysRemaining,
+        };
+      }
       return {
         allowed: false,
         feature: "live_web_search",

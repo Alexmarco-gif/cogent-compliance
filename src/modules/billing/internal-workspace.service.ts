@@ -257,6 +257,9 @@ export async function setInternalWorkspace(params: {
     // Non-blocking audit logging
   }
 
+  const { invalidateTenantSubscriptionCache } = await import("./entitlements.service");
+  invalidateTenantSubscriptionCache(tenantId);
+
   logger.info("Internal workspace override updated", { tenantId, enabled, source });
   return { ok: true, isInternal: enabled };
 }

@@ -2,10 +2,16 @@
 
 import React, { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth, OrganizationSwitcher } from "@clerk/nextjs";
 import { WorkspaceSidebar } from "@/components/shell/WorkspaceSidebar";
 import { WorkspaceHeader } from "@/components/shell/WorkspaceHeader";
+import { useWorkspace } from "@/components/shell/WorkspaceProvider";
+import {
+  ChatWorkspaceSkeleton,
+  ThreadMessagesSkeleton,
+} from "@/components/shell/WorkspaceSkeletons";
 import {
   AdaptiveMessageRenderer,
   type EntitlementBlockedBanner,
@@ -20,11 +26,7 @@ import {
   type ProductOption,
 } from "@/components/chat/ChatComposer";
 import { type SearchTraceItem } from "@/components/chat/ThinkingTraceHeader";
-import { EvidenceDrawer } from "@/components/chat/EvidenceDrawer";
-import { SourcesDrawer } from "@/components/chat/SourcesDrawer";
-import { ArtifactCanvasDrawer } from "@/components/chat/ArtifactCanvasDrawer";
 import { TypewriterHeadline } from "@/components/chat/TypewriterHeadline";
-import { ContextualCampaignInspector } from "@/components/campaign/ContextualCampaignInspector";
 import type { Finding } from "@/components/campaign/FindingCard";
 import type { LockResult } from "@/components/campaign/Tab1LocksOverview";
 import type { ExtractionData } from "@/components/campaign/Tab2AssetBoundingBoxes";
@@ -43,6 +45,26 @@ import type { WorkflowType } from "@/contracts/work-product.contracts";
 import { extractApiError, extractSseDataFromBlock, unwrapApiList } from "@/lib/api-client";
 import { formatCleanAiError } from "@/lib/ai/error-formatter";
 import { PanelRight, AlertTriangle, LogIn, X, Plus, Sparkles } from "lucide-react";
+
+const EvidenceDrawer = dynamic(
+  () => import("@/components/chat/EvidenceDrawer").then((m) => m.EvidenceDrawer),
+  { ssr: false },
+);
+const SourcesDrawer = dynamic(
+  () => import("@/components/chat/SourcesDrawer").then((m) => m.SourcesDrawer),
+  { ssr: false },
+);
+const ArtifactCanvasDrawer = dynamic(
+  () => import("@/components/chat/ArtifactCanvasDrawer").then((m) => m.ArtifactCanvasDrawer),
+  { ssr: false },
+);
+const ContextualCampaignInspector = dynamic(
+  () =>
+    import("@/components/campaign/ContextualCampaignInspector").then(
+      (m) => m.ContextualCampaignInspector,
+    ),
+  { ssr: false },
+);
 
 interface DisplayMessage {
   id: string;
@@ -127,11 +149,18 @@ function ChatWorkspaceContent() {
   const isExplicitNewAudit = searchParams.get("new") === "1";
 
   const { isLoaded: clerkLoaded, isSignedIn, orgId, userId } = useAuth();
-  const [onboardingReady, setOnboardingReady] = useState(false);
-  const [conversations, setConversations] = useState<ConversationRecord[]>([]);
+  const workspace = useWorkspace();
+  const [localOnboardingReady, setLocalOnboardingReady] = useState(false);
+  const onboardingReady = workspace?.onboardingCompleted === true || localOnboardingReady;
+  const [localConversations, setLocalConversations] = useState<ConversationRecord[]>([]);
+  const conversations = workspace ? workspace.conversations : localConversations;
+  const setConversations = workspace ? workspace.setConversations : setLocalConversations;
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<DisplayMessage[]>([]);
-  const [loadingConversations, setLoadingConversations] = useState(true);
+  const [localLoadingConversations, setLocalLoadingConversations] = useState(true);
+  const loadingConversations = workspace
+    ? !workspace.bootstrapped && workspace.bootstrapping
+    : localLoadingConversations;
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const [inspectClauseId, setInspectClauseId] = useState<string | null>(null);
@@ -140,20 +169,27 @@ function ChatWorkspaceContent() {
   const [chatError, setChatError] = useState<string | null>(null);
 
   // Referenced Product Schedule & Policy Knowledge State
-  const [products, setProducts] = useState<ProductOption[]>([]);
+  const [localProducts, setLocalProducts] = useState<ProductOption[]>([]);
+  const products = workspace ? workspace.products : localProducts;
+  const setProducts = workspace ? workspace.setProducts : setLocalProducts;
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
-  const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocOption[]>([]);
+  const [localKnowledgeDocs, setLocalKnowledgeDocs] = useState<KnowledgeDocOption[]>([]);
+  const knowledgeDocs = workspace ? workspace.knowledgeDocs : localKnowledgeDocs;
+  const setKnowledgeDocs = workspace ? workspace.setKnowledgeDocs : setLocalKnowledgeDocs;
   const [selectedKnowledgeDocId, setSelectedKnowledgeDocId] = useState<string | null>(null);
 
   // Paid Dual-Engine Live Search & Workflow Orchestration State
-  const [liveSearchQuota, setLiveSearchQuota] = useState<SearchQuotaSnapshot | null>(null);
+  const [localLiveSearchQuota, setLocalLiveSearchQuota] = useState<SearchQuotaSnapshot | null>(null);
+  const liveSearchQuota = workspace ? workspace.searchQuota : localLiveSearchQuota;
+  const setLiveSearchQuota = workspace ? workspace.setSearchQuota : setLocalLiveSearchQuota;
   const [enableLiveWebSearch, setEnableLiveWebSearch] = useState(false);
   const [searchJurisdictions, setSearchJurisdictions] = useState<SearchJurisdiction[]>(["NG"]);
   const [workflowHint, setWorkflowHint] = useState<WorkflowType | null>(null);
   const [prefillText, setPrefillText] = useState<string | null>(null);
 
   // Layout State
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [localSidebarCollapsed, setLocalSidebarCollapsed] = useState(false);
+  const sidebarCollapsed = workspace ? workspace.sidebarCollapsed : localSidebarCollapsed;
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Campaign & Studio State
@@ -183,17 +219,22 @@ function ChatWorkspaceContent() {
   const activeScopeKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
+    if (workspace) return;
     try {
       if (window.localStorage.getItem("cogent:sidebar-collapsed") === "true") {
-        setSidebarCollapsed(true);
+        setLocalSidebarCollapsed(true);
       }
     } catch {
       // Ignore storage access failures
     }
-  }, []);
+  }, [workspace]);
 
   const handleToggleSidebar = useCallback(() => {
-    setSidebarCollapsed((prev) => {
+    if (workspace) {
+      workspace.toggleSidebarCollapsed();
+      return;
+    }
+    setLocalSidebarCollapsed((prev) => {
       const next = !prev;
       try {
         window.localStorage.setItem("cogent:sidebar-collapsed", String(next));
@@ -202,7 +243,7 @@ function ChatWorkspaceContent() {
       }
       return next;
     });
-  }, []);
+  }, [workspace]);
 
   useEffect(() => {
     const nextScope = userId && orgId ? `${userId}::${orgId}` : null;
@@ -210,9 +251,7 @@ function ChatWorkspaceContent() {
       activeConvIdRef.current = null;
       explicitNewRef.current = false;
       setActiveConvId(null);
-      setConversations([]);
       setMessages([]);
-      setProducts([]);
       setSelectedProductId(null);
       setActiveCampaign(null);
       setActiveAssessment(null);
@@ -224,17 +263,21 @@ function ChatWorkspaceContent() {
       setActiveWorkProductId(null);
       setShowArtifactCanvas(false);
       setSelectedKnowledgeDocId(null);
-      setKnowledgeDocs([]);
-      setLiveSearchQuota(null);
       setEnableLiveWebSearch(false);
       setWorkflowHint(null);
       setInspectClauseId(null);
       setSourcesDrawerCitations(null);
       setChatError(null);
       setAuthIssue(null);
+      if (!workspace) {
+        setConversations([]);
+        setProducts([]);
+        setKnowledgeDocs([]);
+        setLiveSearchQuota(null);
+      }
     }
     activeScopeKeyRef.current = nextScope;
-  }, [userId, orgId]);
+  }, [userId, orgId, workspace, setConversations, setProducts, setKnowledgeDocs, setLiveSearchQuota]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -261,7 +304,17 @@ function ChatWorkspaceContent() {
   }, []);
 
   const loadConversations = useCallback(async () => {
-    setLoadingConversations(true);
+    if (workspace) {
+      await workspace.ensureBootstrapped();
+      const targetFromUrl = requestedConvIdRef.current;
+      if (explicitNewRef.current) {
+        setActiveConvId(null);
+      } else if (targetFromUrl) {
+        setActiveConvId(targetFromUrl);
+      }
+      return;
+    }
+    setLocalLoadingConversations(true);
     try {
       const res = await fetch("/api/marketing-shield/v1/conversations?status=ACTIVE");
       const json = await res.json().catch(() => ({}));
@@ -291,23 +344,32 @@ function ChatWorkspaceContent() {
       console.error("Failed to load conversations", err);
       setChatError("Unable to reach the workspace server. Check your connection and retry.");
     } finally {
-      setLoadingConversations(false);
+      setLocalLoadingConversations(false);
     }
-  }, [applyApiFailure]);
+  }, [workspace, applyApiFailure, setConversations]);
 
-  // Gate /chat behind sign-in, active organization, and completed onboarding
+  // Single-request bootstrap & onboarding check (0ms instant when cached in WorkspaceProvider)
   useEffect(() => {
     if (!clerkLoaded) return;
 
     if (!isSignedIn) {
-      setOnboardingReady(false);
+      setLocalOnboardingReady(false);
       router.replace("/sign-in?redirect_url=/chat");
       return;
     }
 
     if (!orgId) {
-      setOnboardingReady(false);
+      setLocalOnboardingReady(false);
       router.replace("/onboarding");
+      return;
+    }
+
+    if (workspace) {
+      if (workspace.onboardingCompleted === false) {
+        router.replace("/onboarding");
+        return;
+      }
+      void workspace.ensureBootstrapped();
       return;
     }
 
@@ -329,39 +391,56 @@ function ChatWorkspaceContent() {
           router.replace("/onboarding");
           return;
         }
-        setOnboardingReady(true);
+        setLocalOnboardingReady(true);
       })
       .catch(() => {
         if (!cancelled) {
-          setOnboardingReady(true);
+          setLocalOnboardingReady(true);
         }
       });
 
     return () => {
       cancelled = true;
     };
-  }, [clerkLoaded, isSignedIn, orgId, router]);
+  }, [clerkLoaded, isSignedIn, orgId, workspace, workspace?.onboardingCompleted, router]);
 
   const hasAutoEnabledLiveWebRef = useRef(false);
+  useEffect(() => {
+    if (!liveSearchQuota || hasAutoEnabledLiveWebRef.current) return;
+    // Paid plans auto-enable live web search; trial users stay opt-in so they deliberately spend their 3 searches
+    if (
+      liveSearchQuota.plan_slug !== "evaluation" &&
+      liveSearchQuota.live_web_allowed &&
+      (liveSearchQuota.remaining ?? 1) !== 0
+    ) {
+      hasAutoEnabledLiveWebRef.current = true;
+      setEnableLiveWebSearch(true);
+    }
+  }, [liveSearchQuota]);
+
   const refreshLiveSearchQuota = useCallback(async () => {
+    if (workspace) {
+      await workspace.refreshSearchQuota();
+      return;
+    }
     try {
       const res = await fetch("/api/marketing-shield/v1/search/quota", { cache: "no-store" });
       const json = await res.json().catch(() => null);
       const snap = (json?.data?.quota || json?.data) as SearchQuotaSnapshot | undefined;
       if (res.ok && json?.success && snap && typeof snap.live_web_allowed === "boolean") {
         setLiveSearchQuota(snap);
-        if (!hasAutoEnabledLiveWebRef.current && snap.live_web_allowed && (snap.remaining ?? 1) > 0) {
-          hasAutoEnabledLiveWebRef.current = true;
-          setEnableLiveWebSearch(true);
-        }
       }
     } catch {
       // Non-blocking: quota indicator degrades silently
     }
-  }, []);
+  }, [workspace, setLiveSearchQuota]);
 
   useEffect(() => {
     if (!clerkLoaded || !isSignedIn || !orgId || !onboardingReady) return;
+    if (workspace) {
+      // WorkspaceProvider already fetched conversations, quota, products & knowledgeDocs in 1 parallel request
+      return;
+    }
     loadConversations();
     void refreshLiveSearchQuota();
 
@@ -373,7 +452,7 @@ function ChatWorkspaceContent() {
         setProducts(items);
       })
       .catch(() => {
-        // Non-blocking: product list stays empty on network failure
+        // Non-blocking
       });
 
     fetch("/api/marketing-shield/v1/knowledge-base/documents?status=ACTIVE")
@@ -384,9 +463,19 @@ function ChatWorkspaceContent() {
         setKnowledgeDocs(items);
       })
       .catch(() => {
-        // Non-blocking: knowledge docs list stays empty on network failure
+        // Non-blocking
       });
-  }, [clerkLoaded, isSignedIn, orgId, onboardingReady, loadConversations, refreshLiveSearchQuota]);
+  }, [
+    clerkLoaded,
+    isSignedIn,
+    orgId,
+    onboardingReady,
+    workspace,
+    loadConversations,
+    refreshLiveSearchQuota,
+    setProducts,
+    setKnowledgeDocs,
+  ]);
 
   useEffect(() => {
     if (!onboardingReady) return;
@@ -847,87 +936,6 @@ function ChatWorkspaceContent() {
       msgOptions?.referencedKnowledgeDocId ?? selectedKnowledgeDocId ?? undefined;
     const effectiveWorkflowHint = msgOptions?.workflowHint ?? workflowHint ?? undefined;
 
-    if (!currentConvId) {
-      const topicTitle = deriveConversationTopicTitle(text, {
-        productName: selectedProduct?.product_name,
-        attachmentName: attachedAssets[0]?.filename,
-      });
-      const resolvedContextType =
-        effectiveWorkflowHint === "POLICY_GAP_REDLINE"
-          ? "POLICY_REDLINE"
-          : effectiveWorkflowHint === "SUPERVISORY_DDQ_RESPONSE"
-            ? "DDQ_RESPONSE"
-            : effectiveWorkflowHint === "CROSS_BORDER_COMPARISON"
-              ? "CROSS_BORDER"
-              : effectiveWorkflowHint === "PRODUCT_STRUCTURING_MEMO"
-                ? "WORKFLOW_RESEARCH"
-                : selectedProduct || attachmentAssetIds.length > 0
-                  ? "CAMPAIGN"
-                  : "GENERAL";
-      try {
-        const createRes = await fetch("/api/marketing-shield/v1/conversations", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            title: topicTitle,
-            context_type: resolvedContextType,
-          }),
-        });
-        const createJson = await createRes.json().catch(() => ({}));
-        if (!createRes.ok || !createJson.success || !createJson.data) {
-          applyApiFailure(createRes.status, createJson, "Unable to create compliance audit.");
-          return false;
-        }
-        currentConvId = createJson.data.id;
-        explicitNewRef.current = false;
-        activeConvIdRef.current = currentConvId;
-        skipNextLoadForConvRef.current = currentConvId;
-        setAuthIssue(null);
-        setActiveConvId(currentConvId);
-        setConversations((prev) => [createJson.data, ...prev]);
-      } catch (err) {
-        console.error("Failed to create initial conversation", err);
-        setChatError("Unable to reach the workspace server. Check your connection and try again.");
-        return false;
-      }
-    }
-
-    if (!currentConvId) {
-      setChatError("Unable to initialize audit session. Please try again.");
-      return false;
-    }
-
-    if (attachmentAssetIds.length > 0 && !activeCampaign) {
-      const firstFilename = attachedAssets[0]?.filename || "Campaign Asset";
-      const baseTitle = firstFilename.replace(/\.[^/.]+$/, "").trim();
-      const campaignName = baseTitle.length >= 3 ? baseTitle : `${baseTitle || "Campaign"} Asset`;
-      const combinedExtracted = attachedAssets
-        .map((a) => ("extractedText" in a ? a.extractedText?.trim() : undefined))
-        .filter(Boolean)
-        .join("\n\n");
-
-      void fetch("/api/marketing-shield/v1/campaigns", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          conversation_id: currentConvId,
-          campaign_name: campaignName,
-          channel: "SOCIAL_MEDIA",
-          product_id: selectedProductId || undefined,
-          asset_ids: attachmentAssetIds,
-          initial_content_text:
-            combinedExtracted || `Campaign asset ${firstFilename} uploaded for compliance review.`,
-        }),
-      })
-        .then((res) => (res.ok ? res.json() : null))
-        .then((campJson) => {
-          if (campJson?.success && campJson.data?.id) {
-            void loadCampaignData(campJson.data.id);
-          }
-        })
-        .catch(() => {});
-    }
-
     const tempUserMsgId = `user_${Date.now()}`;
     const userMsg: DisplayMessage = {
       id: tempUserMsgId,
@@ -962,8 +970,102 @@ function ChatWorkspaceContent() {
     let currentUserMsgId = tempUserMsgId;
     let currentAssistantMsgId = tempAssistantMsgId;
 
+    // Show user message and analyzing wave IMMEDIATELY (0ms perceived latency)
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setIsStreaming(true);
+
+    if (!currentConvId) {
+      const topicTitle = deriveConversationTopicTitle(text, {
+        productName: selectedProduct?.product_name,
+        attachmentName: attachedAssets[0]?.filename,
+      });
+      const resolvedContextType =
+        effectiveWorkflowHint === "POLICY_GAP_REDLINE"
+          ? "POLICY_REDLINE"
+          : effectiveWorkflowHint === "SUPERVISORY_DDQ_RESPONSE"
+            ? "DDQ_RESPONSE"
+            : effectiveWorkflowHint === "CROSS_BORDER_COMPARISON"
+              ? "CROSS_BORDER"
+              : effectiveWorkflowHint === "PRODUCT_STRUCTURING_MEMO"
+                ? "WORKFLOW_RESEARCH"
+                : selectedProduct || attachmentAssetIds.length > 0
+                  ? "CAMPAIGN"
+                  : "GENERAL";
+      try {
+        const createRes = await fetch("/api/marketing-shield/v1/conversations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: topicTitle,
+            context_type: resolvedContextType,
+          }),
+        });
+        const createJson = await createRes.json().catch(() => ({}));
+        if (!createRes.ok || !createJson.success || !createJson.data) {
+          applyApiFailure(createRes.status, createJson, "Unable to create compliance audit.");
+          setMessages((prev) =>
+            prev.filter((m) => m.id !== tempUserMsgId && m.id !== tempAssistantMsgId),
+          );
+          setIsStreaming(false);
+          return false;
+        }
+        currentConvId = createJson.data.id;
+        explicitNewRef.current = false;
+        activeConvIdRef.current = currentConvId;
+        skipNextLoadForConvRef.current = currentConvId;
+        setAuthIssue(null);
+        setActiveConvId(currentConvId);
+        setConversations((prev) => [createJson.data, ...prev]);
+      } catch (err) {
+        console.error("Failed to create initial conversation", err);
+        setChatError("Unable to reach the workspace server. Check your connection and try again.");
+        setMessages((prev) =>
+          prev.filter((m) => m.id !== tempUserMsgId && m.id !== tempAssistantMsgId),
+        );
+        setIsStreaming(false);
+        return false;
+      }
+    }
+
+    if (!currentConvId) {
+      setChatError("Unable to initialize audit session. Please try again.");
+      setMessages((prev) =>
+        prev.filter((m) => m.id !== tempUserMsgId && m.id !== tempAssistantMsgId),
+      );
+      setIsStreaming(false);
+      return false;
+    }
+
+    if (attachmentAssetIds.length > 0 && !activeCampaign) {
+      const firstFilename = attachedAssets[0]?.filename || "Campaign Asset";
+      const baseTitle = firstFilename.replace(/\.[^/.]+$/, "").trim();
+      const campaignName = baseTitle.length >= 3 ? baseTitle : `${baseTitle || "Campaign"} Asset`;
+      const combinedExtracted = attachedAssets
+        .map((a) => ("extractedText" in a ? a.extractedText?.trim() : undefined))
+        .filter(Boolean)
+        .join("\n\n");
+
+      void fetch("/api/marketing-shield/v1/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          conversation_id: currentConvId,
+          campaign_name: campaignName,
+          channel: "SOCIAL_MEDIA",
+          product_id: selectedProductId || undefined,
+          asset_ids: attachmentAssetIds,
+          initial_content_text:
+            combinedExtracted || `Campaign asset ${firstFilename} uploaded for compliance review.`,
+        }),
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((campJson) => {
+          if (campJson?.success && campJson.data?.id) {
+            void loadCampaignData(campJson.data.id);
+          }
+        })
+        .catch(() => {});
+    }
 
     const extractedUrls = Array.from(
       new Set(text.match(/https?:\/\/[^\s<>"{}|\\^`[\]]+/gi) || []),
@@ -1457,11 +1559,7 @@ function ChatWorkspaceContent() {
   };
 
   if (!clerkLoaded || !isSignedIn || !orgId || !onboardingReady) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-white text-[13px] text-zinc-500">
-        Verifying session and workspace setup...
-      </div>
-    );
+    return <ChatWorkspaceSkeleton />;
   }
 
   return (
@@ -1646,11 +1744,7 @@ function ChatWorkspaceContent() {
         ) : (
           <>
             <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-6">
-              {loadingMessages && (
-                <div className="py-20 text-center text-[12.5px] text-zinc-400">
-                  Loading thread...
-                </div>
-              )}
+              {loadingMessages && <ThreadMessagesSkeleton />}
 
               {messages.map((msg) => (
                 <AdaptiveMessageRenderer
@@ -1722,20 +1816,22 @@ function ChatWorkspaceContent() {
         )}
       </div>
 
-      {/* 3. External Slide-Over Right-Hand Artifact Canvas Drawer (Claude / ChatGPT Canvas Architecture) */}
-      <ArtifactCanvasDrawer
-        isOpen={showArtifactCanvas && Boolean(latestReportInThread || activeWorkProductId)}
-        activeTab={canvasActiveTab}
-        onSelectTab={setCanvasActiveTab}
-        onClose={() => setShowArtifactCanvas(false)}
-        report={latestReportInThread}
-        workProductId={activeWorkProductId}
-        onInspectEvidence={(clauseId) => setInspectClauseId(clauseId)}
-        onApplyCompliantRewrite={handleApplyCompliantRewrite}
-        onApproveAndSealDossier={handleApproveAndSealDossier}
-      />
+      {/* 3. External Slide-Over Right-Hand Artifact Canvas Drawer (Lazy Loaded) */}
+      {(showArtifactCanvas && Boolean(latestReportInThread || activeWorkProductId)) && (
+        <ArtifactCanvasDrawer
+          isOpen={true}
+          activeTab={canvasActiveTab}
+          onSelectTab={setCanvasActiveTab}
+          onClose={() => setShowArtifactCanvas(false)}
+          report={latestReportInThread}
+          workProductId={activeWorkProductId}
+          onInspectEvidence={(clauseId) => setInspectClauseId(clauseId)}
+          onApplyCompliantRewrite={handleApplyCompliantRewrite}
+          onApproveAndSealDossier={handleApproveAndSealDossier}
+        />
+      )}
 
-      {/* 4. Split-Screen Campaign Studio */}
+      {/* 4. Split-Screen Campaign Studio (Lazy Loaded) */}
       {showInspector && activeCampaign && (
         <ContextualCampaignInspector
           campaign={activeCampaign}
@@ -1750,36 +1846,34 @@ function ChatWorkspaceContent() {
         />
       )}
 
-      {/* 5. Slide-Over Sources Drawer */}
-      <SourcesDrawer
-        citations={sourcesDrawerCitations || []}
-        isOpen={Boolean(sourcesDrawerCitations)}
-        onClose={() => setSourcesDrawerCitations(null)}
-        onInspectEvidence={(clauseId) => {
-          setSourcesDrawerCitations(null);
-          setInspectClauseId(clauseId);
-        }}
-      />
+      {/* 5. Slide-Over Sources Drawer (Lazy Loaded) */}
+      {Boolean(sourcesDrawerCitations) && (
+        <SourcesDrawer
+          citations={sourcesDrawerCitations || []}
+          isOpen={true}
+          onClose={() => setSourcesDrawerCitations(null)}
+          onInspectEvidence={(clauseId) => {
+            setSourcesDrawerCitations(null);
+            setInspectClauseId(clauseId);
+          }}
+        />
+      )}
 
-      {/* 6. Slide-Over Statutory Provision Drawer */}
-      <EvidenceDrawer
-        clauseId={inspectClauseId}
-        isOpen={Boolean(inspectClauseId)}
-        onClose={() => setInspectClauseId(null)}
-      />
+      {/* 6. Slide-Over Statutory Provision Drawer (Lazy Loaded) */}
+      {Boolean(inspectClauseId) && (
+        <EvidenceDrawer
+          clauseId={inspectClauseId}
+          isOpen={true}
+          onClose={() => setInspectClauseId(null)}
+        />
+      )}
     </div>
   );
 }
 
 export default function ChatPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex h-screen items-center justify-center bg-white text-[13px] text-zinc-400">
-          Loading workspace...
-        </div>
-      }
-    >
+    <Suspense fallback={<ChatWorkspaceSkeleton />}>
       <ChatWorkspaceContent />
     </Suspense>
   );

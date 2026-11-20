@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Percent, BookOpen, CheckSquare } from "lucide-react";
 import { WorkspaceShell } from "@/components/shell/WorkspaceShell";
+import { ChatWorkspaceSkeleton } from "@/components/shell/WorkspaceSkeletons";
 import { ProductRateEditor } from "@/components/knowledge-base/ProductRateEditor";
 import { PlaybookUploader } from "@/components/knowledge-base/PlaybookUploader";
 import { RuleActivationTable } from "@/components/knowledge-base/RuleActivationTable";
@@ -101,7 +102,7 @@ function KnowledgeBaseContent() {
 
 export default function KnowledgeBasePage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-white" />}>
+    <Suspense fallback={<ChatWorkspaceSkeleton />}>
       <KnowledgeBaseContent />
     </Suspense>
   );

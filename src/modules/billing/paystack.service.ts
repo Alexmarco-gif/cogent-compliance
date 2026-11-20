@@ -42,8 +42,8 @@ export const DEFAULT_PLANS: Record<PlanSlug, SubscriptionPlan> = {
     monthly_audit_limit: 3,
     seat_limit: 2,
     url_drift_monitor_limit: 0,
-    monthly_live_search_limit: 0,
-    allowed_search_jurisdictions: [],
+    monthly_live_search_limit: 3,
+    allowed_search_jurisdictions: ["NG"],
     retention_days: 7,
     features: {
       export_unwatermarked: false,
@@ -53,11 +53,11 @@ export const DEFAULT_PLANS: Record<PlanSlug, SubscriptionPlan> = {
       compliant_rewrites: 10,
       support_sla: "Community",
       custom_corpora: false,
-      live_web_search: false,
+      live_web_search: true,
       cross_border_research: false,
       work_product_docx_export: false,
       regulatory_ripple_live_web: false,
-      monthly_live_search_limit: 0,
+      monthly_live_search_limit: 3,
     },
     is_active: true,
   },
@@ -773,6 +773,9 @@ export class PaystackBillingService {
         },
       })
       .eq("id", tenantId);
+
+    const { invalidateTenantSubscriptionCache } = await import("./entitlements.service");
+    invalidateTenantSubscriptionCache(tenantId);
 
     logger.info("Successfully activated subscription for tenant", {
       tenantId,

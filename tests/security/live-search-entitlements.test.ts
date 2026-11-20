@@ -36,6 +36,7 @@ vi.mock("@/modules/billing/entitlements.service", () => ({
 vi.mock("@/modules/live-web-intelligence/web-search.router", () => ({
   webSearchRouter: {
     searchAfricaLiveWeb: vi.fn(),
+    searchWithStandardWebFallback: vi.fn(),
     isDualEngineActive: vi.fn().mockReturnValue(true),
   },
 }));
@@ -187,6 +188,78 @@ describe("Live Web Search Entitlement & Cross-Tenant Security Gates (SEC-GATE-01
     expect(json.data.live_web_results).toEqual([]);
     expect(json.data.vault_clauses.length).toBeGreaterThanOrEqual(1);
     expect(webSearchRouter.searchAfricaLiveWeb).not.toHaveBeenCalled();
+  });
+
+  it("SEC-GATE-07: Evaluation trial after exhausting 3 paid searches falls back to standard Gemini web search without calling paid Exa/SerpAPI", async () => {
+    vi.mocked(entitlementsService.authorizeAndConsumeLiveSearch).mockResolvedValueOnce({
+      allowed: false,
+      fallbackToGeminiSearch: true,
+      planSlug: "evaluation",
+      feature: "live_web_search",
+      limit: 3,
+      remaining: 0,
+      reason: "You've used all 3 deep live web searches included in your trial.",
+    });
+    vi.mocked(entitlementsService.getLiveSearchQuotaSnapshot).mockResolvedValueOnce({
+      plan_slug: "evaluation",
+      live_web_allowed: false,
+      cross_border_allowed: false,
+      allowed_jurisdictions: ["NG"],
+      used_this_month: 3,
+      monthly_limit: 3,
+      remaining: 0,
+      trial_locked_reason: "You've used all 3 deep live web searches included in your trial.",
+      standard_fallback_available: true,
+    });
+    vi.mocked(webSearchRouter.searchWithStandardWebFallback).mockResolvedValueOnce({
+      results: [
+        {
+          live_web_retrieval_id: "ffffffff-ffff-4fff-8fff-ffffffffffff",
+          provider: "GEMINI_GOOGLE_SEARCH",
+          jurisdiction_code: "NG",
+          trust_tier: "OFFICIAL_REGULATOR_WEB",
+          trust_badge_label: "Official Regulator Source",
+          page_title: "CBN Data Localisation Circular",
+          retrieved_url: "https://www.cbn.gov.ng/Out/2026/data-localisation.pdf",
+          domain: "cbn.gov.ng",
+          is_pdf: true,
+          snippet_content: "Standard Gemini grounded summary.",
+          highlights: [],
+          relevance_score: 0.9,
+          retrieved_at: new Date().toISOString(),
+          cache_hit: false,
+        },
+      ],
+      webSummary: "Standard grounded summary.",
+      providersUsed: ["GEMINI_GOOGLE_SEARCH"],
+      cacheHit: false,
+      latencyMs: 280,
+      estimatedCostUsd: 0,
+      serpApiCalls: 0,
+      exaCalls: 0,
+    });
+
+    const req = new NextRequest("http://localhost:3000/api/marketing-shield/v1/search", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        query: "CBN data localisation circular 2026",
+        mode: "HYBRID_LIVE_WEB",
+        enable_live_web: true,
+        jurisdictions: ["NG"],
+      }),
+    });
+
+    const res = await searchPost(req);
+    const json = await res.json();
+
+    expect(res.status).toBe(201);
+    expect(json.success).toBe(true);
+    expect(json.data.live_web_status).toBe("EXECUTED");
+    expect(json.data.live_web_results).toHaveLength(1);
+    expect(json.data.live_web_results[0].provider).toBe("GEMINI_GOOGLE_SEARCH");
+    expect(webSearchRouter.searchAfricaLiveWeb).not.toHaveBeenCalled();
+    expect(webSearchRouter.searchWithStandardWebFallback).toHaveBeenCalledTimes(1);
   });
 
   it("SEC-GATE-03: Growth plan allows NG search cleanly but blocks cross-border KE/GH expansion", async () => {

@@ -1500,12 +1500,26 @@ CRITICAL OPERATIONAL RULES:
           typeof statutoryToolExecutor.searchLiveWeb === "function");
 
       let allowLiveWebExecution = false;
+      let liveWebEngineMode: "DUAL_ENGINE" | "STANDARD_GEMINI_FALLBACK" = "DUAL_ENGINE";
+      let liveWebPlanSlug: string | undefined;
       if (wantsLiveWeb) {
         const auth = await entitlementsService
           .authorizeAndConsumeLiveSearch(options.tenantId, requestedJurisdictions)
-          .catch(() => ({ allowed: false, feature: "live_web_search" as const, reason: "Unable to verify live search quota." }));
-        allowLiveWebExecution = auth.allowed;
-        if (!auth.allowed && options.enableLiveWebSearch === true) {
+          .catch(() => ({
+            allowed: false,
+            feature: "live_web_search" as const,
+            reason: "Unable to verify live search quota.",
+            fallbackToGeminiSearch: false,
+            planSlug: undefined as string | undefined,
+          }));
+        liveWebPlanSlug = auth.planSlug;
+        if (auth.allowed) {
+          allowLiveWebExecution = true;
+          liveWebEngineMode = "DUAL_ENGINE";
+        } else if (auth.fallbackToGeminiSearch) {
+          allowLiveWebExecution = true;
+          liveWebEngineMode = "STANDARD_GEMINI_FALLBACK";
+        } else if (options.enableLiveWebSearch === true) {
           yield {
             type: "entitlement.blocked",
             data: {
@@ -1554,7 +1568,10 @@ CRITICAL OPERATIONAL RULES:
             type: "search.track_started",
             data: {
               track: "SERPAPI_NG_AFRICA",
-              label: "Running Live Regulatory Web Intelligence",
+              label:
+                liveWebEngineMode === "STANDARD_GEMINI_FALLBACK"
+                  ? "Running Standard Live Web Search"
+                  : "Running Live Regulatory Web Intelligence",
               jurisdictions: requestedJurisdictions,
             },
           };
@@ -1581,7 +1598,12 @@ CRITICAL OPERATIONAL RULES:
                     prioritize_official_regulators: false,
                     include_news: true,
                   },
-                  { ...ctx, quotaPreConsumed: true }
+                  {
+                    ...ctx,
+                    quotaPreConsumed: true,
+                    liveWebEngineMode,
+                    planSlug: liveWebPlanSlug,
+                  }
                 ),
                 15000,
                 { source_class: "LIVE_WEB_INTELLIGENCE", results: [], status: "timeout" }
@@ -1906,12 +1928,27 @@ CRITICAL OPERATIONAL RULES:
         typeof statutoryToolExecutor.searchLiveWeb === "function";
 
       let allowLive = false;
+      let wfLiveEngineMode: "DUAL_ENGINE" | "STANDARD_GEMINI_FALLBACK" = "DUAL_ENGINE";
+      let wfLivePlanSlug: string | undefined;
       if (wantsLiveWeb) {
         const auth = await entitlementsService
           .authorizeAndConsumeLiveSearch(options.tenantId, requestedJurisdictions)
-          .catch(() => ({ allowed: false, feature: "live_web_search" as const, reason: "Unable to verify live search quota." }));
-        allowLive = auth.allowed;
-        if (!auth.allowed) {
+          .catch(() => ({
+            allowed: false,
+            feature: "live_web_search" as const,
+            reason: "Unable to verify live search quota.",
+            fallbackToGeminiSearch: false,
+            planSlug: undefined as string | undefined,
+          }));
+        wfLivePlanSlug = auth.planSlug;
+        if (auth.allowed) {
+          allowLive = true;
+          wfLiveEngineMode = "DUAL_ENGINE";
+        } else if (auth.fallbackToGeminiSearch) {
+          allowLive = true;
+          wfLiveEngineMode = "STANDARD_GEMINI_FALLBACK";
+        }
+        if (!allowLive) {
           if (
             options.enableLiveWebSearch === true ||
             turnIntent === "CROSS_BORDER_COMPARISON" ||
@@ -1934,7 +1971,10 @@ CRITICAL OPERATIONAL RULES:
             type: "search.track_started",
             data: {
               track: "EXA_NEURAL_EXTRACTION",
-              label: `Searching Live Regulatory Sources (${requestedJurisdictions.join(", ")})`,
+              label:
+                wfLiveEngineMode === "STANDARD_GEMINI_FALLBACK"
+                  ? `Running Standard Live Web Search (${requestedJurisdictions.join(", ")})`
+                  : `Searching Live Regulatory Sources (${requestedJurisdictions.join(", ")})`,
               jurisdictions: requestedJurisdictions,
             },
           };
@@ -2005,7 +2045,12 @@ CRITICAL OPERATIONAL RULES:
                         prioritize_official_regulators: true,
                         include_news: true,
                       },
-                      { ...ctx, quotaPreConsumed: true }
+                      {
+                        ...ctx,
+                        quotaPreConsumed: true,
+                        liveWebEngineMode: wfLiveEngineMode,
+                        planSlug: wfLivePlanSlug,
+                      }
                     ),
                     9500,
                     { results: [], web_summary: "", status: "timeout" }
@@ -2046,7 +2091,12 @@ CRITICAL OPERATIONAL RULES:
                     prioritize_official_regulators: true,
                     include_news: true,
                   },
-                  { ...ctx, quotaPreConsumed: true }
+                  {
+                    ...ctx,
+                    quotaPreConsumed: true,
+                    liveWebEngineMode: wfLiveEngineMode,
+                    planSlug: wfLivePlanSlug,
+                  }
                 ),
                 16000,
                 { results: [], web_summary: "", status: "timeout" }
@@ -2331,12 +2381,26 @@ MANDATORY 6-PART EXECUTIVE LEGAL DELIVERABLE ARCHITECTURE FOR POLICY_GAP_REDLINE
         typeof statutoryToolExecutor.searchLiveWeb === "function";
 
       let allowLiveWeb = false;
+      let lookupLiveEngineMode: "DUAL_ENGINE" | "STANDARD_GEMINI_FALLBACK" = "DUAL_ENGINE";
+      let lookupLivePlanSlug: string | undefined;
       if (wantsLiveWeb) {
         const auth = await entitlementsService
           .authorizeAndConsumeLiveSearch(options.tenantId, requestedJurisdictions)
-          .catch(() => ({ allowed: false, feature: "live_web_search" as const, reason: "Unable to verify live search quota." }));
-        allowLiveWeb = auth.allowed;
-        if (!auth.allowed && options.enableLiveWebSearch === true) {
+          .catch(() => ({
+            allowed: false,
+            feature: "live_web_search" as const,
+            reason: "Unable to verify live search quota.",
+            fallbackToGeminiSearch: false,
+            planSlug: undefined as string | undefined,
+          }));
+        lookupLivePlanSlug = auth.planSlug;
+        if (auth.allowed) {
+          allowLiveWeb = true;
+          lookupLiveEngineMode = "DUAL_ENGINE";
+        } else if (auth.fallbackToGeminiSearch) {
+          allowLiveWeb = true;
+          lookupLiveEngineMode = "STANDARD_GEMINI_FALLBACK";
+        } else if (options.enableLiveWebSearch === true) {
           yield {
             type: "entitlement.blocked",
             data: {
@@ -2371,7 +2435,10 @@ MANDATORY 6-PART EXECUTIVE LEGAL DELIVERABLE ARCHITECTURE FOR POLICY_GAP_REDLINE
             type: "search.track_started",
             data: {
               track: "SERPAPI_NG_AFRICA",
-              label: "Running Paid Live Regulatory Web Search",
+              label:
+                lookupLiveEngineMode === "STANDARD_GEMINI_FALLBACK"
+                  ? "Running Standard Live Web Search"
+                  : "Running Live Regulatory Web Search",
               jurisdictions: requestedJurisdictions,
             },
           };
@@ -2396,7 +2463,12 @@ MANDATORY 6-PART EXECUTIVE LEGAL DELIVERABLE ARCHITECTURE FOR POLICY_GAP_REDLINE
                     prioritize_official_regulators: false,
                     include_news: true,
                   },
-                  { ...ctx, quotaPreConsumed: true }
+                  {
+                    ...ctx,
+                    quotaPreConsumed: true,
+                    liveWebEngineMode: lookupLiveEngineMode,
+                    planSlug: lookupLivePlanSlug,
+                  }
                 ),
                 8000,
                 { source_class: "LIVE_WEB_INTELLIGENCE", results: [], status: "timeout" }

@@ -13,6 +13,7 @@ import {
   Globe,
 } from "lucide-react";
 import { WorkspaceShell } from "@/components/shell/WorkspaceShell";
+import { DriftMonitorsSkeleton } from "@/components/shell/WorkspaceSkeletons";
 import { DriftMonitorCard } from "@/components/drift-monitor/DriftMonitorCard";
 import { DriftDiffViewer } from "@/components/drift-monitor/DriftDiffViewer";
 import {
@@ -467,10 +468,7 @@ export default function DriftMonitorsPage() {
 
             {/* Monitors Grid */}
             {isLoading ? (
-              <div className="p-12 text-center text-xs text-zinc-500 bg-white rounded-xl border border-zinc-200">
-                <RefreshCw className="h-4 w-4 animate-spin mx-auto mb-2 text-zinc-400" />
-                <span>Loading drift monitors...</span>
-              </div>
+              <DriftMonitorsSkeleton />
             ) : filteredMonitors.length === 0 ? (
               <div className="p-12 text-center text-zinc-500 bg-white rounded-xl border border-zinc-200 space-y-3">
                 <Globe className="h-7 w-7 text-zinc-300 mx-auto" />

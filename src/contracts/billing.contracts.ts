@@ -220,6 +220,8 @@ export const EntitlementCheckResultSchema = z.object({
   planSlug: z.enum(PLAN_SLUGS).optional(),
   status: z.enum(SUBSCRIPTION_STATUSES).optional(),
   trialDaysRemaining: z.number().int().optional(),
+  /** True when trial paid dual-engine quota (3 searches) is exhausted and standard web search fallback is allowed. */
+  fallbackToGeminiSearch: z.boolean().optional(),
 });
 export type EntitlementCheckResult = z.infer<typeof EntitlementCheckResultSchema>;
 

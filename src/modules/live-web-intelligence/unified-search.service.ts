@@ -87,6 +87,26 @@ export class UnifiedSearchService {
             );
 
         if (!auth.allowed) {
+          if (auth.fallbackToGeminiSearch) {
+            const fallbackBundle = await this.router.searchWithStandardWebFallback(
+              {
+                query: request.query,
+                jurisdictions: effectiveJurisdictions,
+                searchIntent:
+                  effectiveJurisdictions.length > 1 ? "CROSS_BORDER" : request.search_intent,
+                includeNews: request.include_news,
+                dateFrom: request.date_from,
+                limit: Math.min(request.limit, 12),
+              },
+              tenantId,
+            );
+            return {
+              status: fallbackBundle.results.length > 0 ? "EXECUTED" : "NO_RESULTS",
+              results: fallbackBundle.results,
+              summary: fallbackBundle.webSummary || undefined,
+              blockedReason: auth.reason || null,
+            };
+          }
           return {
             status: "ENTITLEMENT_BLOCKED",
             results: [],
@@ -103,6 +123,7 @@ export class UnifiedSearchService {
             includeNews: request.include_news,
             dateFrom: request.date_from,
             limit: Math.min(request.limit, 12),
+            allowGeminiFallback: auth.planSlug !== "evaluation",
           },
           tenantId,
         );

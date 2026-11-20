@@ -68,6 +68,8 @@ export interface AfricaLiveSearchParams {
   limit?: number;
   timeoutMs?: number;
   subQueries?: PlannedSearchQuery[];
+  /** When false, never fall back to Gemini Google Search during paid dual-engine calls. */
+  allowGeminiFallback?: boolean;
 }
 
 export interface AfricaLiveSearchResultBundle {
@@ -606,9 +608,9 @@ export class WebSearchRouter {
       }
     }
 
-    // 4b. If Dual-Engine returned 0 results (e.g. SerpAPI/Exa quota or network error) and not in isolated dual-client unit test,
+    // 4b. If Dual-Engine returned 0 results (e.g. SerpAPI/Exa quota or network error) and fallback is allowed,
     // automatically fall back to Gemini Google Search Grounding so live research never returns empty-handed.
-    if (aggregated.size === 0 && !this.hasCustomDualClients) {
+    if (aggregated.size === 0 && !this.hasCustomDualClients && params.allowGeminiFallback !== false) {
       const fallbackGemini = await this.searchWithGeminiGrounding(
         {
           query: params.query,
@@ -775,6 +777,65 @@ export class WebSearchRouter {
       estimatedCostUsd: Number(totalCostUsd.toFixed(6)),
       serpApiCalls,
       exaCalls,
+    };
+  }
+
+  /**
+   * Executes standard web search via Gemini Google Search grounding ONLY (never invokes paid Exa/SerpAPI).
+   * Used as the seamless fallback once a trial workspace exhausts its 3 paid dual-engine web searches.
+   */
+  public async searchWithStandardWebFallback(
+    params: AfricaLiveSearchParams,
+    tenantId: string,
+  ): Promise<AfricaLiveSearchResultBundle> {
+    const startedAt = Date.now();
+    const jurisdictions: SearchJurisdiction[] =
+      params.jurisdictions && params.jurisdictions.length > 0 ? params.jurisdictions : ["NG"];
+    const searchIntent =
+      params.searchIntent || (jurisdictions.length > 1 ? "CROSS_BORDER" : "REGULATORY_CIRCULAR");
+
+    const legacy = await this.searchWithGeminiGrounding(
+      {
+        query: params.query,
+        prioritize_official_regulators: true,
+        jurisdictions,
+        search_intent: searchIntent,
+        include_news: params.includeNews ?? true,
+      },
+      tenantId,
+    );
+
+    const mapped: LiveSearchEvidenceItem[] = legacy.results.map((r) => {
+      const cls = classifyDomainTrustTier(r.retrieved_url, jurisdictions[0] || "NG");
+      return {
+        live_web_retrieval_id: r.live_web_retrieval_id,
+        provider: "GEMINI_GOOGLE_SEARCH",
+        jurisdiction_code: r.jurisdiction_code || cls.jurisdictionHint,
+        trust_tier: cls.trustTier,
+        trust_badge_label: cls.trustBadgeLabel,
+        page_title: r.page_title,
+        retrieved_url: r.retrieved_url,
+        domain: cls.domain,
+        is_pdf: cls.isPdf,
+        published_at: r.published_at || null,
+        snippet_content: r.snippet_content,
+        ...(r.full_content_excerpt ? { full_content_excerpt: r.full_content_excerpt } : {}),
+        highlights: r.highlights || [],
+        relevance_score: cls.authorityWeight,
+        retrieved_at: r.retrieved_at,
+        cache_hit: false,
+      };
+    });
+
+    return {
+      results: mapped,
+      webSummary: legacy.web_summary || "",
+      providersUsed: mapped.length > 0 ? ["GEMINI_GOOGLE_SEARCH"] : [],
+      cacheHit: false,
+      latencyMs: Date.now() - startedAt,
+      estimatedCostUsd: 0,
+      serpApiCalls: 0,
+      exaCalls: 0,
     };
   }
 

@@ -352,8 +352,10 @@ Return pure JSON only without markdown formatting.`;
 
     let rawResponseText = "";
     try {
+      const { AI_MODELS } = await import("@/lib/ai/config");
       const response = await geminiService.generateText({
         prompt,
+        model: AI_MODELS.FLASH_LITE,
         imageInlineData: {
           mimeType,
           data: base64Data,

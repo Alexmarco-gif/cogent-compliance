@@ -24,11 +24,11 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Full snapshot of tenant entitlements
+    // Full snapshot of tenant entitlements (reuse single subInfo load across all checks)
     const subInfo = await entitlementsService.getTenantSubscriptionInfo(tenantContext.tenantId);
     const checks = await Promise.all(
       FEATURE_GATE_TYPES.map(async (feat) => {
-        return entitlementsService.checkTenantEntitlement(tenantContext.tenantId, feat);
+        return entitlementsService.checkTenantEntitlement(tenantContext.tenantId, feat, subInfo);
       }),
     );
 

@@ -3,6 +3,7 @@
 import React, { Suspense, useCallback, useEffect, useState } from "react";
 import { WorkspaceSidebar } from "./WorkspaceSidebar";
 import { WorkspaceHeader } from "./WorkspaceHeader";
+import { useWorkspace } from "./WorkspaceProvider";
 
 export interface WorkspaceShellProps {
   section?: string;
@@ -17,21 +18,29 @@ export function WorkspaceShell({
   rightActions,
   children,
 }: WorkspaceShellProps) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const workspace = useWorkspace();
+  const [localCollapsed, setLocalCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  const sidebarCollapsed = workspace ? workspace.sidebarCollapsed : localCollapsed;
+
   useEffect(() => {
+    if (workspace) return;
     try {
       if (window.localStorage.getItem("cogent:sidebar-collapsed") === "true") {
-        setSidebarCollapsed(true);
+        setLocalCollapsed(true);
       }
     } catch {
       // Ignore storage access failures
     }
-  }, []);
+  }, [workspace]);
 
   const handleToggleCollapse = useCallback(() => {
-    setSidebarCollapsed((prev) => {
+    if (workspace) {
+      workspace.toggleSidebarCollapsed();
+      return;
+    }
+    setLocalCollapsed((prev) => {
       const next = !prev;
       try {
         window.localStorage.setItem("cogent:sidebar-collapsed", String(next));
@@ -40,7 +49,7 @@ export function WorkspaceShell({
       }
       return next;
     });
-  }, []);
+  }, [workspace]);
 
   return (
     <div className="flex h-screen bg-white text-zinc-950 overflow-hidden">

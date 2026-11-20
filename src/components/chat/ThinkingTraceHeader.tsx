@@ -5,9 +5,9 @@ import {
   ChevronDown,
   ChevronRight,
   CheckCircle2,
-  Loader2,
   Search,
 } from "lucide-react";
+import { CogentPulseIndicator } from "@/components/shell/WorkspaceSkeletons";
 import type { ExecutionPlanStep } from "@/contracts/conversation.contracts";
 
 export interface SearchTraceItem {
@@ -144,22 +144,22 @@ export function ThinkingTraceHeader({
 
   return (
     <div className="space-y-2">
-      {/* Status Badge + Monospace Live Timer (ads.JPG pattern adapted to Cogent light theme) */}
+      {/* Status Badge + Monospace Live Timer with Modern Cogent Harmonic Pulse */}
       <div className="flex flex-wrap items-center gap-2.5">
         {isStreaming ? (
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-indigo-200 bg-indigo-50/75 px-2.5 py-1 font-mono text-[11px] font-semibold tracking-wider uppercase text-indigo-700">
-            <Loader2 className="h-3 w-3 animate-spin text-indigo-600 shrink-0" />
-            <span>THINKING</span>
+          <span className="inline-flex items-center gap-2 rounded-full border border-[#1D4ED8]/20 bg-blue-50/75 px-3 py-1 font-mono text-[11px] font-semibold tracking-wider uppercase text-[#1D4ED8]">
+            <CogentPulseIndicator size="xs" tone="brand" />
+            <span>ANALYZING</span>
           </span>
         ) : (
-          <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50/70 px-2.5 py-1 font-mono text-[11px] font-semibold tracking-wider uppercase text-emerald-700">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50/70 px-2.5 py-1 font-mono text-[11px] font-semibold tracking-wider uppercase text-emerald-700">
             <CheckCircle2 className="h-3 w-3 text-emerald-600 shrink-0" />
             <span>VERIFIED</span>
           </span>
         )}
 
         {(startedAt || durationMs !== undefined) && (
-          <span className="font-mono tabular-nums text-[12.5px] font-medium text-zinc-500">
+          <span className="font-mono tabular-nums text-[12px] font-medium text-zinc-400">
             {formattedSeconds}
           </span>
         )}
@@ -184,7 +184,7 @@ export function ThinkingTraceHeader({
             ) : (
               <ChevronRight className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
             )}
-            <span>Search traces</span>
+            <span>{isStreaming ? "Live research steps" : "Research steps"}</span>
             {!isExpanded && (
               <span className="font-mono text-[11px] text-zinc-400">
                 ({mergedTraces.length})
@@ -203,18 +203,20 @@ export function ThinkingTraceHeader({
                     title={trace.label}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <Search
-                        className={`h-3.5 w-3.5 shrink-0 ${
-                          isRunning
-                            ? "text-indigo-600 animate-pulse"
-                            : trace.status === "FAILED" || trace.status === "TIMEOUT"
+                      {isRunning ? (
+                        <CogentPulseIndicator size="xs" tone="brand" />
+                      ) : (
+                        <Search
+                          className={`h-3.5 w-3.5 shrink-0 ${
+                            trace.status === "FAILED" || trace.status === "TIMEOUT"
                               ? "text-amber-600"
                               : "text-zinc-400"
-                        }`}
-                      />
+                          }`}
+                        />
+                      )}
                       <span
                         className={`truncate ${
-                          isRunning ? "text-zinc-900 font-medium" : "text-zinc-600"
+                          isRunning ? "cogent-text-sheen font-medium" : "text-zinc-600"
                         }`}
                       >
                         {trace.label}
