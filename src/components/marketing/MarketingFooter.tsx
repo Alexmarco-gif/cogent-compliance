@@ -9,8 +9,8 @@ export function MarketingFooter() {
         {/* Top Centered Statement */}
         <div className="mx-auto max-w-3xl text-center mb-16 sm:mb-20">
           <h2 className="text-[34px] sm:text-[48px] font-semibold leading-[1.08] tracking-[-0.035em] text-white">
-            Stay ahead of every <br />
-            <span className="text-slate-400">CBN, FCCPC &amp; NDPC rule</span>
+            Update policies. Pass audits. <br />
+            <span className="text-slate-400">Clear every launch in minutes.</span>
           </h2>
         </div>
 
