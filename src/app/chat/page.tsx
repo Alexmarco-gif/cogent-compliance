@@ -1523,7 +1523,7 @@ function ChatWorkspaceContent() {
               <button
                 type="button"
                 onClick={handleNewConversation}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-zinc-900 hover:bg-zinc-800 text-white text-[12.5px] font-medium transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#1D4ED8] hover:bg-[#1E40AF] text-white text-[12.5px] font-medium transition-colors cursor-pointer shadow-xs"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>New Chat</span>
@@ -1594,9 +1594,10 @@ function ChatWorkspaceContent() {
         {/* Zero-State Centered Canvas OR Active Single-Column Scrollable Stream */}
         {isZeroState ? (
           <div className="flex-1 overflow-y-auto px-4 sm:px-6 flex flex-col items-center justify-center py-12">
-            <div className="w-full max-w-2xl">
+            <div className="w-full max-w-3xl">
               <TypewriterHeadline className="mb-6" />
-
+            </div>
+            <div className="w-full max-w-2xl">
               <ChatComposer
                 onSendMessage={handleSendMessage}
                 conversationId={activeConvId || undefined}

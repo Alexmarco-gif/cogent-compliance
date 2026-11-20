@@ -209,6 +209,7 @@ export function ChatComposer({
   const [upgradePopover, setUpgradePopover] = useState<"live_search" | "cross_border" | null>(
     null,
   );
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [activeSubmenu, setActiveSubmenu] = useState<"knowledge" | "products" | "workflows" | null>(
     null,
@@ -217,6 +218,7 @@ export function ChatComposer({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const plusMenuContainerRef = useRef<HTMLDivElement>(null);
+  const dragDepthRef = useRef(0);
   const pendingAttachmentsRef = useRef<PendingAttachment[]>([]);
   pendingAttachmentsRef.current = pendingAttachments;
 
@@ -469,9 +471,8 @@ export function ChatComposer({
     };
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files ? Array.from(e.target.files) : [];
-    if (files.length === 0) return;
+  const uploadFiles = async (files: File[]) => {
+    if (files.length === 0 || disabled) return;
 
     setIsUploading(true);
     setUploadError(null);
@@ -489,6 +490,59 @@ export function ChatComposer({
     } finally {
       setIsUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : [];
+    await uploadFiles(files);
+  };
+
+  const handleDragEnter = (e: React.DragEvent<HTMLFormElement>) => {
+    if (disabled) return;
+    if (!e.dataTransfer?.types?.includes("Files")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current += 1;
+    setIsDraggingOver(true);
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLFormElement>) => {
+    if (disabled) return;
+    if (!e.dataTransfer?.types?.includes("Files")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLFormElement>) => {
+    if (!e.dataTransfer?.types?.includes("Files")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setIsDraggingOver(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragDepthRef.current = 0;
+    setIsDraggingOver(false);
+    if (disabled) return;
+    const files = e.dataTransfer?.files ? Array.from(e.dataTransfer.files) : [];
+    if (files.length > 0) {
+      void uploadFiles(files);
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (disabled) return;
+    const files = e.clipboardData?.files ? Array.from(e.clipboardData.files) : [];
+    if (files.length > 0) {
+      e.preventDefault();
+      void uploadFiles(files);
     }
   };
 
@@ -569,34 +623,70 @@ export function ChatComposer({
         </div>
       )}
 
-      {/* Harvey-Style Silicon Valley Composer Dock */}
+      {/* Harvey-Style Silicon Valley Composer Dock with #1D4ED8 Brand Accents & Drag-Drop */}
       <form
         onSubmit={handleSubmit}
-        className="rounded-2xl border border-zinc-200 bg-white shadow-[0_2px_14px_-4px_rgba(9,9,11,0.07)] focus-within:border-zinc-300 focus-within:shadow-[0_6px_24px_-8px_rgba(9,9,11,0.10)] transition-all p-3.5"
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        className={`relative rounded-2xl border bg-white transition-all p-3.5 ${
+          isDraggingOver
+            ? "border-[#1D4ED8] ring-4 ring-[#1D4ED8]/15 shadow-[0_8px_28px_-6px_rgba(29,78,216,0.22)]"
+            : "border-zinc-200 shadow-[0_2px_14px_-4px_rgba(9,9,11,0.07)] focus-within:border-[#1D4ED8]/45 focus-within:ring-2 focus-within:ring-[#1D4ED8]/10 focus-within:shadow-[0_6px_24px_-8px_rgba(29,78,216,0.14)]"
+        }`}
       >
+        {isDraggingOver && (
+          <div
+            aria-label="Drop files to attach"
+            className="absolute inset-1.5 z-20 rounded-xl border-2 border-dashed border-[#1D4ED8]/70 bg-blue-50/95 backdrop-blur-[1px] flex flex-col items-center justify-center p-4 text-center pointer-events-none"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1D4ED8] text-white shadow-xs">
+                <Upload className="h-4 w-4" />
+              </span>
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1D4ED8] text-white shadow-xs">
+                <FileImage className="h-4 w-4" />
+              </span>
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1D4ED8] text-white shadow-xs">
+                <FileText className="h-4 w-4" />
+              </span>
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#1D4ED8] text-white shadow-xs">
+                <FileCheck2 className="h-4 w-4" />
+              </span>
+            </div>
+            <p className="text-[13.5px] font-semibold text-[#1D4ED8]">
+              Drop flyers, PDFs, or policy docs here
+            </p>
+            <p className="text-[11.5px] text-[#1E40AF]/80 mt-0.5">
+              PNG, JPG, WEBP, PDF &amp; Word (.docx)
+            </p>
+          </div>
+        )}
+
         {/* Top Context Chips Strip (Attachments + Web search + Policy/Rate Card) */}
         {hasActiveTopContext && (
           <div className="mb-2.5 flex flex-wrap items-center gap-1.5">
             {pendingAttachments.map((att) => (
               <div
                 key={att.assetId}
-                className="inline-flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50/90 pl-1.5 pr-2 py-1 text-[12px] text-zinc-800 max-w-[240px]"
+                className="inline-flex items-center gap-2 rounded-lg border border-[#1D4ED8]/25 bg-blue-50/55 pl-1.5 pr-2 py-1 text-[12px] text-zinc-900 max-w-[240px]"
               >
                 {att.previewUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={att.previewUrl}
                     alt={att.filename}
-                    className="h-5 w-5 rounded object-cover border border-zinc-200 shrink-0"
+                    className="h-5 w-5 rounded object-cover border border-[#1D4ED8]/30 shrink-0"
                   />
                 ) : (
-                  <FileText className="h-3.5 w-3.5 text-rose-600 shrink-0 ml-0.5" />
+                  <FileText className="h-3.5 w-3.5 text-[#1D4ED8] shrink-0 ml-0.5" />
                 )}
                 <span className="truncate font-medium text-zinc-900">{att.filename}</span>
                 <button
                   type="button"
                   onClick={() => removePendingAttachment(att.assetId)}
-                  className="rounded-full p-0.5 text-zinc-400 hover:bg-zinc-200 hover:text-zinc-800 transition-colors cursor-pointer shrink-0"
+                  className="rounded-full p-0.5 text-[#1D4ED8]/70 hover:bg-blue-100 hover:text-[#1D4ED8] transition-colors cursor-pointer shrink-0"
                   aria-label={`Remove ${att.filename}`}
                 >
                   <X className="h-3 w-3" />
@@ -605,28 +695,28 @@ export function ChatComposer({
             ))}
 
             {isUploading && (
-              <div className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[12px] text-zinc-600">
-                <Loader2 className="h-3.5 w-3.5 animate-spin text-zinc-600" />
+              <div className="inline-flex items-center gap-1.5 rounded-lg border border-[#1D4ED8]/25 bg-blue-50/60 px-2.5 py-1 text-[12px] text-[#1D4ED8] font-medium">
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-[#1D4ED8]" />
                 <span>Uploading &amp; extracting...</span>
               </div>
             )}
 
             {enableLiveWebSearch && liveSearchAllowed && (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50/80 px-2.5 py-1 text-[12px] font-medium text-sky-950">
-                <Globe className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#1D4ED8]/25 bg-blue-50/75 px-2.5 py-1 text-[12px] font-medium text-[#1E3A8A]">
+                <Globe className="h-3.5 w-3.5 text-[#1D4ED8] shrink-0" />
                 <span>Web search</span>
-                <span className="font-mono text-[10.5px] text-sky-700 bg-white/80 border border-sky-200/80 rounded px-1">
+                <span className="font-mono text-[10.5px] text-[#1D4ED8] bg-white/90 border border-[#1D4ED8]/25 rounded px-1">
                   {activeJurisdiction === "AFRICA_REGIONAL" ? "AFRICA" : activeJurisdiction}
                 </span>
                 {liveSearchQuota && liveSearchQuota.monthly_limit > 0 && (
-                  <span className="font-mono text-[10px] text-sky-700/80">
+                  <span className="font-mono text-[10px] text-[#1D4ED8]/80">
                     ({liveSearchQuota.remaining}/{liveSearchQuota.monthly_limit})
                   </span>
                 )}
                 <button
                   type="button"
                   onClick={() => onToggleLiveWebSearch?.(false)}
-                  className="rounded-full p-0.5 text-sky-600 hover:bg-sky-100 hover:text-sky-900 cursor-pointer"
+                  className="rounded-full p-0.5 text-[#1D4ED8] hover:bg-blue-100 hover:text-[#1E40AF] cursor-pointer"
                   aria-label="Disable live web search"
                 >
                   <X className="h-3 w-3" />
@@ -635,14 +725,14 @@ export function ChatComposer({
             )}
 
             {selectedKnowledgeDoc && (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-100/80 px-2.5 py-1 text-[12px] font-medium text-zinc-800 max-w-[220px]">
-                <BookOpen className="h-3.5 w-3.5 text-zinc-600 shrink-0" />
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#1D4ED8]/20 bg-blue-50/45 px-2.5 py-1 text-[12px] font-medium text-zinc-900 max-w-[220px]">
+                <BookOpen className="h-3.5 w-3.5 text-[#1D4ED8] shrink-0" />
                 <span className="truncate">{selectedKnowledgeDoc.title}</span>
                 {onSelectKnowledgeDoc && (
                   <button
                     type="button"
                     onClick={() => onSelectKnowledgeDoc(null)}
-                    className="rounded-full p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 cursor-pointer shrink-0"
+                    className="rounded-full p-0.5 text-[#1D4ED8]/70 hover:bg-blue-100 hover:text-[#1D4ED8] cursor-pointer shrink-0"
                     aria-label="Clear referenced policy document"
                   >
                     <X className="h-3 w-3" />
@@ -652,14 +742,14 @@ export function ChatComposer({
             )}
 
             {selectedProduct && (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-100/80 px-2.5 py-1 text-[12px] font-medium text-zinc-800 max-w-[200px]">
-                <Tag className="h-3.5 w-3.5 text-zinc-600 shrink-0" />
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#1D4ED8]/20 bg-blue-50/45 px-2.5 py-1 text-[12px] font-medium text-zinc-900 max-w-[200px]">
+                <Tag className="h-3.5 w-3.5 text-[#1D4ED8] shrink-0" />
                 <span className="truncate">{selectedProduct.product_name}</span>
                 {onSelectProduct && (
                   <button
                     type="button"
                     onClick={() => onSelectProduct(null)}
-                    className="rounded-full p-0.5 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-900 cursor-pointer shrink-0"
+                    className="rounded-full p-0.5 text-[#1D4ED8]/70 hover:bg-blue-100 hover:text-[#1D4ED8] cursor-pointer shrink-0"
                     aria-label="Clear referenced product rate card"
                   >
                     <X className="h-3 w-3" />
@@ -669,14 +759,14 @@ export function ChatComposer({
             )}
 
             {workflowHint && (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-2.5 py-1 font-mono text-[11px] font-medium text-zinc-700">
-                <Sparkles className="h-3 w-3 text-zinc-500" />
+              <span className="inline-flex items-center gap-1.5 rounded-lg border border-[#1D4ED8]/25 bg-blue-50/60 px-2.5 py-1 font-mono text-[11px] font-medium text-[#1D4ED8]">
+                <Sparkles className="h-3 w-3 text-[#1D4ED8]" />
                 <span>{WORKFLOW_LABELS[workflowHint] || workflowHint}</span>
                 {onSelectWorkflowHint && (
                   <button
                     type="button"
                     onClick={() => onSelectWorkflowHint(null)}
-                    className="text-zinc-400 hover:text-zinc-900 cursor-pointer"
+                    className="text-[#1D4ED8]/70 hover:text-[#1E40AF] cursor-pointer"
                     aria-label="Clear workflow hint"
                   >
                     <X className="h-3 w-3" />
@@ -692,12 +782,13 @@ export function ChatComposer({
           value={content}
           onChange={(e) => setContent(e.target.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           placeholder={
             pendingAttachments.length > 0
               ? "Add instructions for your attached flyers, PDFs, or policy docs..."
               : isZeroState
-                ? "Ask a compliance question, draft a policy clause, or attach flyers/docs to clear..."
-                : "Ask a follow-up, refine the work product, or attach another document..."
+                ? "Ask Cogent a compliance question, clear a campaign, structure a product, or drop flyers/docs..."
+                : "Ask a follow-up, refine the work product, or drop another document..."
           }
           disabled={disabled}
           rows={isZeroState ? 3 : 2}
@@ -728,13 +819,13 @@ export function ChatComposer({
               disabled={disabled || isUploading}
               className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium transition-colors cursor-pointer disabled:opacity-50 ${
                 plusMenuOpen
-                  ? "bg-zinc-900 text-white"
-                  : "text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950"
+                  ? "bg-[#1D4ED8] text-white shadow-xs"
+                  : "text-zinc-700 hover:bg-blue-50/70 hover:text-[#1D4ED8]"
               }`}
-              title="Attach files (flyers, PDFs, docs) or enable Web search sources"
+              title="Attach or drop files (flyers, PDFs, docs) or enable Web search sources"
             >
               {isUploading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin text-[#1D4ED8]" />
               ) : (
                 <Plus className="h-4 w-4" />
               )}
@@ -750,9 +841,9 @@ export function ChatComposer({
                   setActiveSubmenu("workflows");
                 }}
                 disabled={disabled || isUploading}
-                className="hidden sm:inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-zinc-600 hover:bg-zinc-100 hover:text-zinc-950 transition-colors cursor-pointer disabled:opacity-50"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-zinc-600 hover:bg-blue-50/70 hover:text-[#1D4ED8] transition-colors cursor-pointer disabled:opacity-50"
               >
-                <Scale className="h-3.5 w-3.5 text-zinc-500" />
+                <Scale className="h-3.5 w-3.5" />
                 <span>Workflows</span>
               </button>
             )}
@@ -1000,7 +1091,7 @@ export function ChatComposer({
                           <Globe
                             className={`h-4 w-4 shrink-0 ${
                               enableLiveWebSearch && liveSearchAllowed
-                                ? "text-sky-600"
+                                ? "text-[#1D4ED8]"
                                 : "text-zinc-600"
                             }`}
                           />
@@ -1013,7 +1104,7 @@ export function ChatComposer({
                             <span>Growth</span>
                           </span>
                         ) : enableLiveWebSearch && liveSearchAllowed ? (
-                          <span className="inline-flex items-center gap-1 rounded bg-sky-50 border border-sky-200 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-sky-800">
+                          <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-[#1D4ED8]/25 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-[#1D4ED8]">
                             <Check className="h-3 w-3" />
                             <span>ON</span>
                           </span>
@@ -1047,7 +1138,7 @@ export function ChatComposer({
                                   }
                                 }}
                                 className={`w-full px-3.5 py-1.5 text-left hover:bg-zinc-50 flex items-center justify-between gap-2 cursor-pointer ${
-                                  isSelected ? "bg-zinc-50" : ""
+                                  isSelected ? "bg-blue-50/50" : ""
                                 }`}
                               >
                                 <span className="flex items-center gap-2.5 min-w-0">
@@ -1069,7 +1160,7 @@ export function ChatComposer({
                                     Scale
                                   </span>
                                 ) : isSelected ? (
-                                  <Check className="h-3.5 w-3.5 text-sky-600 shrink-0" />
+                                  <Check className="h-3.5 w-3.5 text-[#1D4ED8] shrink-0" />
                                 ) : null}
                               </button>
                             );
@@ -1088,7 +1179,7 @@ export function ChatComposer({
             disabled={!canSend}
             className={`inline-flex items-center gap-1.5 h-8 px-3.5 rounded-lg text-[12.5px] font-medium transition-colors cursor-pointer shrink-0 ${
               canSend
-                ? "bg-zinc-950 hover:bg-zinc-800 text-white shadow-xs"
+                ? "bg-[#1D4ED8] hover:bg-[#1E40AF] text-white shadow-xs"
                 : "bg-zinc-100 text-zinc-400 cursor-not-allowed"
             }`}
             aria-label="Ask Cogent"
@@ -1125,10 +1216,10 @@ export function ChatComposer({
                     });
                   }
                 }}
-                className="text-left p-3.5 rounded-xl border border-zinc-200 bg-white hover:bg-zinc-50 hover:border-zinc-300 transition-colors cursor-pointer disabled:opacity-50"
+                className="group text-left p-3.5 rounded-xl border border-zinc-200 bg-white hover:bg-blue-50/25 hover:border-[#1D4ED8]/35 transition-colors cursor-pointer disabled:opacity-50"
               >
                 <div className="flex items-center gap-2 text-[13px] font-medium text-zinc-900">
-                  <Icon className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+                  <Icon className="h-3.5 w-3.5 text-zinc-500 group-hover:text-[#1D4ED8] transition-colors shrink-0" />
                   <span className="truncate">{card.title}</span>
                 </div>
                 <p className="mt-1 text-[12px] text-zinc-500 line-clamp-1">

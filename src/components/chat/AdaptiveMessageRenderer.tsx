@@ -533,7 +533,7 @@ export function AdaptiveMessageRenderer({
                     href={assetContentUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="group/file flex items-center gap-2.5 rounded-xl border border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50/70 px-3 py-2 shadow-xs min-w-[210px] max-w-[290px] transition-colors"
+                    className="group/file flex items-center gap-2.5 rounded-xl border border-zinc-200 bg-white hover:border-[#1D4ED8]/40 hover:bg-blue-50/30 px-3 py-2 shadow-xs min-w-[210px] max-w-[290px] transition-colors"
                     title={`Open ${att.filename}`}
                   >
                     {cardInner}
@@ -551,7 +551,7 @@ export function AdaptiveMessageRenderer({
           )}
 
           {isEditing ? (
-            <div className="w-full max-w-[92%] sm:max-w-[84%] rounded-2xl border border-zinc-300 bg-white p-3 shadow-sm space-y-2.5">
+            <div className="w-full max-w-[92%] sm:max-w-[84%] rounded-2xl border border-[#1D4ED8]/45 ring-2 ring-[#1D4ED8]/10 bg-white p-3 shadow-sm space-y-2.5">
               <textarea
                 ref={editTextareaRef}
                 value={editDraft}
@@ -595,7 +595,7 @@ export function AdaptiveMessageRenderer({
                     type="button"
                     onClick={() => void handleSaveEdit()}
                     disabled={isSubmittingEdit || !editDraft.trim()}
-                    className="px-3 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 disabled:bg-zinc-200 disabled:text-zinc-400 text-[12px] font-medium text-white transition-colors cursor-pointer"
+                    className="px-3 py-1 rounded-lg bg-[#1D4ED8] hover:bg-[#1E40AF] disabled:bg-zinc-200 disabled:text-zinc-400 text-[12px] font-medium text-white transition-colors cursor-pointer"
                   >
                     {isSubmittingEdit ? "Resending..." : "Save & Resend"}
                   </button>
