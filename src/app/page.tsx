@@ -93,9 +93,9 @@ export default function HomePage() {
               style={{ animationDelay: "60ms" }}
               className="animate-cogent-enter mx-auto mt-4 max-w-4xl text-[36px] sm:text-[50px] lg:text-[62px] font-semibold leading-[1.08] tracking-[-0.035em] text-[#0B1220]"
             >
-              Ask any compliance question. Clear any launch.{" "}
+              End compliance friction and the daily operational tug-of-war.{" "}
               <span className="block text-[#1D4ED8] mt-1 sm:mt-2">
-                Cut CBN, FCCPC &amp; AML work from days to minutes.
+                Turn 5-day CBN, AML &amp; FCCPC bottlenecks into minutes.
               </span>
             </h1>
 
