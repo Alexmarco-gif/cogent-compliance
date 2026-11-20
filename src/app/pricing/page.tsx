@@ -400,7 +400,7 @@ export default function PlatformPricingPage() {
                 </div>
                 <div className="flex items-center gap-2 text-zinc-700">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                  <span>141-PDF NG Statutory Vault</span>
+                  <span>141+ Nigerian Laws &amp; Guidelines</span>
                 </div>
                 <div className="flex items-center gap-2 text-zinc-700">
                   <Check className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
@@ -408,7 +408,7 @@ export default function PlatformPricingPage() {
                 </div>
                 <div className="flex items-center gap-2 text-zinc-400">
                   <span className="w-3.5 text-center font-medium">–</span>
-                  <span>Live Web Search (Exa + SerpAPI)</span>
+                  <span>Live .gov.ng Circular Tracking</span>
                 </div>
                 <div className="flex items-center gap-2 text-zinc-400">
                   <span className="w-3.5 text-center font-medium">–</span>

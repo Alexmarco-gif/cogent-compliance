@@ -7,20 +7,32 @@ import { ExecutiveCtaBanner } from "@/components/marketing/ExecutiveCtaBanner";
 import { MarketingFooter } from "@/components/marketing/MarketingFooter";
 import { RevealOnScroll } from "@/components/marketing/RevealOnScroll";
 import { LICENSE_VERTICALS } from "@/data/marketing-scenarios";
+import { getPublicSiteUrl } from "@/lib/site-url";
+
+const siteUrl = getPublicSiteUrl();
 
 export const metadata: Metadata = {
-  title: "Solutions | Built for Your Financial License Tier",
+  title: "Fintech & Banking Compliance Solutions Nigeria | CBN, FCCPC, SEC & NDPC",
   description:
-    "Regulatory intelligence, AML policy updating, audit responses, and launch clearance built for Digital Lenders, MFBs, Commercial Banks, PSBs, MMOs, and SEC Operators.",
+    "Compliance management software tailored to Nigerian and African Digital Lenders, Commercial Banks, MFBs, PSSPs, MMOs, and SEC Operators—built for CBN circulars, AML policies, and FCCPC/NDPC rules.",
   alternates: {
     canonical: "/solutions",
   },
   openGraph: {
-    title: "Solutions by License Tier | Cogent",
+    title: "Fintech & Banking Compliance Solutions | Cogent",
     description:
-      "Tailored workflows and deliverables for Digital Lenders, MFBs, Commercial Banks, PSBs, and SEC Capital Market Operators.",
+      "Tailored CBN, FCCPC, NDPC, and SEC compliance workflows for Digital Lenders, MFBs, Commercial Banks, PSSPs, and WealthTech teams.",
     url: "/solutions",
   },
+};
+
+const SOLUTIONS_STRUCTURED_DATA = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${siteUrl}/` },
+    { "@type": "ListItem", position: 2, name: "Solutions", item: `${siteUrl}/solutions` },
+  ],
 };
 
 const ANCHOR_MAP: Record<string, string> = {
@@ -33,6 +45,10 @@ const ANCHOR_MAP: Record<string, string> = {
 export default function SolutionsPage() {
   return (
     <div className="min-h-screen bg-white text-[#0B1220] flex flex-col">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(SOLUTIONS_STRUCTURED_DATA) }}
+      />
       <div className="relative cogent-editorial-canvas border-b border-slate-200">
         <div
           aria-hidden="true"
@@ -44,14 +60,14 @@ export default function SolutionsPage() {
           <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
             <div className="max-w-3xl">
               <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1D4ED8]">
-                SOLUTIONS BY LICENSE
+                SOLUTIONS BY LICENSE TIER
               </p>
               <h1 className="mt-4 text-[36px] sm:text-[50px] font-semibold leading-[1.06] tracking-[-0.03em] text-[#0B1220]">
-                Calibrated to your{" "}
-                <span className="text-[#1D4ED8]">exact regulatory perimeter.</span>
+                Compliance software calibrated to your{" "}
+                <span className="text-[#1D4ED8]">exact Nigerian or African license.</span>
               </h1>
               <p className="mt-5 text-[16px] sm:text-[18px] leading-[1.6] text-slate-600">
-                A unit microfinance bank, a digital credit app, a payment switch, and a SEC-licensed investment manager face completely different regulatory obligations. Cogent tailors research, policy checks, and sign-off rules to your tier.
+                A microfinance bank, an FCCPC-registered digital lender, a CBN payment processor (PSSP/MMO), and a SEC-regulated investment app face completely different rules. Cogent tailors circular tracking, AML policy updates, and launch sign-off checks to your exact license.
               </p>
 
               <div className="mt-8 flex flex-wrap gap-2">
@@ -109,13 +125,19 @@ export default function SolutionsPage() {
                       ))}
                     </ul>
 
-                    <div className="pt-2">
+                    <div className="pt-2 flex flex-wrap items-center gap-5">
                       <Link
-                        href="/sign-up"
+                        href={`/solutions/${sector.slug}`}
                         className="inline-flex items-center gap-1.5 text-[13.5px] font-semibold text-[#1D4ED8] hover:underline"
                       >
-                        <span>Open a {sector.label.toLowerCase()} workspace</span>
+                        <span>Explore {sector.label} compliance guide</span>
                         <ArrowRight className="h-4 w-4" />
+                      </Link>
+                      <Link
+                        href="/sign-up"
+                        className="text-[13px] font-medium text-slate-600 hover:text-[#0B1220] hover:underline"
+                      >
+                        Start 7-day free trial
                       </Link>
                     </div>
                   </div>

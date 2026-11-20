@@ -1,20 +1,28 @@
 import { describe, it, expect } from "vitest";
 import sitemap from "@/app/sitemap";
 import robots from "@/app/robots";
+import {
+  DUAL_SEARCH_TRACKS,
+  SOLUTION_VERTICAL_PAGES,
+} from "@/data/marketing-scenarios";
 
-describe("SEO Metadata: Sitemap & Robots", () => {
-  it("should generate a valid sitemap with all public marketing routes", () => {
+describe("SEO Metadata: Sitemap, Robots & Positioning", () => {
+  it("should generate a valid sitemap with all public marketing and vertical solution routes", () => {
     const map = sitemap();
     expect(Array.isArray(map)).toBe(true);
-    expect(map.length).toBeGreaterThanOrEqual(6);
+    expect(map.length).toBeGreaterThanOrEqual(10);
 
     const urls = map.map((entry) => entry.url);
     expect(urls.some((u) => u.endsWith("/"))).toBe(true);
-    expect(urls.some((u) => u.includes("/solutions"))).toBe(true);
+    expect(urls.some((u) => u.endsWith("/solutions"))).toBe(true);
     expect(urls.some((u) => u.includes("/resources"))).toBe(true);
     expect(urls.some((u) => u.includes("/company"))).toBe(true);
     expect(urls.some((u) => u.includes("/resources/faq"))).toBe(true);
     expect(urls.some((u) => u.includes("/legal"))).toBe(true);
+
+    for (const vertical of SOLUTION_VERTICAL_PAGES) {
+      expect(urls.some((u) => u.endsWith(`/solutions/${vertical.slug}`))).toBe(true);
+    }
 
     for (const entry of map) {
       expect(entry.url).toMatch(/^https?:\/\//);
@@ -34,5 +42,13 @@ describe("SEO Metadata: Sitemap & Robots", () => {
     expect(rules?.disallow).toContain("/chat");
     expect(rules?.disallow).toContain("/api/");
     expect(rules?.disallow).toContain("/settings");
+  });
+
+  it("should keep marketing search tracks free of legacy AI/technical jargon", () => {
+    const serialized = JSON.stringify(DUAL_SEARCH_TRACKS);
+    expect(serialized).not.toMatch(/Local Statutory Vault/i);
+    expect(serialized).not.toMatch(/clause-level retrieval/i);
+    expect(serialized).not.toMatch(/Circular Discovery/i);
+    expect(serialized).not.toMatch(/Synthesizes precedent/i);
   });
 });

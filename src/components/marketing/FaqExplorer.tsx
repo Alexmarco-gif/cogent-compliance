@@ -18,21 +18,21 @@ const CATEGORIES: Array<"All" | ComplianceFaqItem["category"]> = [
 const TRUST_PILLARS = [
   {
     icon: BookOpen,
-    title: "Cataloguing 141+ Codified Instruments",
+    title: "141+ Nigerian Laws & Live Circulars",
     description:
-      "Maintain a centralized statutory library across CBN, NDPC, FCCPC, SEC, and NFIU with clear legal owners and direct clause citations.",
+      "Search active CBN, NDPC, FCCPC, SEC, and NFIU rules by section with clear statutory citations and effective dates.",
   },
   {
     icon: FileSpreadsheet,
-    title: "Convert Regulations into Obligations",
+    title: "Turn Circulars into Updated Policies",
     description:
-      "Automatically map statutory updates into internal AML manuals, product rate schedules, and sponsor-bank audit response templates.",
+      "Map regulatory updates directly to your AML/CFT manuals, product rate sheets, and sponsor-bank due-diligence replies.",
   },
   {
     icon: ShieldCheck,
-    title: "Review, Approve, and Monitor",
+    title: "Role Separation & Audit Trail",
     description:
-      "Enforce maker-checker separation between Product and Legal, export-ready audit dossiers, and live campaign URL drift watchers.",
+      "Keep Product and Legal responsibilities separated while maintaining timestamped sign-off logs and live webpage monitors.",
   },
 ];
 
@@ -87,11 +87,15 @@ export function FaqExplorer({
           />
         </button>
 
-        {isOpen && (
-          <div className="border-t border-slate-100 px-5 pb-4 pt-3 text-[13.5px] leading-relaxed text-slate-600 bg-slate-50/50">
-            {item.answer}
-          </div>
-        )}
+        <div
+          className={
+            isOpen
+              ? "border-t border-slate-100 px-5 pb-4 pt-3 text-[13.5px] leading-relaxed text-slate-600 bg-slate-50/50"
+              : "hidden"
+          }
+        >
+          {item.answer}
+        </div>
       </div>
     );
   };

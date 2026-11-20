@@ -12,14 +12,14 @@ import { RevealOnScroll } from "@/components/marketing/RevealOnScroll";
 export const metadata: Metadata = {
   title: "Company & Co-Founders | Stem Systems",
   description:
-    "Meet Odion O. Alex (CEO) and Gift Chinedu Nduka (CSO), Co-Founders of Stem Systems—building regulatory intelligence and compliance execution software for Nigerian and African finance.",
+    "Meet Odion O. Alex (CEO) and Gift Chinedu Nduka (CSO), Co-Founders of Stem Systems—building fintech and banking compliance software for Nigeria and Africa.",
   alternates: {
     canonical: "/company",
   },
   openGraph: {
     title: "Company & Co-Founders | Stem Systems & Cogent",
     description:
-      "Meet the Co-Founders of Stem Systems and explore how we protect institutional manuals, regulatory research, and governance trails.",
+      "Meet the Co-Founders of Stem Systems and see how Cogent protects internal AML policies, regulatory audits, and governance records.",
     url: "/company",
   },
 };

@@ -12,10 +12,10 @@ export function DualSearchArchitecture() {
       <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
         <RevealOnScroll>
           <SectionHeader
-            eyebrow="DUAL-ENGINE REGULATORY INTELLIGENCE"
-            titleLeading="Why standard tools miss Nigerian"
-            titleAccent="and African regulatory portals."
-            description="Government portals bury critical circulars inside nested PDFs with poor search indexing. Cogent runs three specialized retrieval tracks in parallel inside one prompt."
+            eyebrow="AUTOMATED REGULATORY TRACKING"
+            titleLeading="Why manual search misses CBN,"
+            titleAccent="SEC, NDPC, and FCCPC circulars."
+            description="Government portals bury new directives inside unindexed PDFs. Cogent searches active Nigerian financial statutes alongside live .gov.ng circulars and African central bank guides in one place."
           />
         </RevealOnScroll>
 

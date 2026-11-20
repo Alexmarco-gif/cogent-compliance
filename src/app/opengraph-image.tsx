@@ -3,7 +3,7 @@ import { ImageResponse } from "next/og";
 export const runtime = "edge";
 
 export const alt =
-  "Cogent by Stem Systems — Regulatory Intelligence & Workflow Engine for Nigeria & Africa";
+  "Cogent by Stem Systems — Fintech & Banking Compliance Software for Nigeria & Africa";
 export const size = {
   width: 1200,
   height: 630,
@@ -90,14 +90,14 @@ export default function OpenGraphImage() {
         <div style={{ display: "flex", flexDirection: "column", maxWidth: "960px" }}>
           <div
             style={{
-              fontSize: "60px",
+              fontSize: "58px",
               fontWeight: 700,
               lineHeight: 1.06,
               letterSpacing: "-0.03em",
               color: "#0B1220",
             }}
           >
-            Know the rules in seconds.
+            Fintech &amp; Banking Compliance Software.
           </div>
           <div
             style={{
@@ -107,7 +107,7 @@ export default function OpenGraphImage() {
               color: "#475569",
             }}
           >
-            Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, regulator responses, and cleared launches.
+            Track CBN, SEC, NDPC, and FCCPC circulars, update AML policies, pass sponsor-bank audits, and clear launches in minutes.
           </div>
         </div>
 

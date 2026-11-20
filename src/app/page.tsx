@@ -16,16 +16,16 @@ import { getPublicSiteUrl } from "@/lib/site-url";
 const siteUrl = getPublicSiteUrl();
 
 export const metadata: Metadata = {
-  title: "Cogent | Ask Any Compliance Question. Clear Any Campaign.",
+  title: "Cogent | Fintech & Regulatory Compliance Management Software Nigeria",
   description:
-    "Ask any compliance question. Clear any campaign. Accelerate regulatory work from days to minutes across Nigerian & African financial regulations.",
+    "Fintech and banking compliance software for Nigeria and Africa. Track CBN circulars, update AML policies, pass sponsor-bank due diligence, and clear FCCPC, NDPC, and ARCON launches in minutes.",
   alternates: {
     canonical: "/",
   },
   openGraph: {
-    title: "Cogent | Ask Any Compliance Question. Clear Any Campaign.",
+    title: "Cogent | Fintech & Regulatory Compliance Management Software Nigeria",
     description:
-      "Accelerate regulatory work from days to minutes. Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, regulator query responses, audit replies, and cleared launches.",
+      "Turn CBN, SEC, NDPC, and FCCPC circulars into finished product checklists, updated AML policies, sponsor-bank audit replies, and cleared launches in minutes.",
     url: "/",
   },
 };
@@ -50,7 +50,18 @@ const STRUCTURED_DATA = {
       operatingSystem: "Web",
       url: siteUrl,
       description:
-        "Regulatory intelligence and compliance workflow engine helping Nigerian and African fintechs, lenders, and banks research multi-agency rules, update AML policies, answer audits, and clear campaigns.",
+        "Regulatory compliance management software helping Nigerian and African fintechs, digital lenders, and banks track CBN, SEC, NDPC, and FCCPC rules, update AML policies, answer audits, and clear launches.",
+    },
+    {
+      "@type": "FAQPage",
+      mainEntity: COMPLIANCE_FAQS.map((faq) => ({
+        "@type": "Question",
+        name: faq.question,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: faq.answer,
+        },
+      })),
     },
   ],
 };
@@ -75,16 +86,16 @@ export default function HomePage() {
         <section className="relative z-10 pt-12 pb-20 sm:pt-16 lg:pt-20 lg:pb-24">
           <div className="mx-auto max-w-[1200px] px-5 sm:px-8 text-center">
             <p className="animate-cogent-enter font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[#1D4ED8]">
-              REGULATORY INTELLIGENCE · NIGERIA &amp; AFRICA
+              FINTECH &amp; BANKING COMPLIANCE SOFTWARE · NIGERIA &amp; AFRICA
             </p>
 
             <h1
               style={{ animationDelay: "60ms" }}
               className="animate-cogent-enter mx-auto mt-4 max-w-4xl text-[36px] sm:text-[50px] lg:text-[62px] font-semibold leading-[1.08] tracking-[-0.035em] text-[#0B1220]"
             >
-              Ask any compliance question. Clear any campaign.{" "}
+              Ask any compliance question. Clear any launch.{" "}
               <span className="block text-[#1D4ED8] mt-1 sm:mt-2">
-                Accelerate regulatory work from days to minutes.
+                Cut CBN, FCCPC &amp; AML work from days to minutes.
               </span>
             </h1>
 
@@ -92,7 +103,7 @@ export default function HomePage() {
               style={{ animationDelay: "120ms" }}
               className="animate-cogent-enter mx-auto mt-5 max-w-3xl text-[16.5px] sm:text-[18.5px] leading-[1.6] text-slate-600"
             >
-              Turn scattered Nigerian and African regulations into finished structuring memos, updated AML policies, regulator query responses, audit replies, and cleared launches—without the week-long wait.
+              Track Nigerian and African central bank circulars, update AML/CFT policies, answer sponsor-bank due-diligence questionnaires, and clear digital lending or payment launches—without the week-long wait.
             </p>
 
             <div

@@ -6,15 +6,15 @@ export function MarketingFooter() {
   return (
     <footer className="border-t border-white/10 bg-black text-white">
       <div className="mx-auto max-w-[1200px] px-5 py-16 sm:px-8 lg:py-24">
-        {/* Top Centered Statement matching footer.JPG */}
+        {/* Top Centered Statement */}
         <div className="mx-auto max-w-3xl text-center mb-16 sm:mb-20">
           <h2 className="text-[34px] sm:text-[48px] font-semibold leading-[1.08] tracking-[-0.035em] text-white">
-            Transforming compliance <br />
-            <span className="text-slate-400">with AI</span>
+            Stay ahead of every <br />
+            <span className="text-slate-400">CBN, FCCPC &amp; NDPC rule</span>
           </h2>
         </div>
 
-        {/* 3-Column Grid per foot.JPG with red-marked items removed */}
+        {/* 3-Column Grid */}
         <div className="grid grid-cols-1 gap-12 sm:grid-cols-2 lg:grid-cols-12 lg:gap-8 pb-14 border-b border-white/10">
           {/* Column 1: Brand Info */}
           <div className="lg:col-span-6 space-y-4">
@@ -28,7 +28,7 @@ export function MarketingFooter() {
                 />
               </Link>
               <p className="mt-4 max-w-sm text-[13.5px] leading-relaxed text-slate-400">
-                The regulatory intelligence and compliance workflow engine for financial institutions across Nigeria and Africa.
+                Fintech and banking compliance management software for Nigeria and Africa—built for CBN circulars, AML policies, sponsor-bank audits, and launch sign-off.
               </p>
             </div>
           </div>

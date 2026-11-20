@@ -1,9 +1,17 @@
 import type { MetadataRoute } from "next";
 import { getPublicSiteUrl } from "@/lib/site-url";
+import { SOLUTION_VERTICAL_PAGES } from "@/data/marketing-scenarios";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = getPublicSiteUrl();
   const lastModified = new Date();
+
+  const solutionPages: MetadataRoute.Sitemap = SOLUTION_VERTICAL_PAGES.map((page) => ({
+    url: `${baseUrl}/solutions/${page.slug}`,
+    lastModified,
+    changeFrequency: "weekly",
+    priority: 0.9,
+  }));
 
   return [
     {
@@ -18,11 +26,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.9,
     },
+    ...solutionPages,
     {
       url: `${baseUrl}/resources`,
       lastModified,
       changeFrequency: "weekly",
-      priority: 0.9,
+      priority: 0.5,
     },
     {
       url: `${baseUrl}/company`,
@@ -34,7 +43,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: `${baseUrl}/resources/faq`,
       lastModified,
       changeFrequency: "monthly",
-      priority: 0.8,
+      priority: 0.85,
     },
     {
       url: `${baseUrl}/legal`,

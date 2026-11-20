@@ -67,7 +67,7 @@ export default function LegalPage() {
 
               <div className="mt-6 space-y-4 text-[14px] leading-relaxed text-slate-600">
                 <p>
-                  Stem Systems Inc (&quot;Stem Systems&quot;, &quot;we&quot;, &quot;our&quot;, or &quot;us&quot;) provides the Cogent regulatory intelligence and compliance workflow engine. We are committed to protecting the privacy, confidentiality, and data sovereignty of financial institutions, lenders, banks, and their authorized users under the Nigeria Data Protection Act 2023 (&quot;NDPA 2023&quot;).
+                  Stem Systems Inc (&quot;Stem Systems&quot;, &quot;we&quot;, &quot;our&quot;, or &quot;us&quot;) provides the Cogent compliance management software. We are committed to protecting the privacy, confidentiality, and data sovereignty of financial institutions, lenders, banks, and their authorized users under the Nigeria Data Protection Act 2023 (&quot;NDPA 2023&quot;).
                 </p>
 
                 <h3 className="text-[16px] font-semibold text-[#0B1220] pt-2">
@@ -81,14 +81,14 @@ export default function LegalPage() {
                   2. Purpose and Lawful Basis of Processing
                 </h3>
                 <p>
-                  Under NDPA 2023 §24–26, processing of organizational data is conducted on the lawful basis of contractual performance (providing regulatory intelligence, policy clause comparisons, and campaign reviews) and institutional legitimate interest (maintaining audit-ready supervisory defenses).
+                  Under NDPA 2023 §24–26, processing of organizational data is conducted on the lawful basis of contractual performance (providing circular tracking, policy clause comparisons, and campaign reviews) and institutional legitimate interest (maintaining audit-ready supervisory defenses).
                 </p>
 
                 <h3 className="text-[16px] font-semibold text-[#0B1220] pt-2">
                   3. Zero Model Training &amp; Cryptographic Isolation
                 </h3>
                 <p>
-                  Customer policies, rate cards, marketing briefs, and audit replies uploaded to Cogent are stored in cryptographically isolated tenant perimeters. <strong>Your uploaded internal data is NEVER used to train, fine-tune, or pool public foundation AI models.</strong>
+                  Customer policies, rate cards, marketing briefs, and audit replies uploaded to Cogent are stored in cryptographically isolated tenant perimeters. <strong>Your uploaded internal data is NEVER used to train, fine-tune, or pool public foundation models.</strong>
                 </p>
 
                 <h3 className="text-[16px] font-semibold text-[#0B1220] pt-2">
@@ -127,14 +127,14 @@ export default function LegalPage() {
                   1. Scope of Service &amp; Decision Support Notice
                 </h3>
                 <p>
-                  Cogent is an enterprise decision-support and workflow acceleration software designed for Chief Compliance Officers, General Counsel, and regulatory teams. While Cogent synthesizes 141+ codified Nigerian instruments, official gazettes, and pan-African rules with deterministic locks, it does not constitute formal outside legal counsel. Final sign-off remains with your institution&apos;s authorized human officers.
+                  Cogent is compliance management and workflow software designed for Chief Compliance Officers, General Counsel, and regulatory teams. While Cogent indexes 141+ Nigerian financial statutes, official gazettes, and pan-African rules with automated compliance checks, it does not constitute formal outside legal counsel. Final sign-off remains with your institution&apos;s authorized human officers.
                 </p>
 
                 <h3 className="text-[16px] font-semibold text-[#0B1220] pt-2">
                   2. Acceptable Use
                 </h3>
                 <p>
-                  You agree to use Cogent solely for legitimate regulatory compliance, policy drafting, supervisory inquiry responses, and marketing clearance. Prohibited activities include reverse engineering the mechanical deterministic locks engine, scraping the proprietary statutory index, or attempting to breach multi-tenant data boundaries.
+                  You agree to use Cogent solely for legitimate regulatory compliance, policy drafting, supervisory inquiry responses, and marketing clearance. Prohibited activities include reverse engineering the compliance rule checks, scraping the proprietary statutory index, or attempting to breach multi-tenant data boundaries.
                 </p>
 
                 <h3 className="text-[16px] font-semibold text-[#0B1220] pt-2">

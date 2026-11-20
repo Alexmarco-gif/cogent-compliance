@@ -136,7 +136,7 @@ export function HeroIntelligenceStudio() {
               {/* Active Search Sources Strip */}
               <div>
                 <p className="font-mono text-[10px] uppercase tracking-wider text-slate-400 mb-2">
-                  Parallel Grounded Sources Synthesized
+                  Verified Laws &amp; Circulars Used
                 </p>
                 <div className="space-y-1.5">
                   {activeCase.sourcesUsed.map((src) => (
@@ -160,10 +160,10 @@ export function HeroIntelligenceStudio() {
                 </div>
               </div>
 
-              {/* Executive Synthesis */}
+              {/* Executive Answer */}
               <div className="space-y-2.5 pt-1">
                 <p className="font-mono text-[10px] uppercase tracking-wider text-slate-400">
-                  Executive Answer
+                  Summary Answer
                 </p>
                 <ul className="space-y-2">
                   {activeCase.synthesisBullets.map((bullet) => (
@@ -183,7 +183,7 @@ export function HeroIntelligenceStudio() {
               <div className="mt-5 flex items-center gap-2 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[11.5px] text-slate-600">
                 <Lock className="h-3.5 w-3.5 text-slate-500 shrink-0" />
                 <span>
-                  Vault-only mode searches your 141 verified Nigerian documents &amp; internal manuals. Live web discovery activates on Growth &amp; Scale plans.
+                  Standard mode searches 141+ Nigerian financial statutes &amp; your uploaded policies. Live CBN, SEC, and NDPC circular tracking activates on Growth &amp; Scale plans.
                 </span>
               </div>
             )}
