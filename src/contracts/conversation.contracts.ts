@@ -53,6 +53,7 @@ export const sendMessageStreamSchema = z.object({
   enable_live_web_search: z.boolean().default(false).optional(),
   search_jurisdictions: z.array(jurisdictionCodeSchema).default(["NG"]).optional(),
   workflow_hint: z.enum(WORKFLOW_TYPES).optional(),
+  role_id: z.string().regex(/^[a-z][a-z0-9_]*$/).optional(),
   replace_from_message_id: z.string().uuid().optional(),
 });
 

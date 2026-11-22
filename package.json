@@ -13,6 +13,7 @@
     "test": "vitest run",
     "test:unit": "vitest run tests/unit",
     "test:unit:watch": "vitest tests/unit",
+    "test:benchmark": "vitest run tests/benchmarks",
     "test:db": "vitest run tests/db",
     "test:e2e": "playwright test",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\""

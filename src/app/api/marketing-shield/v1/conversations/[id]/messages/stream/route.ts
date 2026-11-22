@@ -163,6 +163,7 @@ export async function POST(
           enableLiveWebSearch: validated.enable_live_web_search,
           searchJurisdictions: validated.search_jurisdictions,
           workflowHint: validated.workflow_hint,
+          roleId: validated.role_id,
           replaceFromMessageId: validated.replace_from_message_id,
         });
 
