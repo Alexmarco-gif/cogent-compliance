@@ -1,8 +1,12 @@
 import type { MetadataRoute } from "next";
 import { getPublicSiteUrl } from "@/lib/site-url";
 import { SOLUTION_VERTICAL_PAGES } from "@/data/marketing-scenarios";
+import { RESOURCE_CATEGORIES } from "@/contracts/resources.contracts";
+import { resourcesService } from "@/modules/resources/resources.service";
 
-export default function sitemap(): MetadataRoute.Sitemap {
+export const dynamic = "force-dynamic";
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const baseUrl = getPublicSiteUrl();
   const lastModified = new Date();
 
@@ -11,6 +15,21 @@ export default function sitemap(): MetadataRoute.Sitemap {
     lastModified,
     changeFrequency: "weekly",
     priority: 0.9,
+  }));
+
+  const resourceSectionPages: MetadataRoute.Sitemap = RESOURCE_CATEGORIES.map((category) => ({
+    url: `${baseUrl}/resources/${category}`,
+    lastModified,
+    changeFrequency: "weekly",
+    priority: 0.85,
+  }));
+
+  const publishedPosts = await resourcesService.listPublishedSitemapEntries();
+  const resourcePostPages: MetadataRoute.Sitemap = publishedPosts.map((entry) => ({
+    url: `${baseUrl}/resources/${entry.category}/${entry.slug}`,
+    lastModified: new Date(entry.updatedAt),
+    changeFrequency: "weekly",
+    priority: 0.8,
   }));
 
   return [
@@ -31,8 +50,10 @@ export default function sitemap(): MetadataRoute.Sitemap {
       url: `${baseUrl}/resources`,
       lastModified,
       changeFrequency: "weekly",
-      priority: 0.5,
+      priority: 0.85,
     },
+    ...resourceSectionPages,
+    ...resourcePostPages,
     {
       url: `${baseUrl}/company`,
       lastModified,

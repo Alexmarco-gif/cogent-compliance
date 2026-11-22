@@ -181,9 +181,15 @@ importers:
       '@logtail/node':
         specifier: ^0.6.1
         version: 0.6.1
+      '@neondatabase/serverless':
+        specifier: ^1.2.1
+        version: 1.2.1
       '@supabase/supabase-js':
         specifier: ^2.119.0
         version: 2.119.0(@opentelemetry/api@1.10.0)
+      '@tiptap/extension-image':
+        specifier: ^3.35.0
+        version: 3.35.0(@tiptap/core@3.34.0(@tiptap/pm@3.34.0))
       '@tiptap/extension-link':
         specifier: ^3.34.0
         version: 3.34.0(@tiptap/core@3.34.0(@tiptap/pm@3.34.0))(@tiptap/pm@3.34.0)
@@ -872,6 +878,10 @@ packages:
   '@msgpack/msgpack@2.8.0':
     resolution: {integrity: sha512-h9u4u/jiIRKbq25PM+zymTyW6bhTzELvOoUd+AvYriWOAKpLGnIamaET3pnHYoI5iYphAHBI4ayx0MehR+VVPQ==}
     engines: {node: '>= 10'}
+
+  '@neondatabase/serverless@1.2.1':
+    resolution: {integrity: sha512-PI2JjuyEFE7oZDTkV/s6WP4KEceCwnjQHClfunhysuIATtvcVTBLdA4UgHTnJo7C0mkK+OZ6U7SV1NDnYa0HgA==}
+    engines: {node: '>=19.0.0'}
 
   '@next/env@15.5.29':
     resolution: {integrity: sha512-9SrTiTsgORa+KfhlXXAGC1eSs847E+d2MQTPUX+n7R5XA8g/B6ZitfL6GoYHNMLwG3Hzs1wjDH0/ME5WrGMqBQ==}
@@ -1812,6 +1822,11 @@ packages:
     peerDependencies:
       '@tiptap/core': 3.34.0
       '@tiptap/pm': 3.34.0
+
+  '@tiptap/extension-image@3.35.0':
+    resolution: {integrity: sha512-duyDyLvrM4I9tEQRWTa/2lYsit+i7OWJv2XjzwYuPozSmhxuCSZaE0zbbH9+uQHz/Hv/8pRV8wq+r+6Y1AD4hQ==}
+    peerDependencies:
+      '@tiptap/core': 3.35.0
 
   '@tiptap/extension-italic@3.34.0':
     resolution: {integrity: sha512-X6jRBt0bCwx2TJpNuAxPyfPw3KFyfAKdeW51iwHd44NVmYa5kK7R/RC/l+SUKMhyW8NyNh4Ia9TqeZjhZcgx7Q==}
@@ -5156,6 +5171,8 @@ snapshots:
 
   '@msgpack/msgpack@2.8.0': {}
 
+  '@neondatabase/serverless@1.2.1': {}
+
   '@next/env@15.5.29': {}
 
   '@next/eslint-plugin-next@15.5.29':
@@ -6189,6 +6206,10 @@ snapshots:
     dependencies:
       '@tiptap/core': 3.34.0(@tiptap/pm@3.34.0)
       '@tiptap/pm': 3.34.0
+
+  '@tiptap/extension-image@3.35.0(@tiptap/core@3.34.0(@tiptap/pm@3.34.0))':
+    dependencies:
+      '@tiptap/core': 3.34.0(@tiptap/pm@3.34.0)
 
   '@tiptap/extension-italic@3.34.0(@tiptap/core@3.34.0(@tiptap/pm@3.34.0))':
     dependencies:

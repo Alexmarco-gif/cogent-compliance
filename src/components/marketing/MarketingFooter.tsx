@@ -51,12 +51,27 @@ export function MarketingFooter() {
               </li>
               <li>
                 <Link href="/resources" className="hover:text-white transition-colors">
-                  Resources &amp; Hub
+                  Resources Hub
                 </Link>
               </li>
               <li>
-                <Link href="/resources#articles" className="hover:text-white transition-colors">
-                  Blogs &amp; Circulars
+                <Link href="/resources/insights" className="hover:text-white transition-colors">
+                  Insights &amp; News
+                </Link>
+              </li>
+              <li>
+                <Link href="/resources/videos" className="hover:text-white transition-colors">
+                  Videos
+                </Link>
+              </li>
+              <li>
+                <Link href="/resources/reports" className="hover:text-white transition-colors">
+                  Reports
+                </Link>
+              </li>
+              <li>
+                <Link href="/resources/events" className="hover:text-white transition-colors">
+                  Events
                 </Link>
               </li>
               <li>

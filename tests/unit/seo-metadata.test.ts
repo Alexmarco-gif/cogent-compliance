@@ -7,8 +7,8 @@ import {
 } from "@/data/marketing-scenarios";
 
 describe("SEO Metadata: Sitemap, Robots & Positioning", () => {
-  it("should generate a valid sitemap with all public marketing and vertical solution routes", () => {
-    const map = sitemap();
+  it("should generate a valid sitemap with all public marketing and vertical solution routes", async () => {
+    const map = await sitemap();
     expect(Array.isArray(map)).toBe(true);
     expect(map.length).toBeGreaterThanOrEqual(10);
 
@@ -16,6 +16,10 @@ describe("SEO Metadata: Sitemap, Robots & Positioning", () => {
     expect(urls.some((u) => u.endsWith("/"))).toBe(true);
     expect(urls.some((u) => u.endsWith("/solutions"))).toBe(true);
     expect(urls.some((u) => u.includes("/resources"))).toBe(true);
+    expect(urls.some((u) => u.endsWith("/resources/insights"))).toBe(true);
+    expect(urls.some((u) => u.endsWith("/resources/videos"))).toBe(true);
+    expect(urls.some((u) => u.endsWith("/resources/reports"))).toBe(true);
+    expect(urls.some((u) => u.endsWith("/resources/events"))).toBe(true);
     expect(urls.some((u) => u.includes("/company"))).toBe(true);
     expect(urls.some((u) => u.includes("/resources/faq"))).toBe(true);
     expect(urls.some((u) => u.includes("/legal"))).toBe(true);

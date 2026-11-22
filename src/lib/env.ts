@@ -63,6 +63,14 @@ export const serverEnvSchema = z.object({
   LIVE_WEB_INTERACTIVE_TIMEOUT_MS: z.coerce.number().int().min(1000).max(15000).default(3500),
   LIVE_WEB_CACHE_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(12),
   ENABLE_DUAL_LIVE_WEB_SEARCH: z.enum(["true", "false"]).default("true"),
+
+  // Resources Hub & Private Publishing Studio (Neon Postgres + Separate R2 Account)
+  NEON_RESOURCES_DATABASE_URL: z.string().url().optional(),
+  RESOURCES_R2_ACCOUNT_ID: z.string().optional(),
+  RESOURCES_R2_ACCESS_KEY_ID: z.string().optional(),
+  RESOURCES_R2_SECRET_ACCESS_KEY: z.string().optional(),
+  RESOURCES_R2_BUCKET_NAME: z.string().optional(),
+  RESOURCES_R2_PUBLIC_URL_PREFIX: z.string().url().optional(),
 });
 
 /**

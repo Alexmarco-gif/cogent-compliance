@@ -13,10 +13,45 @@ import {
   Landmark,
   Wallet,
   LineChart,
+  Newspaper,
+  Film,
+  FileText,
+  Calendar,
 } from "lucide-react";
 import { CogentLogo } from "@/components/brand/CogentLogo";
 
-type MenuKey = "solutions" | null;
+type MenuKey = "solutions" | "resources" | null;
+
+const RESOURCES_LINKS = [
+  {
+    href: "/resources/insights",
+    title: "Insights & News",
+    tag: "Blog · Circulars",
+    description: "Regulatory breakdowns, compliance guides & news.",
+    icon: Newspaper,
+  },
+  {
+    href: "/resources/videos",
+    title: "Videos",
+    tag: "Briefings · Demos",
+    description: "Product walkthroughs & circular explainers.",
+    icon: Film,
+  },
+  {
+    href: "/resources/reports",
+    title: "Reports",
+    tag: "PDF · Checklists",
+    description: "Downloadable statutory briefs & readiness templates.",
+    icon: FileText,
+  },
+  {
+    href: "/resources/events",
+    title: "Events",
+    tag: "Webinars · Live",
+    description: "Upcoming compliance roundtables & past replays.",
+    icon: Calendar,
+  },
+];
 
 const SOLUTIONS_LINKS = [
   {
@@ -214,17 +249,82 @@ export function MarketingHeader() {
             )}
           </div>
 
-          {/* Resources */}
-          <Link
-            href="/resources"
-            className={`rounded-md px-3.5 py-2 text-[13.5px] font-medium transition-colors ${
-              pathname === "/resources"
-                ? "bg-slate-100 text-[#0B1220]"
-                : "text-slate-600 hover:bg-slate-50 hover:text-[#0B1220]"
-            }`}
+          {/* Resources Dropdown */}
+          <div
+            className="relative"
+            onMouseEnter={() => handleTriggerHover("resources")}
+            onMouseLeave={scheduleClose}
           >
-            Resources
-          </Link>
+            <button
+              type="button"
+              onClick={() => setOpenMenu((prev) => (prev === "resources" ? null : "resources"))}
+              aria-expanded={openMenu === "resources"}
+              className={`inline-flex items-center gap-1 rounded-md px-3.5 py-2 text-[13.5px] font-medium transition-colors cursor-pointer ${
+                (pathname.startsWith("/resources") && !pathname.startsWith("/resources/faq")) ||
+                openMenu === "resources"
+                  ? "bg-slate-100 text-[#0B1220]"
+                  : "text-slate-600 hover:bg-slate-50 hover:text-[#0B1220]"
+              }`}
+            >
+              <span>Resources</span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform duration-150 ${
+                  openMenu === "resources" ? "rotate-180" : ""
+                }`}
+              />
+            </button>
+
+            {openMenu === "resources" && (
+              <div
+                className="absolute left-0 top-full pt-2 w-[540px]"
+                onMouseEnter={cancelClose}
+                onMouseLeave={scheduleClose}
+              >
+                <div className="rounded-xl border border-slate-200 bg-white p-3.5 shadow-xl shadow-slate-950/8">
+                  <div className="grid grid-cols-2 gap-2">
+                    {RESOURCES_LINKS.map((item) => {
+                      const Icon = item.icon;
+                      return (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className="group rounded-lg border border-slate-100 bg-slate-50/60 p-3 hover:border-slate-300 hover:bg-white transition-colors"
+                        >
+                          <div className="flex items-center justify-between">
+                            <Icon
+                              className="h-4 w-4 text-slate-600 group-hover:text-[#1D4ED8]"
+                              strokeWidth={1.7}
+                            />
+                            <span className="font-mono text-[10px] text-slate-400">
+                              {item.tag}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-[13px] font-semibold text-[#0B1220]">
+                            {item.title}
+                          </p>
+                          <p className="mt-0.5 text-[11.5px] leading-snug text-slate-500">
+                            {item.description}
+                          </p>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-2.5 flex items-center justify-between border-t border-slate-100 pt-2.5 px-1.5">
+                    <span className="text-[11.5px] text-slate-500">
+                      Editorial insights, briefings, reports &amp; events
+                    </span>
+                    <Link
+                      href="/resources"
+                      className="inline-flex items-center gap-1 text-[12px] font-semibold text-[#1D4ED8] hover:underline"
+                    >
+                      <span>View All Resources</span>
+                      <ArrowRight className="h-3 w-3" />
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Company */}
           <Link
@@ -326,12 +426,27 @@ export function MarketingHeader() {
             </div>
 
             <div className="border-t border-slate-100 pt-3 space-y-1">
-              <Link
-                href="/resources"
-                className="block rounded-md px-2.5 py-2 text-[14px] font-medium text-slate-800 hover:bg-slate-50"
-              >
-                Resources &amp; Research
-              </Link>
+              <div className="flex items-center justify-between px-2.5 py-1">
+                <p className="font-mono text-[10.5px] uppercase tracking-wider text-slate-400">
+                  Resources
+                </p>
+                <Link href="/resources" className="text-[11.5px] font-semibold text-[#1D4ED8]">
+                  All Resources &rarr;
+                </Link>
+              </div>
+              {RESOURCES_LINKS.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="flex items-center justify-between rounded-md px-2.5 py-2 text-[14px] font-medium text-slate-800 hover:bg-slate-50"
+                >
+                  <span>{item.title}</span>
+                  <span className="font-mono text-[10.5px] text-slate-400">{item.tag}</span>
+                </Link>
+              ))}
+            </div>
+
+            <div className="border-t border-slate-100 pt-3 space-y-1">
               <Link
                 href="/company"
                 className="block rounded-md px-2.5 py-2 text-[14px] font-medium text-slate-800 hover:bg-slate-50"
