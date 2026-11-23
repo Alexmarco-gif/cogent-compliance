@@ -4,14 +4,33 @@
  */
 
 export const CANONICAL_ROLES = [
+  // First Line of Defense (Business, Product, Ops, Tech, InfoSec)
   "MARKETING_GROWTH",
+  "OPERATIONS_LEAD",
+  "TECHNOLOGY_LEAD",
+  "INFOSEC_LEAD",
+  // Second Line of Defense (Compliance, Risk, Legal)
   "COMPLIANCE_ANALYST",
+  "RISK_OFFICER",
   "LEGAL_COUNSEL",
   "CHIEF_COMPLIANCE_OFFICER",
+  // Third Line of Defense (Independent Assurance — Advisory Only)
+  "INTERNAL_AUDIT",
+  // Delegated Governance Authorities
+  "COMMITTEE_MEMBER",
+  "BOARD_MEMBER",
+  // Platform Administration
   "WORKSPACE_ADMIN",
 ] as const;
 
 export type CanonicalRole = (typeof CANONICAL_ROLES)[number];
+
+export type DefenseLine =
+  | "FIRST_LINE"
+  | "SECOND_LINE"
+  | "THIRD_LINE"
+  | "GOVERNANCE"
+  | "PLATFORM_ADMIN";
 
 export const PERMISSION_KEYS = [
   // Conversational Copilot
@@ -44,6 +63,20 @@ export const PERMISSION_KEYS = [
   "knowledge.write",
   "knowledge.publish",
   "product.write",
+
+  // Policy Workflow OS (Stages 2–8, Three Lines of Defense & Delegated Authority)
+  "policy.read",
+  "policy.create",
+  "policy.draft",
+  "policy.review",
+  "policy.validate_qa",
+  "policy.approve.cco",
+  "policy.approve.committee",
+  "policy.approve.board",
+  "policy.publish",
+  "policy.controls.manage",
+  "policy.tasks.manage",
+  "policy.attest",
 
   // Administration & Audit
   "tenant.admin",
@@ -84,7 +117,10 @@ export type AuthErrorCode =
   | "TENANT_SUSPENDED"
   | "FORBIDDEN"
   | "APPROVAL_NOT_PERMITTED"
-  | "SELF_APPROVAL_VIOLATION";
+  | "SELF_APPROVAL_VIOLATION"
+  | "AUDIT_INDEPENDENCE_VIOLATION"
+  | "POLICY_QA_GATE_FAILED"
+  | "APPROVAL_SEQUENCE_VIOLATION";
 
 export class AuthTenancyError extends Error {
   public readonly code: AuthErrorCode;

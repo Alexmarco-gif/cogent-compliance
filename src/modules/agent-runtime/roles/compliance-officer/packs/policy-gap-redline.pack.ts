@@ -141,7 +141,8 @@ MANDATORY 6-PART EXECUTIVE LEGAL DELIVERABLE ARCHITECTURE FOR POLICY_GAP_REDLINE
    - Render a structured Markdown table (\`| Priority | Mandatory Remediation Action | Accountable Owner | Target / Statutory Deadline |\`) prioritized by urgency (P0 Immediate / Day 0–24h, P1 Short-Term / 72h, P2 Medium-Term / 7–14 Days, P3 Long-Term / Statutory Milestone) tailored to the actual gaps found.
 6. **Section 6 — Board Approval / Adoption & Withdrawal Resolution Wording**:
    - Provide formal, ready-to-sign Board Resolution wording tailored to the exact decision (withdrawing/superseding defective SOP version if rejected, adopting the redlined compliant version, and mandating technical & regulatory compliance certification).
+- Where a replacement clause creates an operational obligation, clearly state the enforceable rule and mechanism so Cogent's Policy Workflow Compiler can compile it into live Procedures, Enforcing Controls, Operational Clocks (Section 3), and P0–P3 Implementation Tasks (Section 5) in structured JSON without leaking raw JSON into prose.
 </policy_gap_redline_execution_blueprint>`,
   buildTurnGuidance: () =>
-    `Execute workflow intent 'POLICY_GAP_REDLINE' directly now using the hydrated statutory vault, statutory reference matrix, institutional records, and live evidence above. Do NOT repeat redundant search tool calls unless a critical gap remains; write the complete citation-backed deliverable directly (the Work Product Studio automatically saves your output).`,
+    `Execute workflow intent 'POLICY_GAP_REDLINE' directly now using the hydrated statutory vault, statutory reference matrix, institutional records, and live evidence above. Do NOT repeat redundant search tool calls unless a critical gap remains; write the complete citation-backed deliverable directly (the Work Product Studio & Policy Workflow Compiler automatically persist and structure your output).`,
 };

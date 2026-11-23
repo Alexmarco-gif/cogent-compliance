@@ -40,6 +40,9 @@ export function classifyComplianceTurnIntent(
   if (options.workflowHint === "POLICY_GAP_REDLINE") {
     return "POLICY_GAP_REDLINE";
   }
+  if (options.workflowHint === "POLICY_DRAFT_NEW") {
+    return "POLICY_DRAFT_NEW";
+  }
   if (options.workflowHint === "SUPERVISORY_DDQ_RESPONSE") {
     return "SUPERVISORY_DDQ_RESPONSE";
   }
@@ -50,7 +53,7 @@ export function classifyComplianceTurnIntent(
     return "FULL_COMPLIANCE_AUDIT";
   }
 
-  // 1. Explicit Policy Redline (referenced knowledge document or policy comparison command)
+  // 1a. Explicit Policy Redline (referenced knowledge document or policy comparison/gap command)
   if (
     options.referencedKnowledgeDocId ||
     (/\b(?:policy|sop|manual|handbook)\b/i.test(prompt) &&
@@ -59,6 +62,16 @@ export function classifyComplianceTurnIntent(
       ))
   ) {
     return "POLICY_GAP_REDLINE";
+  }
+
+  // 1b. Net-New Institutional Compliance Policy Drafting from Scratch
+  if (
+    /\b(?:draft|write|create|build|develop)\s+(?:a\s+|an\s+)?(?:new\s+|complete\s+|board[- ]?ready\s+|comprehensive\s+)?(?:[\w/& -]{0,40}\s+)?(?:policy|sop|compliance\s+manual)\b/i.test(
+      prompt
+    ) &&
+    !/\b(?:ddq|questionnaire|campaign|flyer|ad\s+copy|structuring\s+memo)\b/i.test(prompt)
+  ) {
+    return "POLICY_DRAFT_NEW";
   }
 
   // 2. Supervisory / Sponsor Bank DDQ Response

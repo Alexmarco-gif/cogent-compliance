@@ -22,12 +22,14 @@ import {
   requirePermission,
   assertAntiSelfApproval,
   assertCanApprove,
+  assertNotInternalAuditApprover,
+  assertPolicyApprovalAuthority,
 } from "@/modules/auth-tenancy/rbac.guard";
 
 describe("Role-Based Access Control (RBAC) Specification Compliance", () => {
-  it("should define exactly 5 canonical roles and 22 permission keys", () => {
-    expect(CANONICAL_ROLES).toHaveLength(5);
-    expect(PERMISSION_KEYS).toHaveLength(22);
+  it("should define 12 Three-Lines-of-Defense canonical roles and 34 permission keys", () => {
+    expect(CANONICAL_ROLES).toHaveLength(12);
+    expect(PERMISSION_KEYS).toHaveLength(34);
   });
 
   describe("Role Permission Matrix Verification", () => {
@@ -239,8 +241,85 @@ describe("Role-Based Access Control (RBAC) Specification Compliance", () => {
       expect(mapClerkRoleToCanonical("org:legal_counsel")).toBe("LEGAL_COUNSEL");
       expect(mapClerkRoleToCanonical("org:compliance_analyst")).toBe("COMPLIANCE_ANALYST");
       expect(mapClerkRoleToCanonical("org:marketing_growth")).toBe("MARKETING_GROWTH");
+      expect(mapClerkRoleToCanonical("org:risk_officer")).toBe("RISK_OFFICER");
+      expect(mapClerkRoleToCanonical("org:operations_lead")).toBe("OPERATIONS_LEAD");
+      expect(mapClerkRoleToCanonical("org:technology_lead")).toBe("TECHNOLOGY_LEAD");
+      expect(mapClerkRoleToCanonical("org:infosec_lead")).toBe("INFOSEC_LEAD");
+      expect(mapClerkRoleToCanonical("org:internal_audit")).toBe("INTERNAL_AUDIT");
+      expect(mapClerkRoleToCanonical("org:committee_member")).toBe("COMMITTEE_MEMBER");
+      expect(mapClerkRoleToCanonical("org:board_member")).toBe("BOARD_MEMBER");
       expect(mapClerkRoleToCanonical(undefined)).toBe("MARKETING_GROWTH");
       expect(mapClerkRoleToCanonical("")).toBe("MARKETING_GROWTH");
+    });
+  });
+
+  describe("Three Lines of Defense & Policy Delegated Authority (DoA)", () => {
+    const buildCtx = (role: CanonicalRole, userId = "user_3lod_1"): TenantContext => ({
+      tenantId: "11111111-1111-1111-1111-111111111111",
+      userId,
+      clerkOrgId: "org_fintech",
+      clerkUserId: userId,
+      orgSlug: "fintech-ng",
+      orgName: "Fintech NG Ltd",
+      role,
+      permissions: getPermissionsForRole(role),
+      status: "ACTIVE",
+    });
+
+    it("INTERNAL_AUDIT (3rd Line): allows advisory review & audit.read, but strictly throws AUDIT_INDEPENDENCE_VIOLATION on approval", () => {
+      const auditor = buildCtx("INTERNAL_AUDIT", "auditor_1");
+
+      expect(hasPermission(auditor, "policy.read")).toBe(true);
+      expect(hasPermission(auditor, "policy.review")).toBe(true);
+      expect(hasPermission(auditor, "audit.read")).toBe(true);
+
+      expect(hasPermission(auditor, "policy.draft")).toBe(false);
+      expect(hasPermission(auditor, "policy.publish")).toBe(false);
+      expect(hasPermission(auditor, "policy.approve.cco")).toBe(false);
+      expect(hasPermission(auditor, "policy.approve.committee")).toBe(false);
+      expect(hasPermission(auditor, "policy.approve.board")).toBe(false);
+
+      expect(() => assertNotInternalAuditApprover(auditor)).toThrowError(
+        expect.objectContaining({
+          code: "AUDIT_INDEPENDENCE_VIOLATION",
+          statusCode: 403,
+        }),
+      );
+      expect(() =>
+        assertPolicyApprovalAuthority(auditor, "CHIEF_COMPLIANCE_OFFICER", "author_1"),
+      ).toThrowError(
+        expect.objectContaining({
+          code: "AUDIT_INDEPENDENCE_VIOLATION",
+          statusCode: 403,
+        }),
+      );
+    });
+
+    it("enforces strict DoA tier separation across CCO, Management Committee, and Board of Directors", () => {
+      const cco = buildCtx("CHIEF_COMPLIANCE_OFFICER", "cco_1");
+      const comm = buildCtx("COMMITTEE_MEMBER", "comm_1");
+      const board = buildCtx("BOARD_MEMBER", "board_1");
+
+      expect(() =>
+        assertPolicyApprovalAuthority(cco, "CHIEF_COMPLIANCE_OFFICER", "analyst_1"),
+      ).not.toThrow();
+      expect(() =>
+        assertPolicyApprovalAuthority(cco, "BOARD_MEMBER", "analyst_1"),
+      ).toThrowError(expect.objectContaining({ code: "APPROVAL_NOT_PERMITTED" }));
+
+      expect(() =>
+        assertPolicyApprovalAuthority(comm, "COMMITTEE_MEMBER", "analyst_1"),
+      ).not.toThrow();
+      expect(() =>
+        assertPolicyApprovalAuthority(comm, "BOARD_MEMBER", "analyst_1"),
+      ).toThrowError(expect.objectContaining({ code: "APPROVAL_NOT_PERMITTED" }));
+
+      expect(() =>
+        assertPolicyApprovalAuthority(board, "BOARD_MEMBER", "analyst_1"),
+      ).not.toThrow();
+      expect(() =>
+        assertPolicyApprovalAuthority(board, "CHIEF_COMPLIANCE_OFFICER", "analyst_1"),
+      ).toThrowError(expect.objectContaining({ code: "APPROVAL_NOT_PERMITTED" }));
     });
   });
 });

@@ -643,6 +643,16 @@ export function WorkspaceSidebar({
             </div>
 
             <Link
+              href="/policies"
+              prefetch={true}
+              onClick={onCloseMobile}
+              className={navLinkClass(pathname.startsWith("/policies"))}
+            >
+              <FileCheck2 className="h-4 w-4 text-zinc-500 shrink-0" />
+              <span>Policy Workflow</span>
+            </Link>
+
+            <Link
               href="/knowledge-base?tab=rules"
               prefetch={true}
               onClick={onCloseMobile}
@@ -1024,6 +1034,15 @@ export function WorkspaceSidebar({
         </Link>
 
         <div className="w-6 h-px bg-zinc-200 my-1" />
+
+        <Link
+          href="/policies"
+          className={iconNavClass(pathname.startsWith("/policies"))}
+          title="Policy Workflow"
+          aria-label="Policy Workflow"
+        >
+          <FileCheck2 className="h-4 w-4" />
+        </Link>
 
         <Link
           href="/knowledge-base?tab=rules"

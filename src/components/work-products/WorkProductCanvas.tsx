@@ -42,6 +42,7 @@ export interface WorkProductCanvasProps {
 const WORKFLOW_LABELS: Record<WorkflowType, string> = {
   PRODUCT_STRUCTURING_MEMO: "Product Structuring Memo",
   POLICY_GAP_REDLINE: "Policy Gap & SOP Redline",
+  POLICY_DRAFT_NEW: "Net-New Compliance Policy",
   SUPERVISORY_DDQ_RESPONSE: "Supervisory / Partner DDQ",
   CROSS_BORDER_COMPARISON: "Cross-Border Expansion Matrix",
   CAMPAIGN_COMPLIANCE_KIT: "Campaign Compliance Kit",
@@ -118,6 +119,7 @@ export function WorkProductCanvas({
     type: "error" | "upgrade";
     message: string;
   } | null>(null);
+  const [promotingPolicy, setPromotingPolicy] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -515,6 +517,63 @@ export function WorkProductCanvas({
               >
                 <AlertTriangle className="h-3 w-3" />
                 <span>Gaps Only ({totalGapsCount})</span>
+              </button>
+            )}
+
+            {(workProduct.workflow_type === "POLICY_GAP_REDLINE" ||
+              workProduct.workflow_type === "POLICY_DRAFT_NEW") && (
+              <button
+                type="button"
+                disabled={promotingPolicy}
+                onClick={async () => {
+                  setPromotingPolicy(true);
+                  setExportNotice(null);
+                  try {
+                    const res = await fetch("/api/marketing-shield/v1/policies", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        title: (draftTitle || workProduct.title).trim(),
+                        domain: "AML_CFT_CPF",
+                        owner_department: "Compliance",
+                        approval_tier: "TIER_3_BOARD",
+                        change_type:
+                          workProduct.workflow_type === "POLICY_DRAFT_NEW"
+                            ? "NEW_POLICY"
+                            : "AMENDMENT",
+                        trigger_source: "REGULATORY_CHANGE",
+                        source_work_product_id: workProduct.id,
+                        markdown_content: draftMarkdown || workProduct.markdown_content,
+                      }),
+                    });
+                    const json = await res.json();
+                    if (!res.ok || !json?.success) {
+                      throw new Error(
+                        extractApiError(res.status, json, "Could not promote to Policy Workflow")
+                          .message,
+                      );
+                    }
+                    const newPolicyId = json.data?.policy?.id;
+                    if (newPolicyId && typeof window !== "undefined") {
+                      window.location.href = `/policies/${newPolicyId}`;
+                    }
+                  } catch (err) {
+                    setExportNotice({
+                      type: "error",
+                      message: (err as Error).message,
+                    });
+                  } finally {
+                    setPromotingPolicy(false);
+                  }
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white text-[11.5px] font-medium disabled:opacity-60 cursor-pointer"
+              >
+                {promotingPolicy ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <ShieldCheck className="h-3 w-3" />
+                )}
+                <span>Promote to Policy Workflow</span>
               </button>
             )}
 

@@ -819,12 +819,12 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         workflow_type: {
           type: Type.STRING,
           description:
-            "One of: PRODUCT_STRUCTURING_MEMO, POLICY_GAP_REDLINE, SUPERVISORY_DDQ_RESPONSE, CROSS_BORDER_COMPARISON, CAMPAIGN_COMPLIANCE_KIT.",
+            "One of: PRODUCT_STRUCTURING_MEMO, POLICY_GAP_REDLINE, POLICY_DRAFT_NEW, SUPERVISORY_DDQ_RESPONSE, CROSS_BORDER_COMPARISON, CAMPAIGN_COMPLIANCE_KIT.",
         },
         artifact_type: {
           type: Type.STRING,
           description:
-            "One of: statutory_structuring_memo, policy_gap_redline, supervisory_ddq_response, cross_border_matrix, compliant_ad_rewrite, cbn_kfs_statement, arcon_vetting_memo, audit_dossier_summary.",
+            "One of: statutory_structuring_memo, policy_gap_redline, policy_draft_document, supervisory_ddq_response, cross_border_matrix, compliant_ad_rewrite, cbn_kfs_statement, arcon_vetting_memo, audit_dossier_summary.",
         },
         title: {
           type: Type.STRING,

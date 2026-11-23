@@ -254,6 +254,7 @@ function exportArconMemoToPrintWindow(
 const WORKFLOW_ARTIFACT_TABS = new Set<ComplianceArtifactType>([
   "statutory_structuring_memo",
   "policy_gap_redline",
+  "policy_draft_document",
   "supervisory_ddq_response",
   "cross_border_matrix",
 ]);

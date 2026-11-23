@@ -29,6 +29,7 @@ import type { ExecutionPlanStep } from "./conversation.contracts";
 export const COMPLIANCE_TURN_INTENTS = [
   "PRODUCT_STRUCTURING_MEMO",
   "POLICY_GAP_REDLINE",
+  "POLICY_DRAFT_NEW",
   "SUPERVISORY_DDQ_RESPONSE",
   "CROSS_BORDER_COMPARISON",
   "FULL_COMPLIANCE_AUDIT",

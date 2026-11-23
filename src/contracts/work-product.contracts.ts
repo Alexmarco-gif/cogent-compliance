@@ -10,6 +10,7 @@ import { jurisdictionCodeSchema } from "./search.contracts";
 export const WORKFLOW_TYPES = [
   "PRODUCT_STRUCTURING_MEMO",
   "POLICY_GAP_REDLINE",
+  "POLICY_DRAFT_NEW",
   "SUPERVISORY_DDQ_RESPONSE",
   "CROSS_BORDER_COMPARISON",
   "CAMPAIGN_COMPLIANCE_KIT",
@@ -19,6 +20,7 @@ export type WorkflowType = (typeof WORKFLOW_TYPES)[number];
 export const WORK_PRODUCT_ARTIFACT_TYPES = [
   "statutory_structuring_memo",
   "policy_gap_redline",
+  "policy_draft_document",
   "supervisory_ddq_response",
   "cross_border_matrix",
   "compliant_ad_rewrite",

@@ -57,6 +57,7 @@ import {
   type KfsAndChannelKitResult,
 } from "@/modules/compliance-assessment/kfs-generator.service";
 import { statutoryReferenceMatrix } from "@/modules/compliance-assessment/statutory-reference-matrix";
+import { policyCompilerService } from "@/modules/policies/policy-compiler.service";
 import { entitlementsService } from "@/modules/billing/entitlements.service";
 import { workProductService } from "@/modules/work-products/work-product.service";
 import { precedentMemoryService } from "@/modules/ai-orchestration/precedent-memory.service";
@@ -93,6 +94,7 @@ import type {
 export type CopilotTurnIntent =
   | "PRODUCT_STRUCTURING_MEMO"
   | "POLICY_GAP_REDLINE"
+  | "POLICY_DRAFT_NEW"
   | "SUPERVISORY_DDQ_RESPONSE"
   | "CROSS_BORDER_COMPARISON"
   | "FULL_COMPLIANCE_AUDIT"
@@ -1508,6 +1510,7 @@ export class CopilotOrchestrator {
     } else if (
       turnIntent === "PRODUCT_STRUCTURING_MEMO" ||
       turnIntent === "POLICY_GAP_REDLINE" ||
+      turnIntent === "POLICY_DRAFT_NEW" ||
       turnIntent === "SUPERVISORY_DDQ_RESPONSE" ||
       turnIntent === "CROSS_BORDER_COMPARISON"
     ) {
@@ -2383,6 +2386,7 @@ export class CopilotOrchestrator {
     const isWorkflowIntent =
       turnIntent === "PRODUCT_STRUCTURING_MEMO" ||
       turnIntent === "POLICY_GAP_REDLINE" ||
+      turnIntent === "POLICY_DRAFT_NEW" ||
       turnIntent === "SUPERVISORY_DDQ_RESPONSE" ||
       turnIntent === "CROSS_BORDER_COMPARISON";
     let fullResponseText = "";
@@ -3167,11 +3171,12 @@ export class CopilotOrchestrator {
         if (!persistedWorkProduct && fullResponseText.trim().length >= 80) {
           try {
             const artifactTypeMap: Record<
-              "PRODUCT_STRUCTURING_MEMO" | "POLICY_GAP_REDLINE" | "SUPERVISORY_DDQ_RESPONSE" | "CROSS_BORDER_COMPARISON",
+              "PRODUCT_STRUCTURING_MEMO" | "POLICY_GAP_REDLINE" | "POLICY_DRAFT_NEW" | "SUPERVISORY_DDQ_RESPONSE" | "CROSS_BORDER_COMPARISON",
               WorkProductArtifactType
             > = {
               PRODUCT_STRUCTURING_MEMO: "statutory_structuring_memo",
               POLICY_GAP_REDLINE: "policy_gap_redline",
+              POLICY_DRAFT_NEW: "policy_draft_document",
               SUPERVISORY_DDQ_RESPONSE: "supervisory_ddq_response",
               CROSS_BORDER_COMPARISON: "cross_border_matrix",
             };
@@ -3203,6 +3208,13 @@ export class CopilotOrchestrator {
               options.userPrompt,
               options.searchJurisdictions
             );
+            const compiledStructuredPayload =
+              turnIntent === "POLICY_GAP_REDLINE" || turnIntent === "POLICY_DRAFT_NEW"
+                ? (policyCompilerService.parseRedlineMarkdownToStructuredPayload(
+                    fullResponseText,
+                    turnIntent,
+                  ) as unknown as Record<string, unknown>)
+                : {};
             const { workProduct, created } = await workProductService.upsertWorkProduct(
               options.tenantId,
               options.userId,
@@ -3221,7 +3233,7 @@ export class CopilotOrchestrator {
                         ? autoDetectedScope
                         : ["NG"],
                 markdown_content: fullResponseText,
-                structured_payload: {},
+                structured_payload: compiledStructuredPayload,
                 citations: wpCitations,
                 evidence_gaps: collectedWorkflowEvidenceGaps,
                 status: "DRAFT",

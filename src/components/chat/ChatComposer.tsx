@@ -74,6 +74,7 @@ const JURISDICTION_SOURCES: Array<{
 const WORKFLOW_LABELS: Record<WorkflowType, string> = {
   PRODUCT_STRUCTURING_MEMO: "Structuring Memo",
   POLICY_GAP_REDLINE: "Policy Redline",
+  POLICY_DRAFT_NEW: "Draft New Policy",
   SUPERVISORY_DDQ_RESPONSE: "Supervisory DDQ",
   CROSS_BORDER_COMPARISON: "Cross-Border Matrix",
   CAMPAIGN_COMPLIANCE_KIT: "Campaign Clearance",
@@ -141,6 +142,15 @@ const STARTER_CARDS: Array<{
     prompt:
       "Compare our internal AML / Operations policy against the latest CBN & NFIU guidelines and draft exact redlined policy replacement clauses.",
     workflowHint: "POLICY_GAP_REDLINE",
+    prefillOnly: true,
+  },
+  {
+    icon: FileText,
+    title: "Draft New Compliance Policy",
+    subtitle: "Board-ready policy, controls & clocks",
+    prompt:
+      "Draft a complete, Board-ready KYC & AML/CFT/CPF Policy for our Nigerian fintech covering CBN, NFIU, and NDPC statutory floors, Three Lines of Defense, operational controls, statutory clocks, and a Board adoption resolution.",
+    workflowHint: "POLICY_DRAFT_NEW",
     prefillOnly: true,
   },
   {

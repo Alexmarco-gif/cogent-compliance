@@ -504,8 +504,11 @@ export class GuardrailValidator {
       }
     }
 
-    // 4. Policy Redline Legal Floor Enforcement
-    if (candidate.workflow_type === "POLICY_GAP_REDLINE") {
+    // 4. Policy Redline & Net-New Policy Draft Legal Floor Enforcement
+    if (
+      candidate.workflow_type === "POLICY_GAP_REDLINE" ||
+      candidate.workflow_type === "POLICY_DRAFT_NEW"
+    ) {
       // Extract only proposed/replacement text (excluding the "Current Non-Compliant Text" column
       // in Markdown redline tables so quoting offending SOP text like "notify NDPC within 30 days"
       // does not cause a false positive on the replacement redline).
