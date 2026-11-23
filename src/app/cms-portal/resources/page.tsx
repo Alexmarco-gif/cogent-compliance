@@ -16,6 +16,10 @@ export const metadata: Metadata = {
   },
 };
 
+/**
+ * Rendered via middleware rewrite from /@/admin/resources (see src/middleware.ts).
+ * Direct access to /cms-portal/* is blocked in middleware, and non-owners receive 404 here.
+ */
 export default async function AdminResourcesPage() {
   const session = await requireResourcesAdminSession();
   if (!session.authorized) {

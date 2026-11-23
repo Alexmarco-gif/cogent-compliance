@@ -17,7 +17,9 @@ export default function robots(): MetadataRoute.Robots {
           "/legal",
         ],
         disallow: [
+          "/@/",
           "/admin",
+          "/cms-portal",
           "/chat",
           "/onboarding",
           "/knowledge-base",
