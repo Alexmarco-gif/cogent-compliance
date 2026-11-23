@@ -44,7 +44,6 @@ describe("SEO Metadata: Sitemap, Robots & Positioning", () => {
     expect(rules?.allow).toContain("/");
     expect(rules?.allow).toContain("/legal");
     expect(rules?.disallow).toContain("/@/");
-    expect(rules?.disallow).toContain("/cms-portal");
     expect(rules?.disallow).toContain("/chat");
     expect(rules?.disallow).toContain("/api/");
     expect(rules?.disallow).toContain("/settings");

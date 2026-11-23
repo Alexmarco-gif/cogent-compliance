@@ -3,7 +3,6 @@
  * Document Reference: Document 07 (Section 3) & Document 08 (Phase 3)
  */
 
-import { NextResponse } from "next/server";
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 /**
@@ -39,15 +38,6 @@ const isApiRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  const pathname = req.nextUrl.pathname;
-
-  // Block direct visits to the internal rewrite target so only /@/admin/resources is reachable.
-  if (pathname === "/cms-portal" || pathname.startsWith("/cms-portal/")) {
-    const notFoundUrl = req.nextUrl.clone();
-    notFoundUrl.pathname = "/_not-found";
-    return NextResponse.rewrite(notFoundUrl);
-  }
-
   if (isAlwaysPublicRoute(req)) {
     return;
   }
@@ -63,15 +53,6 @@ export default clerkMiddleware(async (auth, req) => {
   await auth.protect({
     unauthenticatedUrl: new URL("/sign-in", req.url).toString(),
   });
-
-  // Next.js App Router treats `@` folders as Parallel Route slots, so we rewrite
-  // /@/admin/resources (and URL-encoded /%40/admin/resources) to /cms-portal/resources
-  // while keeping /@/admin/resources in the browser address bar.
-  if (pathname === "/@/admin/resources" || pathname === "/%40/admin/resources") {
-    const rewriteUrl = req.nextUrl.clone();
-    rewriteUrl.pathname = "/cms-portal/resources";
-    return NextResponse.rewrite(rewriteUrl);
-  }
 });
 
 export const config = {

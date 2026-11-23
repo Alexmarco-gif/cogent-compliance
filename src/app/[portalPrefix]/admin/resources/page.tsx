@@ -17,10 +17,26 @@ export const metadata: Metadata = {
 };
 
 /**
- * Rendered via middleware rewrite from /@/admin/resources (see src/middleware.ts).
- * Direct access to /cms-portal/* is blocked in middleware, and non-owners receive 404 here.
+ * Serves strictly at /@/admin/resources (since Next.js reserves `@` folders for Parallel Routes).
+ * Any other prefix returns 404 immediately, and non-owners also receive 404.
  */
-export default async function AdminResourcesPage() {
+export default async function AdminResourcesPage({
+  params,
+}: {
+  params: Promise<{ portalPrefix: string }>;
+}) {
+  const { portalPrefix } = await params;
+  let decodedPrefix = portalPrefix;
+  try {
+    decodedPrefix = decodeURIComponent(portalPrefix);
+  } catch {
+    notFound();
+  }
+
+  if (decodedPrefix !== "@") {
+    notFound();
+  }
+
   const session = await requireResourcesAdminSession();
   if (!session.authorized) {
     notFound();
