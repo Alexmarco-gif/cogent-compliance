@@ -175,7 +175,7 @@ export interface GateConditionItem {
 export interface GateSignoffRecord {
   user_id: string;
   role: CanonicalRole;
-  defence_line: "FIRST_LINE" | "SECOND_LINE" | "THIRD_LINE" | "PLATFORM_ADMIN";
+  defence_line: import("@/modules/auth-tenancy/types").DefenceLine;
   decision: "APPROVED" | "CONDITIONALLY_APPROVED" | "REJECTED";
   rationale: string;
   signed_at: string;
