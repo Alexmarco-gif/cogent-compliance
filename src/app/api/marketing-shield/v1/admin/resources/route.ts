@@ -12,7 +12,10 @@ import {
   isResourceCategory,
   type ResourceStatus,
 } from "@/contracts/resources.contracts";
-import { isNeonResourcesConfigured } from "@/lib/neon";
+import {
+  getNeonResourcesConfigError,
+  isNeonResourcesConfigured,
+} from "@/lib/neon";
 import { requireResourcesAdminSession } from "@/modules/resources/resources-admin.guard";
 import { isResourcesR2Configured } from "@/modules/resources/resources-media.service";
 import { resourcesService } from "@/modules/resources/resources.service";
@@ -27,13 +30,27 @@ export async function GET(req: NextRequest) {
   const session = await requireResourcesAdminSession();
   if (!session.authorized) return NOT_FOUND();
 
+  const neonConfigError = getNeonResourcesConfigError();
   const neonConfigured = isNeonResourcesConfigured();
   const r2Configured = isResourcesR2Configured();
+
+  if (neonConfigError) {
+    return NextResponse.json(
+      {
+        neonConfigured: false,
+        neonConfigError,
+        r2Configured,
+        posts: [],
+      },
+      { status: 200, headers: NO_STORE },
+    );
+  }
 
   if (!neonConfigured) {
     return NextResponse.json(
       {
         neonConfigured: false,
+        neonConfigError: null,
         r2Configured,
         posts: [],
       },

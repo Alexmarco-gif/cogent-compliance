@@ -34,6 +34,7 @@ import { CogentLogo } from "@/components/brand/CogentLogo";
 
 interface ResourcesAdminStudioProps {
   initialNeonConfigured: boolean;
+  initialNeonConfigError?: string | null;
   initialR2Configured: boolean;
 }
 
@@ -138,9 +139,11 @@ const CATEGORY_ICONS: Record<ResourceCategory, React.ElementType> = {
 
 export function ResourcesAdminStudio({
   initialNeonConfigured,
+  initialNeonConfigError = null,
   initialR2Configured,
 }: ResourcesAdminStudioProps) {
   const [neonConfigured, setNeonConfigured] = useState(initialNeonConfigured);
+  const [neonConfigError, setNeonConfigError] = useState<string | null>(initialNeonConfigError);
   const [r2Configured, setR2Configured] = useState(initialR2Configured);
   const [posts, setPosts] = useState<ResourcePost[]>([]);
   const [loading, setLoading] = useState(true);
@@ -170,6 +173,7 @@ export function ResourcesAdminStudio({
         throw new Error(data.error || "Failed to load resources");
       }
       setNeonConfigured(Boolean(data.neonConfigured));
+      setNeonConfigError(typeof data.neonConfigError === "string" ? data.neonConfigError : null);
       setR2Configured(Boolean(data.r2Configured));
       setPosts(Array.isArray(data.posts) ? data.posts : []);
     } catch (err) {
@@ -457,8 +461,16 @@ export function ResourcesAdminStudio({
       </header>
 
       <main className="mx-auto max-w-[1360px] px-5 py-8 sm:px-8">
+        {/* Neon Invalid Connection String Banner */}
+        {neonConfigError && (
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-5 text-[13.5px] text-red-900">
+            <p className="font-semibold">Neon Connection String Error</p>
+            <p className="mt-1 leading-relaxed">{neonConfigError}</p>
+          </div>
+        )}
+
         {/* Neon Setup Checklist if not yet configured */}
-        {!neonConfigured && (
+        {!neonConfigured && !neonConfigError && (
           <div className="mb-8 rounded-xl border border-amber-200 bg-amber-50/70 p-6">
             <h2 className="text-[16px] font-semibold text-[#0B1220]">
               Connect Neon Postgres to Start Publishing

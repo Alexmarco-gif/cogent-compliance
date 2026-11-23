@@ -1,7 +1,7 @@
 import React from "react";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { isNeonResourcesConfigured } from "@/lib/neon";
+import { getNeonResourcesConfigError, isNeonResourcesConfigured } from "@/lib/neon";
 import { requireResourcesAdminSession } from "@/modules/resources/resources-admin.guard";
 import { isResourcesR2Configured } from "@/modules/resources/resources-media.service";
 import { ResourcesAdminStudio } from "@/components/admin/resources/ResourcesAdminStudio";
@@ -29,6 +29,7 @@ export default async function AdminResourcesPage() {
   return (
     <ResourcesAdminStudio
       initialNeonConfigured={isNeonResourcesConfigured()}
+      initialNeonConfigError={getNeonResourcesConfigError()}
       initialR2Configured={isResourcesR2Configured()}
     />
   );

@@ -32,12 +32,26 @@ export function isResourcesAllowedMimeType(value: string): value is ResourcesAll
   return (RESOURCES_ALLOWED_MIME_TYPES as readonly string[]).includes(value);
 }
 
+function sanitizeEnvValue(raw: string | undefined, keyName: string): string {
+  let cleaned = (raw || "").trim();
+  if (cleaned.startsWith(`${keyName}=`)) {
+    cleaned = cleaned.slice(keyName.length + 1).trim();
+  }
+  return cleaned.replace(/^['"]+|['"]+$/g, "").trim();
+}
+
 export function getResourcesR2Config(env: Record<string, string | undefined> = process.env) {
-  const accountId = (env.RESOURCES_R2_ACCOUNT_ID || "").trim();
-  const accessKeyId = (env.RESOURCES_R2_ACCESS_KEY_ID || "").trim();
-  const secretAccessKey = (env.RESOURCES_R2_SECRET_ACCESS_KEY || "").trim();
-  const bucketName = (env.RESOURCES_R2_BUCKET_NAME || "").trim();
-  const publicUrlPrefix = (env.RESOURCES_R2_PUBLIC_URL_PREFIX || "").trim().replace(/\/+$/, "");
+  const accountId = sanitizeEnvValue(env.RESOURCES_R2_ACCOUNT_ID, "RESOURCES_R2_ACCOUNT_ID");
+  const accessKeyId = sanitizeEnvValue(env.RESOURCES_R2_ACCESS_KEY_ID, "RESOURCES_R2_ACCESS_KEY_ID");
+  const secretAccessKey = sanitizeEnvValue(
+    env.RESOURCES_R2_SECRET_ACCESS_KEY,
+    "RESOURCES_R2_SECRET_ACCESS_KEY",
+  );
+  const bucketName = sanitizeEnvValue(env.RESOURCES_R2_BUCKET_NAME, "RESOURCES_R2_BUCKET_NAME");
+  const publicUrlPrefix = sanitizeEnvValue(
+    env.RESOURCES_R2_PUBLIC_URL_PREFIX,
+    "RESOURCES_R2_PUBLIC_URL_PREFIX",
+  ).replace(/\/+$/, "");
 
   const configured = Boolean(accountId && accessKeyId && secretAccessKey && bucketName);
   return {

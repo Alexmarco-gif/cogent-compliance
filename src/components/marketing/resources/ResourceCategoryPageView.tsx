@@ -10,7 +10,15 @@ import {
 } from "@/contracts/resources.contracts";
 import { resourcesService } from "@/modules/resources/resources.service";
 import { ResourceCategoryHero } from "./ResourceCategoryHero";
+import { ResourceSpotlightSection } from "./ResourceSpotlightSection";
 import { ResourceCard } from "./ResourceCard";
+
+const SECTION_GRID_TITLE: Record<ResourceCategory, string> = {
+  insights: "Latest articles",
+  videos: "Latest videos",
+  reports: "Latest reports",
+  events: "Latest events",
+};
 
 export async function ResourceCategoryPageView({
   category,
@@ -39,6 +47,11 @@ export async function ResourceCategoryPageView({
     ? posts.filter((p) => p.eventStartsAt && Date.parse(p.eventStartsAt) < now)
     : [];
 
+  const heroPost = posts.find((p) => p.featured) || posts[0] || null;
+  const nonHeroPosts = heroPost ? posts.filter((p) => p.id !== heroPost.id) : [];
+  const sidePosts = nonHeroPosts.slice(0, 4);
+  const gridPosts = nonHeroPosts.length > 4 ? nonHeroPosts.slice(4) : posts;
+
   return (
     <div className="min-h-screen bg-white text-[#0B1220] flex flex-col">
       <div className="relative cogent-editorial-canvas border-b border-slate-200">
@@ -58,11 +71,11 @@ export async function ResourceCategoryPageView({
       </div>
 
       <main className="flex-1">
-        <section className="py-14 sm:py-16">
-          <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
+        <section className="py-12 sm:py-16">
+          <div className="mx-auto max-w-[1200px] px-5 sm:px-8 space-y-14">
             {/* Optional Tag Filter */}
             {allTags.length > 0 && (
-              <div className="mb-8 flex flex-wrap items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-[11px] uppercase tracking-wider text-slate-400 mr-1">
                   Topics:
                 </span>
@@ -120,13 +133,17 @@ export async function ResourceCategoryPageView({
                 </div>
               </div>
             ) : isEvents ? (
-              <div className="space-y-12">
+              <div className="space-y-14">
+                {heroPost && (
+                  <ResourceSpotlightSection heroPost={heroPost} sidePosts={sidePosts} />
+                )}
+
                 {upcomingEvents.length > 0 && (
-                  <div>
-                    <h2 className="mb-5 text-[20px] font-semibold tracking-tight text-[#0B1220]">
+                  <div className="border-t border-slate-200 pt-10">
+                    <h2 className="mb-7 text-[24px] font-semibold tracking-[-0.02em] text-[#0B1220]">
                       Upcoming Events &amp; Webinars
                     </h2>
-                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-x-7 gap-y-10 md:grid-cols-2 lg:grid-cols-3">
                       {upcomingEvents.map((post) => (
                         <ResourceCard key={post.id} post={post} />
                       ))}
@@ -135,11 +152,11 @@ export async function ResourceCategoryPageView({
                 )}
 
                 {pastEvents.length > 0 && (
-                  <div>
-                    <h2 className="mb-5 text-[20px] font-semibold tracking-tight text-[#0B1220]">
+                  <div className="border-t border-slate-200 pt-10">
+                    <h2 className="mb-7 text-[24px] font-semibold tracking-[-0.02em] text-[#0B1220]">
                       Past Events &amp; Session Recaps
                     </h2>
-                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-x-7 gap-y-10 md:grid-cols-2 lg:grid-cols-3">
                       {pastEvents.map((post) => (
                         <ResourceCard key={post.id} post={post} />
                       ))}
@@ -148,11 +165,24 @@ export async function ResourceCategoryPageView({
                 )}
               </div>
             ) : (
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {posts.map((post) => (
-                  <ResourceCard key={post.id} post={post} />
-                ))}
-              </div>
+              <>
+                {heroPost && (
+                  <ResourceSpotlightSection heroPost={heroPost} sidePosts={sidePosts} />
+                )}
+
+                {gridPosts.length > 0 && (
+                  <div className="border-t border-slate-200 pt-12">
+                    <h2 className="mb-8 text-[24px] sm:text-[28px] font-semibold tracking-[-0.02em] text-[#0B1220]">
+                      {SECTION_GRID_TITLE[category]}
+                    </h2>
+                    <div className="grid grid-cols-1 gap-x-7 gap-y-10 md:grid-cols-2 lg:grid-cols-3">
+                      {gridPosts.map((post) => (
+                        <ResourceCard key={post.id} post={post} />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </section>

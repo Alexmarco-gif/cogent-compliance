@@ -5,7 +5,11 @@ import {
   isResourcesR2Configured,
   isValidResourcesStorageKey,
 } from "@/modules/resources/resources-media.service";
-import { isNeonResourcesConfigured } from "@/lib/neon";
+import {
+  getNeonResourcesConfigError,
+  getNeonResourcesDatabaseUrl,
+  isNeonResourcesConfigured,
+} from "@/lib/neon";
 
 describe("Resources Admin Guard & Isolated Storage Config", () => {
   const ownerEnv = {
@@ -102,12 +106,41 @@ describe("Resources Admin Guard & Isolated Storage Config", () => {
     expect(isValidResourcesStorageKey("resources/../../etc/passwd")).toBe(false);
   });
 
-  it("detects Neon database configuration independently of Supabase", () => {
+  it("detects Neon database configuration independently of Supabase and handles copy-paste errors", () => {
     expect(isNeonResourcesConfigured({})).toBe(false);
+    expect(getNeonResourcesConfigError({})).toBeNull();
+
     expect(
       isNeonResourcesConfigured({
         NEON_RESOURCES_DATABASE_URL: "postgresql://user:pass@ep-cool.neon.tech/neondb?sslmode=require",
       }),
     ).toBe(true);
+
+    // Strips accidental KEY= or psql '...' wrapper
+    expect(
+      getNeonResourcesDatabaseUrl({
+        NEON_RESOURCES_DATABASE_URL:
+          "psql 'postgresql://user:pass@ep-cool.neon.tech/neondb?sslmode=require'",
+      }),
+    ).toBe("postgresql://user:pass@ep-cool.neon.tech/neondb?sslmode=require");
+
+    expect(
+      getNeonResourcesDatabaseUrl({
+        NEON_RESOURCES_DATABASE_URL:
+          "NEON_RESOURCES_DATABASE_URL:postgresql://user:pass@ep-cool.neon.tech/neondb?sslmode=require",
+      }),
+    ).toBe("postgresql://user:pass@ep-cool.neon.tech/neondb?sslmode=require");
+
+    // Literal variable name pasted into value box fails cleanly with clear diagnostic
+    expect(
+      isNeonResourcesConfigured({
+        NEON_RESOURCES_DATABASE_URL: "NEON_RESOURCES_DATABASE_URL",
+      }),
+    ).toBe(false);
+    expect(
+      getNeonResourcesConfigError({
+        NEON_RESOURCES_DATABASE_URL: "NEON_RESOURCES_DATABASE_URL",
+      }),
+    ).toContain("invalid value");
   });
 });

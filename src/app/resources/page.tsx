@@ -1,17 +1,17 @@
 import React from "react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Calendar, FileText, Film, Newspaper } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { MarketingHeader } from "@/components/marketing/MarketingHeader";
 import { ExecutiveCtaBanner } from "@/components/marketing/ExecutiveCtaBanner";
 import { MarketingFooter } from "@/components/marketing/MarketingFooter";
 import {
   RESOURCE_CATEGORIES,
   RESOURCE_CATEGORY_META,
-  type ResourceCategory,
 } from "@/contracts/resources.contracts";
 import { resourcesService } from "@/modules/resources/resources.service";
 import { ResourceCategoryHero } from "@/components/marketing/resources/ResourceCategoryHero";
+import { ResourceSpotlightSection } from "@/components/marketing/resources/ResourceSpotlightSection";
 import { ResourceCard } from "@/components/marketing/resources/ResourceCard";
 
 export const dynamic = "force-dynamic";
@@ -35,17 +35,19 @@ export const metadata: Metadata = {
   },
 };
 
-const CATEGORY_ICONS: Record<ResourceCategory, React.ElementType> = {
-  insights: Newspaper,
-  videos: Film,
-  reports: FileText,
-  events: Calendar,
-};
-
 export default async function ResourcesPage() {
   const posts = await resourcesService.listPublishedResources({ limit: 48 });
-  const featuredPost = posts.find((p) => p.featured) || posts[0] || null;
-  const remainingPosts = featuredPost ? posts.filter((p) => p.id !== featuredPost.id) : [];
+  const heroPost = posts.find((p) => p.featured) || posts[0] || null;
+  const nonHeroPosts = heroPost ? posts.filter((p) => p.id !== heroPost.id) : [];
+  const sidePosts = nonHeroPosts.slice(0, 4);
+  // If more than 5 posts exist, render #6+ in the main Latest grid; if 1-5 posts exist, still show all posts in the 3-column grid so the grid is always populated.
+  const latestGridPosts = nonHeroPosts.length > 4 ? nonHeroPosts.slice(4) : posts;
+
+  const postsByCategory = RESOURCE_CATEGORIES.map((category) => ({
+    category,
+    meta: RESOURCE_CATEGORY_META[category],
+    items: posts.filter((p) => p.category === category).slice(0, 3),
+  })).filter((group) => group.items.length > 0);
 
   return (
     <div className="min-h-screen bg-white text-[#0B1220] flex flex-col">
@@ -59,70 +61,65 @@ export default async function ResourcesPage() {
         <ResourceCategoryHero
           activeCategory="all"
           eyebrow="COGENT RESOURCES & RESEARCH HUB"
-          titleLeading="Regulatory clarity,"
-          titleAccent="published for operators."
-          description="Insights & news, video briefings, downloadable reports, and events built for Nigerian and African fintech founders, Chief Compliance Officers, and General Counsel."
+          titleLeading="News, Insights"
+          titleAccent="& Regulatory Briefings."
+          description="Read the latest compliance breakdowns, video briefings, downloadable reports, and regulatory events for Nigerian and African fintechs and banks."
         />
       </div>
 
       <main className="flex-1">
-        {/* 4 Category Quick Cards */}
-        <section className="border-b border-slate-100 bg-slate-50/50 py-10">
-          <div className="mx-auto max-w-[1200px] px-5 sm:px-8">
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {RESOURCE_CATEGORIES.map((cat) => {
-                const Icon = CATEGORY_ICONS[cat];
-                const meta = RESOURCE_CATEGORY_META[cat];
-                const count = posts.filter((p) => p.category === cat).length;
-                return (
-                  <Link
-                    key={cat}
-                    href={`/resources/${cat}`}
-                    className="group rounded-xl border border-slate-200 bg-white p-5 hover:border-[#1D4ED8]/50 hover:shadow-sm transition-all"
-                  >
-                    <div className="flex items-center justify-between">
-                      <Icon className="h-4.5 w-4.5 text-[#1D4ED8]" strokeWidth={1.8} />
-                      <span className="font-mono text-[10.5px] text-slate-400">
-                        {count} {count === 1 ? "item" : "items"}
-                      </span>
-                    </div>
-                    <h2 className="mt-3 text-[15.5px] font-semibold text-[#0B1220] group-hover:text-[#1D4ED8]">
-                      {meta.label}
-                    </h2>
-                    <p className="mt-1 text-[12.5px] leading-snug text-slate-600">
-                      {meta.description}
-                    </p>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </section>
-
-        {/* Featured + Latest Feed */}
-        <section className="py-14 sm:py-16">
-          <div className="mx-auto max-w-[1200px] px-5 sm:px-8 space-y-12">
-            {featuredPost ? (
+        <section className="py-12 sm:py-16">
+          <div className="mx-auto max-w-[1200px] px-5 sm:px-8 space-y-16">
+            {heroPost ? (
               <>
-                <div>
-                  <p className="mb-4 font-mono text-[11px] font-semibold uppercase tracking-[0.12em] text-[#1D4ED8]">
-                    FEATURED RESOURCE
-                  </p>
-                  <ResourceCard post={featuredPost} featured />
-                </div>
+                {/* Top Asymmetric Spotlight: Newest Post Left + Next 4 Stacked Right */}
+                <ResourceSpotlightSection heroPost={heroPost} sidePosts={sidePosts} />
 
-                {remainingPosts.length > 0 && (
-                  <div>
-                    <div className="mb-6 flex items-center justify-between">
-                      <h2 className="text-[22px] font-semibold tracking-tight text-[#0B1220]">
-                        Latest Publications
+                {/* 3-Column Latest Grid */}
+                {latestGridPosts.length > 0 && (
+                  <div className="border-t border-slate-200 pt-12">
+                    <div className="mb-8 flex items-center justify-between">
+                      <h2 className="text-[24px] sm:text-[28px] font-semibold tracking-[-0.02em] text-[#0B1220]">
+                        Latest articles &amp; releases
                       </h2>
                     </div>
-                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-                      {remainingPosts.map((post) => (
+                    <div className="grid grid-cols-1 gap-x-7 gap-y-10 md:grid-cols-2 lg:grid-cols-3">
+                      {latestGridPosts.map((post) => (
                         <ResourceCard key={post.id} post={post} />
                       ))}
                     </div>
+                  </div>
+                )}
+
+                {/* Dedicated 3-Column Section Rows (Insights & News, Videos, Reports, Events) */}
+                {postsByCategory.length > 1 && (
+                  <div className="space-y-14 border-t border-slate-200 pt-12">
+                    {postsByCategory.map((group) => (
+                      <div key={group.category}>
+                        <div className="mb-7 flex items-end justify-between gap-4">
+                          <div>
+                            <p className="font-mono text-[10.5px] font-semibold uppercase tracking-[0.12em] text-[#1D4ED8]">
+                              {group.meta.tagline}
+                            </p>
+                            <h2 className="mt-1 text-[22px] sm:text-[24px] font-semibold tracking-[-0.02em] text-[#0B1220]">
+                              {group.meta.label}
+                            </h2>
+                          </div>
+                          <Link
+                            href={`/resources/${group.category}`}
+                            className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#1D4ED8] hover:underline shrink-0"
+                          >
+                            <span>View all {group.meta.shortLabel}</span>
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </Link>
+                        </div>
+                        <div className="grid grid-cols-1 gap-x-7 gap-y-10 md:grid-cols-2 lg:grid-cols-3">
+                          {group.items.map((post) => (
+                            <ResourceCard key={post.id} post={post} />
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </>
