@@ -700,6 +700,16 @@ export function WorkspaceSidebar({
             </Link>
 
             <Link
+              href="/expansions"
+              prefetch={true}
+              onClick={onCloseMobile}
+              className={navLinkClass(pathname.startsWith("/expansions"))}
+            >
+              <Globe className="h-4 w-4 text-zinc-500 shrink-0" />
+              <span>Cross-Border Expansion</span>
+            </Link>
+
+            <Link
               href="/knowledge-base?tab=rules"
               prefetch={true}
               onClick={onCloseMobile}
@@ -1116,6 +1126,15 @@ export function WorkspaceSidebar({
           aria-label="Policy Workflow"
         >
           <FileCheck2 className="h-4 w-4" />
+        </Link>
+
+        <Link
+          href="/expansions"
+          className={iconNavClass(pathname.startsWith("/expansions"))}
+          title="Cross-Border Expansion"
+          aria-label="Cross-Border Expansion"
+        >
+          <Globe className="h-4 w-4" />
         </Link>
 
         <Link

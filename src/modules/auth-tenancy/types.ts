@@ -87,6 +87,15 @@ export const PERMISSION_KEYS = [
   "policy.tasks.manage",
   "policy.attest",
 
+  // Cross-Border Expansion OS (Stages 1–8, Country Governance & Go-Live Readiness Gate)
+  "expansion.read",
+  "expansion.create",
+  "expansion.manage",
+  "expansion.validate",
+  "expansion.approve.cco",
+  "expansion.approve.committee",
+  "expansion.approve.board",
+
   // Administration & Audit
   "tenant.admin",
   "user.manage",
@@ -144,7 +153,8 @@ export type AuthErrorCode =
   | "POLICY_QA_GATE_FAILED"
   | "APPROVAL_SEQUENCE_VIOLATION"
   | "THIRD_LINE_INDEPENDENCE_VIOLATION"
-  | "MANDATORY_GATE_BLOCKER_UNRESOLVED";
+  | "MANDATORY_GATE_BLOCKER_UNRESOLVED"
+  | "EXPANSION_GO_LIVE_BLOCKED";
 
 export class AuthTenancyError extends Error {
   public readonly code: AuthErrorCode;

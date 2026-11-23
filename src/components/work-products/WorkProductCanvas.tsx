@@ -646,6 +646,65 @@ export function WorkProductCanvas({
               </button>
             )}
 
+            {workProduct.workflow_type === "CROSS_BORDER_COMPARISON" && (
+              <button
+                type="button"
+                disabled={promotingPolicy}
+                onClick={async () => {
+                  setPromotingPolicy(true);
+                  setExportNotice(null);
+                  try {
+                    const scope = (workProduct.jurisdiction_scope || []).filter(
+                      (j) => j.toUpperCase() !== "NG",
+                    );
+                    const targetCode = scope[0] || workProduct.jurisdiction_scope?.[0] || "GH";
+                    const res = await fetch("/api/marketing-shield/v1/expansions", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({
+                        title: (draftTitle || workProduct.title).trim(),
+                        home_jurisdiction: "NG",
+                        target_jurisdiction: targetCode,
+                        product_scope: "PAYMENTS",
+                        operating_model: "DIRECT_LICENSE",
+                        source_work_product_id: workProduct.id,
+                        auto_populate_blueprint: true,
+                      }),
+                    });
+                    const json = await res.json();
+                    if (!res.ok || !json?.success) {
+                      throw new Error(
+                        extractApiError(
+                          res.status,
+                          json,
+                          "Could not promote to Cross-Border Expansion OS",
+                        ).message,
+                      );
+                    }
+                    const newExpansionId = json.data?.program?.id;
+                    if (newExpansionId && typeof window !== "undefined") {
+                      window.location.href = `/expansions/${newExpansionId}`;
+                    }
+                  } catch (err) {
+                    setExportNotice({
+                      type: "error",
+                      message: (err as Error).message,
+                    });
+                  } finally {
+                    setPromotingPolicy(false);
+                  }
+                }}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white text-[11.5px] font-medium disabled:opacity-60 cursor-pointer"
+              >
+                {promotingPolicy ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <ShieldCheck className="h-3 w-3" />
+                )}
+                <span>Launch 8-Stage Expansion OS</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={() => {

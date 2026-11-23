@@ -282,6 +282,14 @@ export class RegulatoryRippleService {
     );
     alertsCreated.push(...featureAlerts);
 
+    // 4. Stage 8 Cross-Border Expansion OS Ripple: Check active/live expansion programs
+    await this.scanExpansionsForCircularRipple(tenantId, circular).catch((err) => {
+      logger.warn("RegulatoryRippleService: failed to scan expansion programs", {
+        tenantId,
+        error: (err as Error).message,
+      });
+    });
+
     return alertsCreated;
   }
 
@@ -571,6 +579,106 @@ export class RegulatoryRippleService {
       domains.add("LICENSING_PERIMETER");
     }
     return domains;
+  }
+
+  /**
+   * Stage 8 Multi-Country Regulatory Change Sentinel:
+   * Matches newly discovered circulars (BoG, CBK, SARB, FCA, CBN, etc.) against active or live
+   * Cross-Border Expansion Programs and records entries in `expansion_regulatory_changes`.
+   */
+  public async scanExpansionsForCircularRipple(
+    tenantId: string,
+    circular: CircularRippleInput & { jurisdictionCode?: string },
+  ): Promise<number> {
+    const supabase = createAdminSupabaseClient();
+    const corpus = `${circular.regulator} ${circular.title} ${circular.summaryText}`.toLowerCase();
+
+    const { data: programs } = await supabase
+      .from("expansion_programs")
+      .select("id, program_ref_no, target_jurisdiction, target_country_name, primary_regulators, status")
+      .eq("tenant_id", tenantId)
+      .in("status", ["ACTIVE", "GO_LIVE_PENDING", "LIVE"]);
+
+    if (!Array.isArray(programs) || programs.length === 0) {
+      return 0;
+    }
+
+    let changesLogged = 0;
+    for (const prog of programs as Array<{
+      id: string;
+      program_ref_no: string;
+      target_jurisdiction: string;
+      target_country_name: string;
+      primary_regulators: string[];
+      status: string;
+    }>) {
+      const targetCode = prog.target_jurisdiction.toUpperCase();
+      const countryLower = prog.target_country_name.toLowerCase();
+      const explicitMatch =
+        circular.jurisdictionCode &&
+        circular.jurisdictionCode.toUpperCase() === targetCode;
+      const regulatorMatch = (prog.primary_regulators || []).some((r) =>
+        corpus.includes(r.toLowerCase().split("(")[0]?.trim() || ""),
+      );
+      const countryMatch = corpus.includes(countryLower);
+
+      if (!explicitMatch && !regulatorMatch && !countryMatch) {
+        continue;
+      }
+
+      const impactedAreas: string[] = [];
+      if (/\b(kyc|identity|ghana card|iprs|verification|onboarding|ubo)\b/i.test(corpus))
+        impactedAreas.push("KYC");
+      if (/\b(aml|str|ctr|goaml|fiu|fic|frc|money laundering)\b/i.test(corpus))
+        impactedAreas.push("AML_CFT");
+      if (/\b(sanction|watchlist|pep|freezing)\b/i.test(corpus))
+        impactedAreas.push("SANCTIONS");
+      if (/\b(data|privacy|dpc|odpc|popia|gdpr|transfer)\b/i.test(corpus))
+        impactedAreas.push("DATA_PROTECTION");
+      if (/\b(report|return|filing|deadline)\b/i.test(corpus))
+        impactedAreas.push("REGULATORY_REPORTING");
+      if (impactedAreas.length === 0) impactedAreas.push("REGULATORY_OBLIGATIONS");
+
+      const deadlineDate = new Date();
+      deadlineDate.setUTCDate(deadlineDate.getUTCDate() + 30);
+
+      const { error: insErr } = await supabase.from("expansion_regulatory_changes").insert({
+        tenant_id: tenantId,
+        expansion_id: prog.id,
+        jurisdiction_code: targetCode,
+        regulator: circular.regulator,
+        circular_title: circular.title,
+        source_url: circular.sourceUrl || null,
+        detected_source: "RIPPLE_SENTINEL",
+        impact_severity: "HIGH",
+        impact_summary: `Automated Ripple Sentinel alert: ${circular.summaryText.slice(0, 600)}`,
+        impacted_areas: impactedAreas,
+        assigned_owner: "Country Compliance Officer",
+        implementation_deadline: deadlineDate.toISOString().slice(0, 10),
+        status: "DETECTED",
+      });
+
+      if (!insErr) {
+        changesLogged += 1;
+        await auditService.appendEvent({
+          tenantId,
+          actorId: "system_ripple_sentinel",
+          actorType: "SYSTEM",
+          action: "EXPANSION_REGULATORY_CHANGE_DETECTED",
+          entityType: "EXPANSION_PROGRAM",
+          entityId: prog.id,
+          eventData: {
+            programRefNo: prog.program_ref_no,
+            jurisdiction: targetCode,
+            regulator: circular.regulator,
+            circularTitle: circular.title,
+            impactedAreas,
+          },
+        });
+      }
+    }
+
+    return changesLogged;
   }
 
   /**

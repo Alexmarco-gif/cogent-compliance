@@ -17,3 +17,5 @@ export * from "./drift.contracts";
 export * from "./agent-runtime.contracts";
 export * from "./policy.contracts";
 export * from "./feature-governance.contracts";
+export * from "./expansion.contracts";
+

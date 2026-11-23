@@ -179,3 +179,32 @@ export function assertCanDecideFeatureGate(
   requirePermission(ctx, "feature.gate.decide");
   assertAntiSelfApproval(ctx, featureOwnerOrProposerId, enforceDualControl);
 }
+
+/**
+ * Cross-Border Expansion Go-Live Approval Gate:
+ * Enforces Three Lines of Defense independence (Internal Audit is strictly advisory-only)
+ * and verifies that only authorized CCO, Management Committee, or Board members can issue
+ * formal market-entry Go-Live sign-off.
+ */
+export function assertExpansionGoLiveAuthority(
+  ctx: TenantContext,
+): "CHIEF_COMPLIANCE_OFFICER" | "COMMITTEE_MEMBER" | "BOARD_MEMBER" {
+  assertNotInternalAuditApprover(ctx);
+
+  if (hasPermission(ctx, "expansion.approve.board")) {
+    return "BOARD_MEMBER";
+  }
+  if (hasPermission(ctx, "expansion.approve.committee")) {
+    return "COMMITTEE_MEMBER";
+  }
+  if (hasPermission(ctx, "expansion.approve.cco")) {
+    return "CHIEF_COMPLIANCE_OFFICER";
+  }
+
+  throw new AuthTenancyError(
+    "APPROVAL_NOT_PERMITTED",
+    `Role ${ctx.role} is not authorized to issue formal Cross-Border Go-Live approval. Requires Chief Compliance Officer, Management Committee, or Board Risk Committee authority.`,
+    403,
+  );
+}
+

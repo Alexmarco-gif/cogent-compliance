@@ -157,12 +157,12 @@ export const STUDIO_WORKFLOW_CASES: StudioWorkflowCase[] = [
       "Nigeria CBN PSSP permits payment gateway and checkout processing without holding customer deposits; MMO or MFB licensing is required to hold wallets.",
       "Kenya CBK authorization under the National Payment System Regulations requires local entity incorporation, ring-fenced trust accounts, and audited cybersecurity attestation.",
     ],
-    artifactType: "CROSS-BORDER LICENSING MATRIX",
-    artifactTitle: "Nigeria (CBN PSSP) vs. Kenya (CBK PSP) Expansion Guide",
+    artifactType: "CROSS-BORDER EXPANSION OS (STAGES 1–8)",
+    artifactTitle: "Nigeria (CBN) → Ghana (BoG) & Kenya (CBK) 8-Stage Expansion Control Plane",
     artifactSections: [
       {
-        heading: "Executive Takeaway for Expansion",
-        body: "Do not mirror Nigerian PSSP partnership scripts directly in Kenya or Ghana; CBK and Bank of Ghana enforce separate NPS authorization tiers, independent trust-account trustees, and local director fit-and-proper filings.",
+        heading: "8-Stage Cross-Border Compliance Operating Lifecycle",
+        body: "Do not mirror Nigerian PSSP scripts directly in Kenya or Ghana; Cogent generates the Stage 1–2 Licensing & Obligations Register, Stage 3 Group-to-Local Policy Localisation, Stage 4 Country Risk Register, Stage 5–6 Pre-Launch Validation Tests, 6-Question CCO Go-Live Gate, and Stage 7–8 Reporting Calendar.",
       },
     ],
     matrixRows: [
@@ -264,13 +264,13 @@ export const DAILY_WORKFLOW_LEDGER: WorkflowCompressionRow[] = [
   },
   {
     number: "04",
-    workflow: "Nigeria, Kenya & Ghana Expansion Licensing",
-    audience: "CEO + Expansion Counsel",
+    workflow: "8-Stage Cross-Border Expansion & Market Operations",
+    audience: "CCO + Expansion Counsel + Engineering",
     todayPain:
-      "Checking CBN PSSP/MMO rules against Kenya (CBK), Ghana (BoG), or South Africa (SARB/FSCA) capital and trust-account requirements costs $15,000+ and a 3-week law firm wait.",
-    cogentSpeed: "Under 2 minutes",
+      "Expanding from Nigeria into Ghana (BoG Act 987) or Kenya (CBK NPS) takes weeks of disconnected legal research, policy localisation, risk registers, and pre-launch control testing.",
+    cogentSpeed: "Under 2 minutes to blueprint · End-to-End OS",
     outputProduced:
-      "Side-by-side Cross-Border Licensing & Compliance Matrix built from official African central bank portals and top law firm guidance.",
+      "Side-by-side Cross-Border Matrix promoted directly into an 8-Stage Expansion Control Plane: Obligations Register, Group-to-Local Policy Localisation, Country Risk Register, 6-Question CCO Go-Live Gate, and Reporting Calendar.",
   },
   {
     number: "05",
