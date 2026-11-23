@@ -139,8 +139,13 @@ export function PolicyDashboardClient() {
     try {
       const res = await fetch("/api/marketing-shield/v1/work-products?limit=25");
       const json = await res.json();
-      if (res.ok && json?.success && Array.isArray(json.data?.items)) {
-        const policyWps = (json.data.items as WorkProductRecord[]).filter(
+      const rawItems = Array.isArray(json?.data?.work_products)
+        ? json.data.work_products
+        : Array.isArray(json?.data?.items)
+          ? json.data.items
+          : [];
+      if (res.ok && json?.success && rawItems.length > 0) {
+        const policyWps = (rawItems as WorkProductRecord[]).filter(
           (w) => w.workflow_type === "POLICY_GAP_REDLINE" || w.workflow_type === "POLICY_DRAFT_NEW",
         );
         setWorkProducts(policyWps);

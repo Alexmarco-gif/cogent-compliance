@@ -8,6 +8,8 @@ import { AppApiError, createApiHandler } from "@/lib/api-handler";
 import { updatePolicySchema } from "@/contracts/policy.contracts";
 import { policyWorkflowService } from "@/modules/policies";
 
+export const dynamic = "force-dynamic";
+
 export const GET = createApiHandler(
   {
     requiredPermission: "policy.read",

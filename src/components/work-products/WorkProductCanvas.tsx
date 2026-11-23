@@ -591,14 +591,21 @@ export function WorkProductCanvas({
                   setPromotingPolicy(true);
                   setExportNotice(null);
                   try {
+                    const sp = (workProduct.structured_payload || {}) as Record<string, unknown>;
+                    const inferredDomain =
+                      typeof sp.policy_domain === "string" ? sp.policy_domain : "AML_CFT_CPF";
+                    const inferredTier =
+                      typeof sp.recommended_approval_tier === "string"
+                        ? sp.recommended_approval_tier
+                        : "TIER_3_BOARD";
                     const res = await fetch("/api/marketing-shield/v1/policies", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
                         title: (draftTitle || workProduct.title).trim(),
-                        domain: "AML_CFT_CPF",
+                        domain: inferredDomain,
                         owner_department: "Compliance",
-                        approval_tier: "TIER_3_BOARD",
+                        approval_tier: inferredTier,
                         change_type:
                           workProduct.workflow_type === "POLICY_DRAFT_NEW"
                             ? "NEW_POLICY"

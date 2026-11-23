@@ -1375,9 +1375,33 @@ export function PolicyDetailClient({ policyId }: { policyId: string }) {
                       <p className="text-zinc-700">
                         <strong>Enforcing Control:</strong> {ctrl.control_statement}
                       </p>
-                      <div className="text-[11px] text-zinc-500 pt-1 border-t border-zinc-200/70 flex justify-between">
-                        <span>Owner: {ctrl.owner_department}</span>
-                        <span>Test Freq: {ctrl.test_frequency}</span>
+                      <div className="text-[11px] text-zinc-500 pt-1.5 border-t border-zinc-200/70 flex items-center justify-between gap-2">
+                        <span>
+                          Owner: {ctrl.owner_department} · {ctrl.test_frequency}
+                        </span>
+                        <select
+                          aria-label={`Control ${ctrl.control_code} status`}
+                          value={ctrl.status}
+                          onChange={(e) =>
+                            void runAction(
+                              `ctrl_${ctrl.id}`,
+                              `/api/marketing-shield/v1/policies/${policy.id}/operations`,
+                              "PATCH",
+                              {
+                                entity: "CONTROL",
+                                control_id: ctrl.id,
+                                status: e.target.value,
+                              },
+                              `Control ${ctrl.control_code} updated to ${e.target.value}.`,
+                            )
+                          }
+                          className="h-6 px-1.5 text-[11px] border border-zinc-200 rounded bg-white text-zinc-800"
+                        >
+                          <option value="ACTIVE">ACTIVE</option>
+                          <option value="NEEDS_REMEDIATION">NEEDS REMEDIATION</option>
+                          <option value="DRAFT">DRAFT</option>
+                          <option value="RETIRED">RETIRED</option>
+                        </select>
                       </div>
                     </div>
                   ))}
