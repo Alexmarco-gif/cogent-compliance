@@ -55,6 +55,15 @@ export type InngestEvents = {
       triggeredByUserId?: string;
     };
   };
+  "marketing-shield/ddq.process": {
+    data: {
+      ddqId: string;
+      tenantId: string;
+      orgName: string;
+      triggeredByUserId: string;
+      forceRedraft?: boolean;
+    };
+  };
 };
 
 /**

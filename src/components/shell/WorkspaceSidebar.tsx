@@ -31,6 +31,9 @@ import {
   FileText,
   Loader2,
   X,
+  ClipboardCheck,
+  FolderLock,
+  BookMarked,
 } from "lucide-react";
 import { useAuth, useClerk, useUser } from "@clerk/nextjs";
 import { CogentLogo } from "@/components/brand/CogentLogo";
@@ -602,6 +605,16 @@ export function WorkspaceSidebar({
             )}
 
             <Link
+              href="/ddqs"
+              prefetch={true}
+              onClick={onCloseMobile}
+              className={navLinkClass(pathname.startsWith("/ddqs"))}
+            >
+              <ClipboardCheck className="h-4 w-4 text-zinc-500 shrink-0" />
+              <span>DDQ Operations</span>
+            </Link>
+
+            <Link
               href="/search"
               prefetch={true}
               onClick={onCloseMobile}
@@ -609,6 +622,30 @@ export function WorkspaceSidebar({
             >
               <Globe className="h-4 w-4 text-zinc-500 shrink-0" />
               <span>Regulatory Search</span>
+            </Link>
+
+            <Link
+              href="/knowledge-base?tab=evidence"
+              prefetch={true}
+              onClick={onCloseMobile}
+              className={navLinkClass(
+                pathname === "/knowledge-base" && activeKbTab === "evidence",
+              )}
+            >
+              <FolderLock className="h-4 w-4 text-zinc-500 shrink-0" />
+              <span>Evidence Vault</span>
+            </Link>
+
+            <Link
+              href="/knowledge-base?tab=qa-library"
+              prefetch={true}
+              onClick={onCloseMobile}
+              className={navLinkClass(
+                pathname === "/knowledge-base" && activeKbTab === "qa-library",
+              )}
+            >
+              <BookMarked className="h-4 w-4 text-zinc-500 shrink-0" />
+              <span>Approved Q&amp;A Library</span>
             </Link>
 
             <Link
@@ -1017,12 +1054,39 @@ export function WorkspaceSidebar({
         )}
 
         <Link
+          href="/ddqs"
+          className={iconNavClass(pathname.startsWith("/ddqs"))}
+          title="DDQ Operations"
+          aria-label="DDQ Operations"
+        >
+          <ClipboardCheck className="h-4 w-4" />
+        </Link>
+
+        <Link
           href="/search"
           className={iconNavClass(pathname.startsWith("/search"))}
           title="Regulatory Search"
           aria-label="Regulatory Search"
         >
           <Globe className="h-4 w-4" />
+        </Link>
+
+        <Link
+          href="/knowledge-base?tab=evidence"
+          className={iconNavClass(pathname === "/knowledge-base" && activeKbTab === "evidence")}
+          title="Evidence Vault"
+          aria-label="Evidence Vault"
+        >
+          <FolderLock className="h-4 w-4" />
+        </Link>
+
+        <Link
+          href="/knowledge-base?tab=qa-library"
+          className={iconNavClass(pathname === "/knowledge-base" && activeKbTab === "qa-library")}
+          title="Approved Q&A Library"
+          aria-label="Approved Q&A Library"
+        >
+          <BookMarked className="h-4 w-4" />
         </Link>
 
         <Link

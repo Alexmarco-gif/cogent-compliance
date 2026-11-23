@@ -733,6 +733,113 @@ export const scheduledRegulatoryMonitorJob = inngest.createFunction(
   }
 );
 
+/**
+ * Durable multi-step DDQ Batch Auto-Matching & Grounded Drafting Job.
+ * Processes 150–500+ question DDQs in resumable batches of 15 questions per step so
+ * large Sponsor Bank / Regulator questionnaires never hit serverless execution timeouts.
+ */
+export const ddqBatchProcessingJob = inngest.createFunction(
+  {
+    id: "process-ddq-batch",
+    triggers: [{ event: "marketing-shield/ddq.process" }],
+    concurrency: {
+      limit: 3,
+      key: "event.data.tenantId",
+    },
+    retries: 2,
+  },
+  async ({ event, step }) => {
+    const { ddqId, tenantId, orgName, triggeredByUserId, forceRedraft } = event.data;
+    const supabase = createAdminSupabaseClient();
+    const { ddqService } = await import("@/modules/ddq/ddq.service");
+
+    const jobId = await step.run("init-ddq-job", async () => {
+      const { data: job } = await supabase
+        .from("processing_jobs")
+        .insert({
+          tenant_id: tenantId,
+          job_type: "DDQ_BATCH_EXTRACTION",
+          entity_type: "DDQ_ENGAGEMENT",
+          entity_id: ddqId,
+          status: "RUNNING",
+          payload: { ddqId, triggeredByUserId, forceRedraft: Boolean(forceRedraft) },
+          started_at: new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+      return job?.id || null;
+    });
+
+    const questionIds = await step.run("load-ddq-question-ids", async () => {
+      let query = supabase
+        .from("ddq_questions")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("ddq_id", ddqId)
+        .order("question_index", { ascending: true });
+
+      if (!forceRedraft) {
+        query = query.in("answer_source", ["NONE"]);
+      }
+
+      const { data } = await query;
+      return ((data || []) as Array<{ id: string }>).map((r) => r.id);
+    });
+
+    const BATCH_SIZE = 15;
+    let totalProcessed = 0;
+    let totalAutoMatched = 0;
+    let totalGrounded = 0;
+    let totalGaps = 0;
+
+    for (let i = 0; i < questionIds.length; i += BATCH_SIZE) {
+      const slice = questionIds.slice(i, i + BATCH_SIZE);
+      const batchResult = await step.run(`draft-ddq-batch-${Math.floor(i / BATCH_SIZE) + 1}`, async () => {
+        return ddqService.processQuestionsBatch(tenantId, triggeredByUserId, orgName, ddqId, {
+          questionIds: slice,
+          forceRedraft: true,
+          useAiSynthesis: true,
+        });
+      });
+
+      totalProcessed += batchResult.processed;
+      totalAutoMatched += batchResult.auto_matched_qa;
+      totalGrounded += batchResult.evidence_grounded;
+      totalGaps += batchResult.gaps_flagged;
+    }
+
+    await step.run("finalize-ddq-job", async () => {
+      await ddqService.recomputeEngagementCounters(tenantId, ddqId);
+      await supabase
+        .from("ddq_engagements")
+        .update({ status: "IN_PROGRESS", updated_at: new Date().toISOString() })
+        .eq("tenant_id", tenantId)
+        .eq("id", ddqId)
+        .eq("status", "INGESTING");
+
+      if (jobId) {
+        await supabase
+          .from("processing_jobs")
+          .update({
+            status: "COMPLETED",
+            completed_at: new Date().toISOString(),
+            result: { totalProcessed, totalAutoMatched, totalGrounded, totalGaps },
+          })
+          .eq("id", jobId);
+      }
+    });
+
+    return {
+      success: true,
+      ddqId,
+      totalProcessed,
+      totalAutoMatched,
+      totalGrounded,
+      totalGaps,
+    };
+  }
+);
+
 export const inngestFunctions = [
   assessmentExecutionJob,
   regulatoryEmbeddingJob,
@@ -743,4 +850,5 @@ export const inngestFunctions = [
   playbookIngestionJob,
   scheduledRegulatoryRippleJob,
   scheduledRegulatoryMonitorJob,
+  ddqBatchProcessingJob,
 ];

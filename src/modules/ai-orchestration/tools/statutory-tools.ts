@@ -2321,7 +2321,7 @@ export class StatutoryToolExecutor {
       attachmentLoaded = rawDdqText.trim().length > 0;
     }
 
-    // Parse numbered / bulleted / Q1 (Topic): / Part B items up to 25 items
+    // Parse numbered / bulleted / Q1 (Topic): / Part B items up to 150 items
     const parsedQuestions = rawDdqText
       .split(/\r?\n/)
       .map((l) => l.trim())
@@ -2332,20 +2332,38 @@ export class StatutoryToolExecutor {
       )
       .map((l) => l.replace(/^(?:\d+[.)]|\(\d+\)|[-*•]|Q\d+(?:\s*\([^)]+\))?[:.)])\s*/i, "").trim())
       .filter((l) => l.length >= 8)
-      .slice(0, 25);
+      .slice(0, 150);
 
     const questions = parsedQuestions.length > 0 ? parsedQuestions : [rawDdqText.trim()].filter(Boolean);
 
-    const [kbRes, productRes, vaultRes] = await Promise.all([
+    const [kbRes, productRes, vaultRes, evidenceVaultRows, qaLibraryRows] = await Promise.all([
       this.searchInstitutionalKnowledge(
-        { query: questions.slice(0, 6).join(" ").slice(0, 250) || "compliance policy", limit: 8 },
+        { query: questions.slice(0, 12).join(" ").slice(0, 500) || "compliance policy", limit: 12 },
         ctx
       ).catch(() => ({ chunks: [], rules: [] })),
       productService.getProductTruth(ctx.tenantId, {}).catch(() => null),
       this.searchRegulatoryEvidence(
-        { query: questions.slice(0, 6).join(" ").slice(0, 250) || "CBN AML KYC NDPA NIP Cybercrimes", limit: 8 },
+        { query: questions.slice(0, 12).join(" ").slice(0, 500) || "CBN AML KYC NDPA NIP Cybercrimes", limit: 10 },
         ctx
       ).catch(() => ({ results: [] })),
+      Promise.resolve(
+        supabase
+          .from("compliance_evidence_items")
+          .select("id, title, category, owner_department, status, expiry_date, extracted_text")
+          .eq("tenant_id", ctx.tenantId)
+          .limit(50)
+      )
+        .then((r) => (Array.isArray(r?.data) ? (r.data as Array<Record<string, unknown>>) : []))
+        .catch(() => [] as Array<Record<string, unknown>>),
+      Promise.resolve(
+        supabase
+          .from("ddq_qa_library")
+          .select("id, canonical_question, approved_answer, domain, owner_department, status")
+          .eq("tenant_id", ctx.tenantId)
+          .limit(80)
+      )
+        .then((r) => (Array.isArray(r?.data) ? (r.data as Array<Record<string, unknown>>) : []))
+        .catch(() => [] as Array<Record<string, unknown>>),
     ]);
 
     let explicitDocChunks: Array<Record<string, unknown>> = [];
@@ -2362,8 +2380,27 @@ export class StatutoryToolExecutor {
 
     const kbChunks = (kbRes.chunks as Array<Record<string, unknown>>) || [];
     const kbRules = (kbRes.rules as Array<Record<string, unknown>>) || [];
+    const evidencePseudoChunks: Array<Record<string, unknown>> = evidenceVaultRows
+      .filter((e) => e.status !== "ARCHIVED" && e.status !== "SUPERSEDED" && e.status !== "EXPIRED")
+      .map((e) => ({
+        id: e.id,
+        chunk_text: `[Evidence Vault: ${e.title || ""}] ${e.extracted_text || ""}`,
+      }));
+    const qaPseudoChunks: Array<Record<string, unknown>> = qaLibraryRows
+      .filter((q) => q.status === "ACTIVE")
+      .map((q) => ({
+        id: q.id,
+        chunk_text: `[Approved Q&A: ${q.canonical_question || ""}] ${q.approved_answer || ""}`,
+      }));
+
+    const allInternalChunks = [
+      ...explicitDocChunks,
+      ...kbChunks,
+      ...evidencePseudoChunks,
+      ...qaPseudoChunks,
+    ];
     const hasInternalEvidence =
-      explicitDocChunks.length > 0 || kbChunks.length > 0 || kbRules.length > 0 || Boolean(productRes);
+      allInternalChunks.length > 0 || kbRules.length > 0 || Boolean(productRes);
 
     const evidenceGaps: WorkProductEvidenceGap[] = [];
     const questionAlignments = questions.map((q, idx) => {
@@ -2373,7 +2410,7 @@ export class StatutoryToolExecutor {
         .split(/\s+/)
         .filter((t) => t.length >= 4);
 
-      const matchedChunks = [...explicitDocChunks, ...kbChunks].filter((c) => {
+      const matchedChunks = allInternalChunks.filter((c) => {
         const txt = String(c.chunk_text || "").toLowerCase();
         return tokens.some((tok) => txt.includes(tok));
       });

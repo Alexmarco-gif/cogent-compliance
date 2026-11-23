@@ -16,6 +16,7 @@ import {
   playbookIngestionJob,
   scheduledRegulatoryRippleJob,
   scheduledRegulatoryMonitorJob,
+  ddqBatchProcessingJob,
 } from "@/modules/jobs/inngest.functions";
 
 describe("Inngest Durable Workflow Engine (Phase 5, 10, 11, 13 & Reg-Intel)", () => {
@@ -23,8 +24,8 @@ describe("Inngest Durable Workflow Engine (Phase 5, 10, 11, 13 & Reg-Intel)", ()
     expect(inngest.id).toBe("cogent-marketing-shield");
   });
 
-  it("should register all 9 production workflow functions including Regulatory Ripple & Live Monitor", () => {
-    expect(inngestFunctions).toHaveLength(9);
+  it("should register all 10 production workflow functions including Regulatory Ripple, Live Monitor & DDQ Batch", () => {
+    expect(inngestFunctions).toHaveLength(10);
     expect(inngestFunctions).toContain(assessmentExecutionJob);
     expect(inngestFunctions).toContain(regulatoryEmbeddingJob);
     expect(inngestFunctions).toContain(driftMonitoringJob);
@@ -34,6 +35,7 @@ describe("Inngest Durable Workflow Engine (Phase 5, 10, 11, 13 & Reg-Intel)", ()
     expect(inngestFunctions).toContain(playbookIngestionJob);
     expect(inngestFunctions).toContain(scheduledRegulatoryRippleJob);
     expect(inngestFunctions).toContain(scheduledRegulatoryMonitorJob);
+    expect(inngestFunctions).toContain(ddqBatchProcessingJob);
   });
 
   it("should configure tenant-scoped concurrency on assessmentExecutionJob", () => {
