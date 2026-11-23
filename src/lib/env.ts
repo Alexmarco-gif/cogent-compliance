@@ -19,7 +19,7 @@ export const serverEnvSchema = z.object({
     .string()
     .min(1, "SUPABASE_SERVICE_ROLE_KEY is required for admin workers and audit operations"),
 
-  // Cloudflare R2 Object Storage
+  // Cloudflare R2 Object Storage — Core Compliance SaaS (FIRST / primary R2 account; NOT used by /resources)
   R2_ACCOUNT_ID: z.string().min(1, "R2_ACCOUNT_ID is required for Cloudflare R2"),
   R2_ACCESS_KEY_ID: z.string().min(1, "R2_ACCESS_KEY_ID is required for Cloudflare R2"),
   R2_SECRET_ACCESS_KEY: z.string().min(1, "R2_SECRET_ACCESS_KEY is required for Cloudflare R2"),
@@ -64,7 +64,9 @@ export const serverEnvSchema = z.object({
   LIVE_WEB_CACHE_TTL_HOURS: z.coerce.number().int().min(1).max(168).default(12),
   ENABLE_DUAL_LIVE_WEB_SEARCH: z.enum(["true", "false"]).default("true"),
 
-  // Resources Hub & Private Publishing Studio (Neon Postgres + Separate R2 Account)
+  // Resources Hub & Private Publishing Studio (Neon Postgres + SECOND/Separate Cloudflare R2 Account)
+  // IMPORTANT: RESOURCES_R2_* belongs to a DIFFERENT Cloudflare R2 account/bucket than R2_* above.
+  // Keep them strictly separate so /resources media never mixes with core tenant compliance assets.
   NEON_RESOURCES_DATABASE_URL: z.string().url().optional(),
   RESOURCES_R2_ACCOUNT_ID: z.string().optional(),
   RESOURCES_R2_ACCESS_KEY_ID: z.string().optional(),

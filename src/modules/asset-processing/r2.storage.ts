@@ -1,6 +1,10 @@
 /**
  * Cogent Marketing Shield - Cloudflare R2 Private Object Storage Service
  * Document Reference: Document 07 (Section 6.1) & Document 08 (Phase 4)
+ *
+ * NOTE: This service manages the FIRST / core compliance SaaS R2 bucket (`R2_*`).
+ * The public Resources Hub uses a DIFFERENT Cloudflare R2 account/bucket (`RESOURCES_R2_*`)
+ * in `src/modules/resources/resources-media.service.ts` — do not mix them.
  */
 
 import {
