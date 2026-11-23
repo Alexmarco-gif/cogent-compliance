@@ -38,7 +38,11 @@ const isApiRoute = createRouteMatcher([
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
-  if (isAlwaysPublicRoute(req)) {
+  const pathname = req.nextUrl.pathname;
+  const isOwnerScopedResourcesRoute =
+    pathname.startsWith("/resources/@/") || pathname.startsWith("/resources/%40/");
+
+  if (!isOwnerScopedResourcesRoute && isAlwaysPublicRoute(req)) {
     return;
   }
 
@@ -48,7 +52,7 @@ export default clerkMiddleware(async (auth, req) => {
     return;
   }
 
-  // Protect all authenticated application routes (/onboarding, /chat, /knowledge-base, /drift-monitors, /settings, /@/admin/resources)
+  // Protect all authenticated application routes (/onboarding, /chat, /knowledge-base, /drift-monitors, /settings, /@/admin/resources, /resources/@/admin/resources)
   // so unauthenticated visitors always authenticate via /sign-in before entering the workspace.
   await auth.protect({
     unauthenticatedUrl: new URL("/sign-in", req.url).toString(),
