@@ -7,6 +7,8 @@
 
 export const INTERNAL_CONTEXT_TAG_NAMES = [
   "canonical_computed_financials",
+  "deterministic_structuring_findings",
+  "deterministic_feature_governance_pack",
   "verified_statutory_vault",
   "statutory_reference_matrix",
   "internal_institutional_truth",

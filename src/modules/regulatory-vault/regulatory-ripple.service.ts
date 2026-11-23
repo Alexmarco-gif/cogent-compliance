@@ -32,6 +32,11 @@ export interface RegulatoryRippleAlertRecord {
   impacted_product_name?: string | null;
   impacted_campaign_id?: string | null;
   impacted_campaign_name?: string | null;
+  impacted_feature_id?: string | null;
+  impacted_feature_name?: string | null;
+  impacted_control_ids?: string[];
+  impacted_control_codes?: string[];
+  impacted_owner_roles?: string[];
   incident_conversation_id?: string | null;
   blind_spot_summary: string;
   consequence_summary: string;
@@ -43,7 +48,8 @@ export interface RegulatoryRippleAlertRecord {
 
 export class RegulatoryRippleService {
   /**
-   * Scans a tenant's active Product Rate Cards and Approved Campaigns against a new
+   * Scans a tenant's active Product Rate Cards, Approved Campaigns, AND Live Governed
+   * Product Features + Controls (`product_features` & `feature_controls`) against a new
    * regulatory circular and generates Zero-Prompt Ripple Alerts + Incident Threads.
    */
   public async scanTenantForCircularRipple(
@@ -263,7 +269,308 @@ export class RegulatoryRippleService {
       });
     }
 
+    // -------------------------------------------------------------------------
+    // 3. Enterprise Feature Governance Ripple Engine:
+    //    Map new CBN/NFIU/NDPC/FCCPC/SEC circulars onto live & in-flight
+    //    `product_features`, their specific `feature_controls`, and 3LoD `owner_roles`.
+    // -------------------------------------------------------------------------
+    const featureAlerts = await this.scanFeaturesAndControlsForRipple(
+      tenantId,
+      regulator,
+      circular,
+      corpus,
+    );
+    alertsCreated.push(...featureAlerts);
+
     return alertsCreated;
+  }
+
+  /**
+   * Maps a regulatory circular directly onto live/in-flight `product_features`,
+   * identifies impacted `feature_controls` and accountable Line-of-Defence `owner_roles`,
+   * flags impacted controls for reassessment, and creates Feature Ripple Alerts.
+   */
+  public async scanFeaturesAndControlsForRipple(
+    tenantId: string,
+    regulator: string,
+    circular: CircularRippleInput,
+    corpus: string,
+  ): Promise<RegulatoryRippleAlertRecord[]> {
+    const supabase = createAdminSupabaseClient();
+    const featureAlerts: RegulatoryRippleAlertRecord[] = [];
+
+    let features: Array<{
+      id: string;
+      feature_code: string;
+      feature_name: string;
+      financial_activity_type: string;
+      lifecycle_stage: string;
+      applicable_regulators: string[];
+      regulatory_domains: string[];
+      owner_role: string;
+    }> = [];
+
+    try {
+      const { data: featRows } = await supabase
+        .from("product_features")
+        .select(
+          "id, feature_code, feature_name, financial_activity_type, lifecycle_stage, applicable_regulators, regulatory_domains, owner_role",
+        )
+        .eq("tenant_id", tenantId)
+        .neq("lifecycle_stage", "RETIRED");
+      if (Array.isArray(featRows)) {
+        features = featRows;
+      }
+    } catch (err) {
+      logger.warn("RegulatoryRippleService: failed to query product_features", {
+        tenantId,
+        error: (err as Error).message,
+      });
+      return [];
+    }
+
+    if (features.length === 0) return [];
+
+    const matchedDomains = this.detectCircularDomains(regulator, corpus);
+
+    for (const feature of features) {
+      let controls: Array<{
+        id: string;
+        control_code: string;
+        compliance_domain: string;
+        regulator: string;
+        owner_role: string;
+        control_objective: string;
+        verification_status: string;
+      }> = [];
+
+      try {
+        const { data: ctrlRows } = await supabase
+          .from("feature_controls")
+          .select(
+            "id, control_code, compliance_domain, regulator, owner_role, control_objective, verification_status",
+          )
+          .eq("tenant_id", tenantId)
+          .eq("feature_id", feature.id);
+        if (Array.isArray(ctrlRows)) {
+          controls = ctrlRows;
+        }
+      } catch {
+        controls = [];
+      }
+
+      const impactedControls = controls.filter(
+        (c) =>
+          matchedDomains.has(c.compliance_domain) ||
+          c.regulator.toUpperCase().includes(regulator),
+      );
+
+      const featureRegMatches =
+        Array.isArray(feature.applicable_regulators) &&
+        feature.applicable_regulators.some((r) => r.toUpperCase() === regulator);
+
+      if (impactedControls.length === 0 && !featureRegMatches) {
+        continue;
+      }
+
+      const impactedControlIds = impactedControls.map((c) => c.id);
+      const impactedControlCodes = impactedControls.map((c) => c.control_code);
+      const ownerRoles = Array.from(
+        new Set<string>([
+          feature.owner_role,
+          ...impactedControls.map((c) => c.owner_role),
+          "CHIEF_COMPLIANCE_OFFICER",
+        ]),
+      );
+
+      const severity: "CRITICAL" | "HIGH" | "MEDIUM" =
+        matchedDomains.has("AML_CFT_CPF") ||
+        matchedDomains.has("SANCTIONS") ||
+        matchedDomains.has("DATA_PROTECTION") ||
+        /automated\s+aml|baseline\s+standards|data\s+locali|bvn|nin|str|nfiu|freeze|sanction/i.test(corpus)
+          ? "CRITICAL"
+          : impactedControls.length >= 2
+            ? "HIGH"
+            : "MEDIUM";
+
+      const blindSpotSummary = `New ${regulator} directive ("${circular.title}") impacts live/governed feature '${feature.feature_name}' (${feature.feature_code}, stage: ${feature.lifecycle_stage}) across ${impactedControlCodes.length > 0 ? `controls ${impactedControlCodes.join(", ")}` : `domains ${Array.from(matchedDomains).join(", ")}`}.`;
+      const consequenceSummary = `Accountable Line-of-Defence owners (${ownerRoles.join(", ")}) must reassess control effectiveness and update SOPs/engineering logic; failing to align exposes the institution to ${regulator} supervisory sanctions, mandatory feature suspension, or audit findings.`;
+      const recommendedFix = `Review impacted controls (${impactedControlCodes.join(", ") || "feature RIA"}), attach updated validation evidence, and record a Material Change / Regulatory Reassessment in Feature Governance before the compliance deadline.`;
+
+      // Flag CRITICAL impacted VERIFIED controls for reassessment so Launch Gate / PIR cannot ignore circular drift
+      if (severity === "CRITICAL" && impactedControlIds.length > 0) {
+        try {
+          await supabase
+            .from("feature_controls")
+            .update({
+              verification_status: "REASSESSMENT_REQUIRED",
+              verification_notes: `Flagged automatically by Regulatory Ripple Engine due to ${regulator} circular: "${circular.title}".`,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("tenant_id", tenantId)
+            .eq("feature_id", feature.id)
+            .in("id", impactedControlIds);
+        } catch {
+          // Non-fatal in unit mocks
+        }
+      }
+
+      let incidentConversationId: string | null = null;
+      try {
+        const { data: conv } = await supabase
+          .from("marketing_conversations")
+          .insert({
+            tenant_id: tenantId,
+            created_by: "system_ripple_sentinel",
+            title: `[Feature Ripple Alert] ${regulator}: ${feature.feature_name}`,
+            context_type: "REGULATORY",
+            status: "ACTIVE",
+            metadata: {
+              zero_prompt_source: "FEATURE_REGULATORY_RIPPLE_ENGINE",
+              regulator,
+              impacted_feature_id: feature.id,
+              impacted_control_codes: impactedControlCodes,
+              impacted_owner_roles: ownerRoles,
+            },
+          })
+          .select("id")
+          .single();
+
+        if (conv?.id) {
+          incidentConversationId = conv.id;
+          await supabase.from("marketing_messages").insert({
+            conversation_id: conv.id,
+            tenant_id: tenantId,
+            role: "ASSISTANT",
+            content: [
+              `### Feature Governance Regulatory Ripple Alert: ${circular.title}`,
+              `**Impacted Feature:** \`${feature.feature_name}\` (\`${feature.feature_code}\`) — Stage: \`${feature.lifecycle_stage}\``,
+              `**Impacted Controls:** ${impactedControlCodes.length > 0 ? impactedControlCodes.map((c) => `\`${c}\``).join(", ") : "Feature-level RIA"}`,
+              `**Accountable Owners (3LoD):** ${ownerRoles.join(", ")}`,
+              "",
+              `1. **Exposure Identified:** ${blindSpotSummary}`,
+              `2. **Supervisory Consequence:** ${consequenceSummary}`,
+              `3. **Required Remediation:** ${recommendedFix}`,
+            ].join("\n"),
+            content_type: "TEXT",
+            status: "COMPLETED",
+            sequence_number: 1,
+            metadata: {
+              zero_prompt_source: "FEATURE_REGULATORY_RIPPLE_ENGINE",
+              regulator,
+              impacted_feature_id: feature.id,
+            },
+          });
+        }
+      } catch {
+        // Non-fatal
+      }
+
+      const fallbackAlert: RegulatoryRippleAlertRecord = {
+        id: `fripple_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+        tenant_id: tenantId,
+        regulatory_instrument_id: circular.instrumentId || null,
+        regulator,
+        circular_title: circular.title,
+        impacted_feature_id: feature.id,
+        impacted_feature_name: feature.feature_name,
+        impacted_control_ids: impactedControlIds,
+        impacted_control_codes: impactedControlCodes,
+        impacted_owner_roles: ownerRoles,
+        incident_conversation_id: incidentConversationId,
+        blind_spot_summary: blindSpotSummary,
+        consequence_summary: consequenceSummary,
+        recommended_fix: recommendedFix,
+        severity,
+        status: "OPEN",
+        created_at: new Date().toISOString(),
+      };
+
+      try {
+        const { data: inserted } = await supabase
+          .from("regulatory_ripple_alerts")
+          .insert({
+            tenant_id: tenantId,
+            regulatory_instrument_id: circular.instrumentId || null,
+            regulator,
+            circular_title: circular.title,
+            impacted_feature_id: feature.id,
+            impacted_feature_name: feature.feature_name,
+            impacted_control_ids: impactedControlIds,
+            impacted_control_codes: impactedControlCodes,
+            impacted_owner_roles: ownerRoles,
+            incident_conversation_id: incidentConversationId,
+            blind_spot_summary: blindSpotSummary,
+            consequence_summary: consequenceSummary,
+            recommended_fix: recommendedFix,
+            severity,
+            status: "OPEN",
+          })
+          .select("*")
+          .single();
+
+        featureAlerts.push((inserted as RegulatoryRippleAlertRecord) || fallbackAlert);
+      } catch {
+        featureAlerts.push(fallbackAlert);
+      }
+
+      await auditService.appendEvent({
+        tenantId,
+        actorId: "system_ripple_sentinel",
+        actorType: "SYSTEM",
+        action: "FEATURE_REGULATORY_RIPPLE_MAPPED",
+        entityType: "PRODUCT_FEATURE",
+        entityId: feature.id,
+        eventData: {
+          regulator,
+          circularTitle: circular.title,
+          featureCode: feature.feature_code,
+          impactedControlCodes,
+          impactedOwnerRoles: ownerRoles,
+          severity,
+        },
+      });
+    }
+
+    return featureAlerts;
+  }
+
+  private detectCircularDomains(regulator: string, corpus: string): Set<string> {
+    const domains = new Set<string>();
+    if (/aml|cft|cpf|money\s+laundering|automated\s+aml|str|suspicious\s+transaction|goaml|nfiu|mlppa/.test(corpus) || regulator === "NFIU") {
+      domains.add("AML_CFT_CPF");
+      domains.add("TRANSACTION_MONITORING");
+      domains.add("RECORD_KEEPING");
+    }
+    if (/sanction|pep|terroris|watchlist|freeze/.test(corpus)) {
+      domains.add("SANCTIONS");
+    }
+    if (/kyc|cdd|bvn|nin|tier[- ]?1|onboarding|identity/.test(corpus)) {
+      domains.add("KYC_CDD");
+    }
+    if (/ndpc|ndpa|gaid|privacy|data\s+protection|data\s+locali|residency|breach|consent/.test(corpus) || regulator === "NDPC") {
+      domains.add("DATA_PROTECTION");
+      domains.add("INFOSEC");
+    }
+    if (/consumer|disclosure|fee|apr|kfs|key\s+facts|charge|lending|deon|fccpc/.test(corpus) || regulator === "FCCPC") {
+      domains.add("CONSUMER_PROTECTION");
+      domains.add("LICENSING_PERIMETER");
+    }
+    if (/dispute|complaint|chargeback|refund|duplicate\s+debit|48\s*hour|72\s*hour/.test(corpus)) {
+      domains.add("DISPUTES_COMPLAINTS");
+    }
+    if (/fraud|cyber|authentication|mfa|unauthorized|account\s+takeover/.test(corpus)) {
+      domains.add("FRAUD_PREVENTION");
+      domains.add("INFOSEC");
+    }
+    if (/retention|record|audit\s+trail|5[- ]year/.test(corpus)) {
+      domains.add("RECORD_KEEPING");
+    }
+    if (domains.size === 0) {
+      domains.add("CONSUMER_PROTECTION");
+      domains.add("LICENSING_PERIMETER");
+    }
+    return domains;
   }
 
   /**

@@ -6,13 +6,13 @@
 import { CanonicalRole, PermissionKey } from "./types";
 
 /**
- * Authoritative Three Lines of Defense Role-to-Permission Matrix.
- * - First Line (Business / Ops / Tech / InfoSec): Review feasibility, execute tasks, attest.
- * - Second Line (Compliance / Risk / Legal / CCO): Draft, validate statutory QA, govern controls, CCO approval.
- * - Third Line (Internal Audit): Strictly advisory commentary & audit read-only; NEVER approves or publishes.
- * - Governance (Management Committee / Board): Delegated approval authority per institutional DoA.
+ * Authoritative Three Lines of Defense Role-to-Permission Matrix (17 Roles x 45 Permissions).
+ * Unifies Campaign Clearance, Policy Workflow OS, and Product Feature Governance (NPA).
  */
 export const ROLE_PERMISSIONS: Readonly<Record<CanonicalRole, ReadonlySet<PermissionKey>>> = {
+  // ---------------------------------------------------------------------------
+  // FIRST LINE OF DEFENCE (Business, Product, Engineering, Tech, Ops, InfoSec)
+  // ---------------------------------------------------------------------------
   MARKETING_GROWTH: new Set<PermissionKey>([
     "conversation.create",
     "conversation.read",
@@ -33,48 +33,125 @@ export const ROLE_PERMISSIONS: Readonly<Record<CanonicalRole, ReadonlySet<Permis
     "policy.review",
     "policy.tasks.manage",
     "policy.attest",
+    "feature.create",
+    "feature.read",
+    "feature.update",
+    "feature.evidence.attach",
+    "feature.gate.submit",
+    "feature.change.assess",
+  ]),
+
+  PRODUCT_MANAGER: new Set<PermissionKey>([
+    "conversation.create",
+    "conversation.read",
+    "intelligence.live_web.search",
+    "campaign.create",
+    "campaign.read",
+    "asset.upload",
+    "assessment.read",
+    "revision.propose",
+    "revision.accept",
+    "revision.create",
+    "campaign.submit_review",
+    "review.comment",
+    "dossier.generate",
+    "dossier.download",
+    "product.write",
+    "policy.read",
+    "policy.review",
+    "policy.tasks.manage",
+    "policy.attest",
+    "feature.create",
+    "feature.read",
+    "feature.update",
+    "feature.control.manage",
+    "feature.evidence.attach",
+    "feature.gate.submit",
+    "feature.pir.manage",
+    "feature.change.assess",
+  ]),
+
+  ENGINEERING_LEAD: new Set<PermissionKey>([
+    "conversation.create",
+    "conversation.read",
+    "intelligence.live_web.search",
+    "campaign.read",
+    "asset.upload",
+    "assessment.read",
+    "review.comment",
+    "dossier.download",
+    "policy.read",
+    "policy.review",
+    "policy.tasks.manage",
+    "policy.attest",
+    "feature.read",
+    "feature.update",
+    "feature.evidence.attach",
+    "feature.change.assess",
   ]),
 
   OPERATIONS_LEAD: new Set<PermissionKey>([
     "conversation.create",
     "conversation.read",
     "intelligence.live_web.search",
+    "campaign.read",
     "asset.upload",
     "assessment.read",
     "review.comment",
+    "dossier.download",
     "policy.read",
     "policy.review",
     "policy.tasks.manage",
     "policy.attest",
+    "feature.read",
+    "feature.update",
+    "feature.evidence.attach",
+    "feature.pir.manage",
+    "feature.change.assess",
   ]),
 
   TECHNOLOGY_LEAD: new Set<PermissionKey>([
     "conversation.create",
     "conversation.read",
     "intelligence.live_web.search",
+    "campaign.read",
     "asset.upload",
     "assessment.read",
     "review.comment",
+    "dossier.download",
     "policy.read",
     "policy.review",
     "policy.tasks.manage",
     "policy.attest",
+    "feature.read",
+    "feature.update",
+    "feature.evidence.attach",
+    "feature.change.assess",
   ]),
 
   INFOSEC_LEAD: new Set<PermissionKey>([
     "conversation.create",
     "conversation.read",
     "intelligence.live_web.search",
+    "campaign.read",
     "asset.upload",
     "assessment.read",
     "review.comment",
+    "dossier.download",
     "policy.read",
     "policy.review",
     "policy.controls.manage",
     "policy.tasks.manage",
     "policy.attest",
+    "feature.read",
+    "feature.update",
+    "feature.evidence.attach",
+    "feature.change.assess",
   ]),
 
+  // ---------------------------------------------------------------------------
+  // SECOND LINE OF DEFENCE (Compliance, Risk, AML/Fraud, InfoSec, Legal, CCO)
+  // ---------------------------------------------------------------------------
   COMPLIANCE_ANALYST: new Set<PermissionKey>([
     "conversation.create",
     "conversation.read",
@@ -101,16 +178,27 @@ export const ROLE_PERMISSIONS: Readonly<Record<CanonicalRole, ReadonlySet<Permis
     "policy.controls.manage",
     "policy.tasks.manage",
     "policy.attest",
+    "feature.create",
+    "feature.read",
+    "feature.update",
+    "feature.control.manage",
+    "feature.control.verify",
+    "feature.evidence.attach",
+    "feature.gate.submit",
+    "feature.pir.manage",
+    "feature.change.assess",
   ]),
 
   RISK_OFFICER: new Set<PermissionKey>([
     "conversation.create",
     "conversation.read",
     "intelligence.live_web.search",
+    "campaign.read",
     "asset.upload",
     "assessment.read",
     "review.comment",
     "review.escalate",
+    "dossier.generate",
     "dossier.download",
     "knowledge.write",
     "policy.read",
@@ -122,6 +210,69 @@ export const ROLE_PERMISSIONS: Readonly<Record<CanonicalRole, ReadonlySet<Permis
     "policy.tasks.manage",
     "policy.attest",
     "audit.read",
+    "feature.create",
+    "feature.read",
+    "feature.update",
+    "feature.control.manage",
+    "feature.control.verify",
+    "feature.evidence.attach",
+    "feature.gate.decide",
+    "feature.pir.manage",
+    "feature.change.assess",
+  ]),
+
+  AML_FRAUD_OFFICER: new Set<PermissionKey>([
+    "conversation.create",
+    "conversation.read",
+    "intelligence.live_web.search",
+    "campaign.read",
+    "asset.upload",
+    "assessment.read",
+    "review.comment",
+    "review.escalate",
+    "dossier.generate",
+    "dossier.download",
+    "knowledge.write",
+    "policy.read",
+    "policy.review",
+    "policy.controls.manage",
+    "policy.attest",
+    "audit.read",
+    "feature.read",
+    "feature.update",
+    "feature.control.manage",
+    "feature.control.verify",
+    "feature.evidence.attach",
+    "feature.gate.decide",
+    "feature.pir.manage",
+    "feature.change.assess",
+  ]),
+
+  INFOSEC_OFFICER: new Set<PermissionKey>([
+    "conversation.create",
+    "conversation.read",
+    "intelligence.live_web.search",
+    "campaign.read",
+    "asset.upload",
+    "assessment.read",
+    "review.comment",
+    "review.escalate",
+    "dossier.generate",
+    "dossier.download",
+    "knowledge.write",
+    "policy.read",
+    "policy.review",
+    "policy.controls.manage",
+    "policy.attest",
+    "audit.read",
+    "feature.read",
+    "feature.update",
+    "feature.control.manage",
+    "feature.control.verify",
+    "feature.evidence.attach",
+    "feature.gate.decide",
+    "feature.pir.manage",
+    "feature.change.assess",
   ]),
 
   LEGAL_COUNSEL: new Set<PermissionKey>([
@@ -154,6 +305,16 @@ export const ROLE_PERMISSIONS: Readonly<Record<CanonicalRole, ReadonlySet<Permis
     "policy.tasks.manage",
     "policy.attest",
     "audit.read",
+    "feature.create",
+    "feature.read",
+    "feature.update",
+    "feature.control.manage",
+    "feature.control.verify",
+    "feature.evidence.attach",
+    "feature.gate.submit",
+    "feature.gate.decide",
+    "feature.pir.manage",
+    "feature.change.assess",
   ]),
 
   CHIEF_COMPLIANCE_OFFICER: new Set<PermissionKey>([
@@ -189,12 +350,25 @@ export const ROLE_PERMISSIONS: Readonly<Record<CanonicalRole, ReadonlySet<Permis
     "tenant.admin",
     "user.manage",
     "audit.read",
+    "feature.create",
+    "feature.read",
+    "feature.update",
+    "feature.control.manage",
+    "feature.control.verify",
+    "feature.evidence.attach",
+    "feature.gate.submit",
+    "feature.gate.decide",
+    "feature.pir.manage",
+    "feature.change.assess",
   ]),
 
-  // Third Line of Defense: Independent Assurance — Strictly Advisory Only (zero approval/publish/draft authority)
+  // ---------------------------------------------------------------------------
+  // THIRD LINE OF DEFENCE (Independent Assurance — Strictly Advisory / Read-Only)
+  // ---------------------------------------------------------------------------
   INTERNAL_AUDIT: new Set<PermissionKey>([
     "conversation.create",
     "conversation.read",
+    "campaign.read",
     "assessment.read",
     "review.comment",
     "dossier.download",
@@ -202,12 +376,28 @@ export const ROLE_PERMISSIONS: Readonly<Record<CanonicalRole, ReadonlySet<Permis
     "policy.review",
     "policy.attest",
     "audit.read",
+    "feature.read",
+    "audit.assurance_note",
   ]),
 
-  // Delegated Governance: Management Committee Approver
+  INTERNAL_AUDITOR: new Set<PermissionKey>([
+    "conversation.read",
+    "campaign.read",
+    "assessment.read",
+    "dossier.download",
+    "policy.read",
+    "audit.read",
+    "feature.read",
+    "audit.assurance_note",
+  ]),
+
+  // ---------------------------------------------------------------------------
+  // DELEGATED GOVERNANCE AUTHORITIES (Management Committee & Board)
+  // ---------------------------------------------------------------------------
   COMMITTEE_MEMBER: new Set<PermissionKey>([
     "conversation.create",
     "conversation.read",
+    "campaign.read",
     "assessment.read",
     "review.comment",
     "dossier.download",
@@ -216,19 +406,24 @@ export const ROLE_PERMISSIONS: Readonly<Record<CanonicalRole, ReadonlySet<Permis
     "policy.approve.committee",
     "policy.attest",
     "audit.read",
+    "feature.read",
   ]),
 
-  // Delegated Governance: Board of Directors Approver
   BOARD_MEMBER: new Set<PermissionKey>([
     "conversation.read",
+    "campaign.read",
     "assessment.read",
     "dossier.download",
     "policy.read",
     "policy.approve.board",
     "policy.attest",
     "audit.read",
+    "feature.read",
   ]),
 
+  // ---------------------------------------------------------------------------
+  // PLATFORM ADMINISTRATION
+  // ---------------------------------------------------------------------------
   WORKSPACE_ADMIN: new Set<PermissionKey>([
     "conversation.create",
     "conversation.read",
@@ -246,12 +441,13 @@ export const ROLE_PERMISSIONS: Readonly<Record<CanonicalRole, ReadonlySet<Permis
     "tenant.admin",
     "user.manage",
     "audit.read",
+    "feature.read",
   ]),
 };
 
 /**
  * Maps raw Clerk Organization role strings to our CanonicalRole enum.
- * Supports both custom Clerk roles and default Clerk roles (`org:admin`, `org:member`).
+ * Supports custom Three Lines of Defence Clerk roles and default Clerk roles (`org:admin`, `org:member`).
  */
 export function mapClerkRoleToCanonical(clerkRole: string | null | undefined): CanonicalRole {
   if (!clerkRole) {
@@ -297,12 +493,58 @@ export function mapClerkRoleToCanonical(clerkRole: string | null | undefined): C
   }
 
   if (
+    normalized === "org:aml_fraud_officer" ||
+    normalized === "aml_fraud_officer" ||
+    normalized === "mlro" ||
+    normalized === "aml" ||
+    normalized === "org:aml"
+  ) {
+    return "AML_FRAUD_OFFICER";
+  }
+
+  if (
+    normalized === "org:infosec_officer" ||
+    normalized === "infosec_officer" ||
+    normalized === "ciso" ||
+    normalized === "org:infosec"
+  ) {
+    return "INFOSEC_OFFICER";
+  }
+
+  if (
+    normalized === "org:infosec_lead" ||
+    normalized === "infosec_lead" ||
+    normalized === "infosec" ||
+    normalized === "security"
+  ) {
+    return "INFOSEC_LEAD";
+  }
+
+  if (
     normalized === "org:operations_lead" ||
     normalized === "operations_lead" ||
     normalized === "operations" ||
-    normalized === "ops"
+    normalized === "ops" ||
+    normalized === "org:operations"
   ) {
     return "OPERATIONS_LEAD";
+  }
+
+  if (
+    normalized === "org:product_manager" ||
+    normalized === "product_manager" ||
+    normalized === "product" ||
+    normalized === "org:product"
+  ) {
+    return "PRODUCT_MANAGER";
+  }
+
+  if (
+    normalized === "org:engineering_lead" ||
+    normalized === "engineering_lead" ||
+    normalized === "org:engineering"
+  ) {
+    return "ENGINEERING_LEAD";
   }
 
   if (
@@ -315,12 +557,12 @@ export function mapClerkRoleToCanonical(clerkRole: string | null | undefined): C
   }
 
   if (
-    normalized === "org:infosec_lead" ||
-    normalized === "infosec_lead" ||
-    normalized === "infosec" ||
-    normalized === "security"
+    normalized === "org:internal_auditor" ||
+    normalized === "internal_auditor" ||
+    normalized === "auditor" ||
+    normalized === "org:audit"
   ) {
-    return "INFOSEC_LEAD";
+    return "INTERNAL_AUDITOR";
   }
 
   if (

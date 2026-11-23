@@ -657,10 +657,11 @@ export function TeamRolesTab() {
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="border-b border-zinc-200 text-zinc-500">
-                <th className="py-2 pr-4 font-medium">Role</th>
+                <th className="py-2 pr-4 font-medium">Role &amp; Line of Defence</th>
                 <th className="py-2 px-2 font-medium text-center">Campaigns</th>
                 <th className="py-2 px-2 font-medium text-center">Rate Cards</th>
-                <th className="py-2 px-2 font-medium text-center">Final Sign-Off</th>
+                <th className="py-2 px-2 font-medium text-center">Launch Gate</th>
+                <th className="py-2 px-2 font-medium text-center">Campaign Sign-Off</th>
                 <th className="py-2 px-2 font-medium text-center">Publish Rules</th>
                 <th className="py-2 pl-2 font-medium text-center">Team &amp; Settings</th>
               </tr>
@@ -669,12 +670,18 @@ export function TeamRolesTab() {
               {CANONICAL_ROLE_CATALOG.map((meta) => (
                 <tr key={meta.role}>
                   <td className="py-2.5 pr-4">
-                    <div className="font-semibold text-zinc-950">{meta.label}</div>
-                    <div className="text-[11px] text-zinc-500">{meta.description}</div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="font-semibold text-zinc-950">{meta.label}</span>
+                      <span className="font-mono text-[9.5px] font-semibold px-1.5 py-0.5 rounded bg-zinc-100 text-zinc-700 border border-zinc-200">
+                        {meta.defenceLineLabel}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-zinc-500 mt-0.5">{meta.description}</div>
                   </td>
                   {[
                     meta.canCreateCampaigns,
                     meta.canManageProducts,
+                    meta.canApproveFeatureGates,
                     meta.canApproveCampaigns,
                     meta.canPublishKnowledge,
                     meta.canManageTeamAndSettings,

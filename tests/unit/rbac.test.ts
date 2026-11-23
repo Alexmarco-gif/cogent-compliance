@@ -27,9 +27,9 @@ import {
 } from "@/modules/auth-tenancy/rbac.guard";
 
 describe("Role-Based Access Control (RBAC) Specification Compliance", () => {
-  it("should define 12 Three-Lines-of-Defense canonical roles and 34 permission keys", () => {
-    expect(CANONICAL_ROLES).toHaveLength(12);
-    expect(PERMISSION_KEYS).toHaveLength(34);
+  it("should define 17 unified Three-Lines-of-Defense canonical roles and 45 permission keys", () => {
+    expect(CANONICAL_ROLES).toHaveLength(17);
+    expect(PERMISSION_KEYS).toHaveLength(45);
   });
 
   describe("Role Permission Matrix Verification", () => {

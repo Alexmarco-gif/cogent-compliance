@@ -3,19 +3,35 @@
  * Document Reference: Document 07 (Section 5) & Document 08 (Phase 3)
  */
 
+export const DEFENCE_LINES = [
+  "FIRST_LINE",
+  "SECOND_LINE",
+  "THIRD_LINE",
+  "GOVERNANCE",
+  "PLATFORM_ADMIN",
+] as const;
+
+export type DefenceLine = (typeof DEFENCE_LINES)[number];
+export type DefenseLine = DefenceLine;
+
 export const CANONICAL_ROLES = [
-  // First Line of Defense (Business, Product, Ops, Tech, InfoSec)
+  // First Line of Defense (Business, Product, Ops, Tech, Engineering, InfoSec)
   "MARKETING_GROWTH",
+  "PRODUCT_MANAGER",
+  "ENGINEERING_LEAD",
   "OPERATIONS_LEAD",
   "TECHNOLOGY_LEAD",
   "INFOSEC_LEAD",
-  // Second Line of Defense (Compliance, Risk, Legal)
+  // Second Line of Defense (Compliance, Risk, AML/Fraud, InfoSec, Legal, CCO)
   "COMPLIANCE_ANALYST",
   "RISK_OFFICER",
+  "AML_FRAUD_OFFICER",
+  "INFOSEC_OFFICER",
   "LEGAL_COUNSEL",
   "CHIEF_COMPLIANCE_OFFICER",
-  // Third Line of Defense (Independent Assurance — Advisory Only)
+  // Third Line of Defense (Independent Assurance — Advisory / Read-Only)
   "INTERNAL_AUDIT",
+  "INTERNAL_AUDITOR",
   // Delegated Governance Authorities
   "COMMITTEE_MEMBER",
   "BOARD_MEMBER",
@@ -24,13 +40,6 @@ export const CANONICAL_ROLES = [
 ] as const;
 
 export type CanonicalRole = (typeof CANONICAL_ROLES)[number];
-
-export type DefenseLine =
-  | "FIRST_LINE"
-  | "SECOND_LINE"
-  | "THIRD_LINE"
-  | "GOVERNANCE"
-  | "PLATFORM_ADMIN";
 
 export const PERMISSION_KEYS = [
   // Conversational Copilot
@@ -82,6 +91,19 @@ export const PERMISSION_KEYS = [
   "tenant.admin",
   "user.manage",
   "audit.read",
+
+  // Product Feature Governance & Three Lines of Defence (NPA Lifecycle)
+  "feature.create",
+  "feature.read",
+  "feature.update",
+  "feature.control.manage",
+  "feature.control.verify",
+  "feature.evidence.attach",
+  "feature.gate.submit",
+  "feature.gate.decide",
+  "feature.pir.manage",
+  "feature.change.assess",
+  "audit.assurance_note",
 ] as const;
 
 export type PermissionKey = (typeof PERMISSION_KEYS)[number];
@@ -120,7 +142,9 @@ export type AuthErrorCode =
   | "SELF_APPROVAL_VIOLATION"
   | "AUDIT_INDEPENDENCE_VIOLATION"
   | "POLICY_QA_GATE_FAILED"
-  | "APPROVAL_SEQUENCE_VIOLATION";
+  | "APPROVAL_SEQUENCE_VIOLATION"
+  | "THIRD_LINE_INDEPENDENCE_VIOLATION"
+  | "MANDATORY_GATE_BLOCKER_UNRESOLVED";
 
 export class AuthTenancyError extends Error {
   public readonly code: AuthErrorCode;

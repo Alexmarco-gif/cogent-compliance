@@ -58,6 +58,10 @@ import {
 } from "@/modules/compliance-assessment/kfs-generator.service";
 import { statutoryReferenceMatrix } from "@/modules/compliance-assessment/statutory-reference-matrix";
 import { policyCompilerService } from "@/modules/policies/policy-compiler.service";
+import {
+  featureStructuringEngine,
+  type FeatureStructuringBlueprint,
+} from "@/modules/feature-governance/feature-structuring.engine";
 import { entitlementsService } from "@/modules/billing/entitlements.service";
 import { workProductService } from "@/modules/work-products/work-product.service";
 import { precedentMemoryService } from "@/modules/ai-orchestration/precedent-memory.service";
@@ -863,6 +867,7 @@ export class CopilotOrchestrator {
     let resolvedProductName: string | null = null;
     let lockResult: MechanicalLocksResult | null = null;
     let aprAuditResult: AprCalculationResult | null = null;
+    let featureGovernanceBlueprint: FeatureStructuringBlueprint | null = null;
     let visualAuditResult: VisualForensicsResult | null = null;
     let appStoreAuditResult: AppStoreAuditResult | null = null;
     let licenseAuditResult: LicenseScopeAuditResult | null = null;
@@ -1567,6 +1572,15 @@ export class CopilotOrchestrator {
       let ddqPayload: Record<string, unknown> | null = null;
 
       if (turnIntent === "PRODUCT_STRUCTURING_MEMO") {
+        featureGovernanceBlueprint = featureStructuringEngine.buildFeatureStructuringBlueprint({
+          featureName: deriveConversationTopicTitle(options.userPrompt, {
+            productName: resolvedProductName,
+            attachmentName: firstAttachmentFilename,
+          }),
+          description: combinedAnalysisText,
+          businessObjective: options.userPrompt.slice(0, 600),
+          licenseTier: memory?.licenseTier || null,
+        });
         aprAuditResult = aprCalculatorService.analyzeCopyAgainstProductTruth(
           combinedAnalysisText,
           resolvedProduct
@@ -1996,7 +2010,11 @@ export class CopilotOrchestrator {
               },
               null,
               2
-            )}\n</deterministic_structuring_findings>`
+            )}\n</deterministic_structuring_findings>${
+              featureGovernanceBlueprint
+                ? `\n${featureStructuringEngine.formatPromptContext(featureGovernanceBlueprint)}`
+                : ""
+            }`
           : "";
 
       const workflowReferenceProvisions =
@@ -3233,7 +3251,13 @@ export class CopilotOrchestrator {
                         ? autoDetectedScope
                         : ["NG"],
                 markdown_content: fullResponseText,
-                structured_payload: compiledStructuredPayload,
+                structured_payload:
+                  turnIntent === "PRODUCT_STRUCTURING_MEMO" && featureGovernanceBlueprint
+                    ? {
+                        ...compiledStructuredPayload,
+                        feature_structuring_blueprint: featureGovernanceBlueprint,
+                      }
+                    : compiledStructuredPayload,
                 citations: wpCitations,
                 evidence_gaps: collectedWorkflowEvidenceGaps,
                 status: "DRAFT",

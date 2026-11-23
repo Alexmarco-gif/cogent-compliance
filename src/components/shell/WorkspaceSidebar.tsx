@@ -653,6 +653,16 @@ export function WorkspaceSidebar({
             </Link>
 
             <Link
+              href="/features"
+              prefetch={true}
+              onClick={onCloseMobile}
+              className={navLinkClass(pathname.startsWith("/features"))}
+            >
+              <FileCheck2 className="h-4 w-4 text-zinc-500 shrink-0" />
+              <span>Feature Governance</span>
+            </Link>
+
+            <Link
               href="/knowledge-base?tab=rules"
               prefetch={true}
               onClick={onCloseMobile}

@@ -23,7 +23,7 @@ import type {
 } from "@/contracts/agent-runtime.contracts";
 
 const INTERNAL_XML_TAG_REGEX =
-  /<\/?(?:canonical_computed_financials|deterministic_structuring_findings|verified_statutory_vault|statutory_reference_matrix|internal_institutional_truth|dual_grounding_context|untrusted_live_web_evidence|uploaded_asset_extracted_content|referenced_product_and_lock_scan|workspace_product_context|active_thread_audit_context|prior_turn_audit_summary|policy_gap_redline_execution_blueprint|supervisory_ddq_synthesis_directives)>/i;
+  /<\/?(?:canonical_computed_financials|deterministic_structuring_findings|deterministic_feature_governance_pack|verified_statutory_vault|statutory_reference_matrix|internal_institutional_truth|dual_grounding_context|untrusted_live_web_evidence|uploaded_asset_extracted_content|referenced_product_and_lock_scan|workspace_product_context|active_thread_audit_context|prior_turn_audit_summary|policy_gap_redline_execution_blueprint|supervisory_ddq_synthesis_directives)>/i;
 
 const RAW_UUID_CITATION_REGEX =
   /\[[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\]/i;

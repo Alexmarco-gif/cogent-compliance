@@ -29,11 +29,24 @@ export function requirePermission(ctx: TenantContext, required: PermissionKey): 
   }
 
   if (!hasPermission(ctx, required)) {
-    // Specific business error code for approvals
+    // Specific business error codes for formal approvals & launch gates
     if (required === "approval.decide") {
       throw new AuthTenancyError(
         "APPROVAL_NOT_PERMITTED",
         `Role ${ctx.role} is not authorized to approve or reject compliance revisions. Only Legal Counsel and Chief Compliance Officer hold approval authority.`,
+        403,
+      );
+    }
+
+    if (required === "feature.gate.decide") {
+      const isThirdLine = ctx.role === "INTERNAL_AUDITOR" || ctx.role === "INTERNAL_AUDIT";
+      throw new AuthTenancyError(
+        isThirdLine
+          ? "THIRD_LINE_INDEPENDENCE_VIOLATION"
+          : "APPROVAL_NOT_PERMITTED",
+        isThirdLine
+          ? `Three Lines of Defence Violation: Internal Audit (3rd Line) must remain independent and cannot approve or operationally decide Launch Gates.`
+          : `Role ${ctx.role} is not authorized to decide Product Feature Launch Gates. Only Second Line of Defence authorities (CCO, Legal Counsel, Enterprise Risk, AML/Fraud, or InfoSec) may issue Launch Gate decisions.`,
         403,
       );
     }
@@ -47,11 +60,25 @@ export function requirePermission(ctx: TenantContext, required: PermissionKey): 
 }
 
 /**
+ * Enforces Basel / Three Lines of Defence independence rule:
+ * Internal Audit (3rd Line) cannot own operational controls, author features, or issue Launch Gate approvals.
+ */
+export function assertThirdLineIndependence(ctx: TenantContext, operationalAction: string): void {
+  if (ctx.role === "INTERNAL_AUDITOR" || ctx.role === "INTERNAL_AUDIT") {
+    throw new AuthTenancyError(
+      "THIRD_LINE_INDEPENDENCE_VIOLATION",
+      `Three Lines of Defence Independence Violation: Internal Audit cannot execute operational action '${operationalAction}'. Internal Audit is restricted to independent assurance review and audit observations.`,
+      403,
+    );
+  }
+}
+
+/**
  * Enforces Document 07 Section 5.3 Anti-Self-Approval & Dual Control Rule:
- * A compliance officer or legal counsel cannot approve a campaign revision that they personally authored.
+ * A compliance officer or legal counsel cannot approve a campaign revision or feature gate that they personally authored.
  *
  * @param ctx The authenticated officer attempting approval
- * @param revisionCreatedBy The user ID or Clerk user ID who authored the revision
+ * @param revisionCreatedBy The user ID or Clerk user ID who authored the revision/proposal
  * @param enforceDualControl Whether dual-control is active for this tenant (default true)
  */
 export function assertAntiSelfApproval(
@@ -70,7 +97,7 @@ export function assertAntiSelfApproval(
   if (isSelf) {
     throw new AuthTenancyError(
       "SELF_APPROVAL_VIOLATION",
-      `Anti-Self-Approval Violation: User ${ctx.clerkUserId} authored this campaign revision and cannot approve it under institutional dual-control policy. A second authorized officer must review and sign off.`,
+      `Anti-Self-Approval Violation: User ${ctx.clerkUserId} authored this submission and cannot approve it under institutional dual-control policy. A second authorized officer must review and sign off.`,
       403,
     );
   }
@@ -95,7 +122,7 @@ export function assertCanApprove(
  * It must NEVER hold formal approval or publication authority over policies it will later audit.
  */
 export function assertNotInternalAuditApprover(ctx: TenantContext): void {
-  if (ctx.role === "INTERNAL_AUDIT") {
+  if (ctx.role === "INTERNAL_AUDIT" || ctx.role === "INTERNAL_AUDITOR") {
     throw new AuthTenancyError(
       "AUDIT_INDEPENDENCE_VIOLATION",
       "Three Lines of Defense Violation: Internal Audit (3rd Line) is strictly advisory-only and cannot formally approve or publish compliance policies to preserve audit independence.",
@@ -137,4 +164,18 @@ export function assertPolicyApprovalAuthority(
   if (versionCreatedBy) {
     assertAntiSelfApproval(ctx, versionCreatedBy, enforceDualControl);
   }
+}
+
+/**
+ * Composite Launch Gate guard for Product Feature Governance:
+ * Verifies 2nd-Line `feature.gate.decide` authority, 3rd-Line independence, and anti-self-approval.
+ */
+export function assertCanDecideFeatureGate(
+  ctx: TenantContext,
+  featureOwnerOrProposerId: string,
+  enforceDualControl: boolean = true,
+): void {
+  assertThirdLineIndependence(ctx, "feature.gate.decide");
+  requirePermission(ctx, "feature.gate.decide");
+  assertAntiSelfApproval(ctx, featureOwnerOrProposerId, enforceDualControl);
 }

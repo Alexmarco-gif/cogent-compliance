@@ -40,6 +40,10 @@ interface RippleAlertItem {
   circular_title: string;
   impacted_product_name?: string | null;
   impacted_campaign_name?: string | null;
+  impacted_feature_id?: string | null;
+  impacted_feature_name?: string | null;
+  impacted_control_codes?: string[];
+  impacted_owner_roles?: string[];
   incident_conversation_id?: string | null;
   blind_spot_summary: string;
   consequence_summary: string;
@@ -508,7 +512,7 @@ export default function DriftMonitorsPage() {
                       Zero-Prompt Regulatory Ripple Alerts ({rippleAlerts.length})
                     </h2>
                     <p className="text-xs text-zinc-500">
-                      Automatic cross-checks of new CBN, FCCPC, ARCON, NDPC & SEC circulars against your Product Rate Cards.
+                      Automatic cross-checks of new CBN, NFIU, FCCPC, ARCON, NDPC &amp; SEC circulars against your Product Rate Cards and live Governed Features &amp; Controls.
                     </p>
                   </div>
                 </div>
@@ -518,8 +522,8 @@ export default function DriftMonitorsPage() {
                       key={alert.id}
                       className="bg-white border border-zinc-200 rounded-xl p-4 space-y-2.5"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="font-mono text-[11px] font-semibold px-2 py-0.5 rounded bg-zinc-900 text-white">
                             {alert.regulator}
                           </span>
@@ -528,19 +532,52 @@ export default function DriftMonitorsPage() {
                           </span>
                           {alert.impacted_product_name && (
                             <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">
-                              Impacts: {alert.impacted_product_name}
+                              Product: {alert.impacted_product_name}
+                            </span>
+                          )}
+                          {alert.impacted_feature_name && (
+                            <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-50 text-[#1D4ED8] border border-blue-200">
+                              Feature: {alert.impacted_feature_name}
                             </span>
                           )}
                         </div>
-                        {alert.incident_conversation_id && (
-                          <Link
-                            href={`/chat?conversationId=${alert.incident_conversation_id}`}
-                            className="text-xs font-medium text-zinc-900 hover:underline shrink-0"
-                          >
-                            Open Incident Audit →
-                          </Link>
-                        )}
+                        <div className="flex items-center gap-3 shrink-0">
+                          {alert.impacted_feature_id && (
+                            <Link
+                              href={`/features?featureId=${alert.impacted_feature_id}`}
+                              className="text-xs font-medium text-[#1D4ED8] hover:underline"
+                            >
+                              Inspect Controls →
+                            </Link>
+                          )}
+                          {alert.incident_conversation_id && (
+                            <Link
+                              href={`/chat?conversationId=${alert.incident_conversation_id}`}
+                              className="text-xs font-medium text-zinc-900 hover:underline"
+                            >
+                              Open Incident Audit →
+                            </Link>
+                          )}
+                        </div>
                       </div>
+                      {((alert.impacted_control_codes && alert.impacted_control_codes.length > 0) ||
+                        (alert.impacted_owner_roles && alert.impacted_owner_roles.length > 0)) && (
+                        <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                          {alert.impacted_control_codes?.map((code) => (
+                            <span
+                              key={code}
+                              className="font-mono text-[10.5px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200"
+                            >
+                              {code}
+                            </span>
+                          ))}
+                          {alert.impacted_owner_roles && alert.impacted_owner_roles.length > 0 && (
+                            <span className="font-mono text-[10.5px] text-zinc-500">
+                              Owners: {alert.impacted_owner_roles.join(", ")}
+                            </span>
+                          )}
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 text-xs">
                         <div className="rounded-lg bg-zinc-50 border border-zinc-200 p-2.5">
                           <p className="font-semibold text-zinc-900 mb-0.5">

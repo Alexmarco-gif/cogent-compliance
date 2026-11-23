@@ -33,6 +33,8 @@ vi.mock("@/modules/auth-tenancy/tenant.resolver", () => ({
 
 vi.mock("@/modules/auth-tenancy/rbac.guard", () => ({
   requirePermission: vi.fn(() => true),
+  hasPermission: vi.fn(() => true),
+  assertThirdLineIndependence: vi.fn(() => undefined),
 }));
 
 vi.mock("@/lib/rate-limit", () => ({

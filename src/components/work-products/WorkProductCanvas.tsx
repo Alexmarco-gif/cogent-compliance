@@ -40,7 +40,7 @@ export interface WorkProductCanvasProps {
 }
 
 const WORKFLOW_LABELS: Record<WorkflowType, string> = {
-  PRODUCT_STRUCTURING_MEMO: "Product Structuring Memo",
+  PRODUCT_STRUCTURING_MEMO: "Full Feature Structuring Pack",
   POLICY_GAP_REDLINE: "Policy Gap & SOP Redline",
   POLICY_DRAFT_NEW: "Net-New Compliance Policy",
   SUPERVISORY_DDQ_RESPONSE: "Supervisory / Partner DDQ",
@@ -121,6 +121,8 @@ export function WorkProductCanvas({
   } | null>(null);
   const [promotingPolicy, setPromotingPolicy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [promotingFeature, setPromotingFeature] = useState(false);
+  const [promotedFeatureId, setPromotedFeatureId] = useState<string | null>(null);
 
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
@@ -374,6 +376,40 @@ export function WorkProductCanvas({
     }
   };
 
+  const handlePromoteToFeatureGovernance = async () => {
+    if (!workProduct || promotingFeature) return;
+    setPromotingFeature(true);
+    setExportNotice(null);
+    try {
+      const res = await fetch("/api/marketing-shield/v1/features/from-work-product", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          work_product_id: workProduct.id,
+          feature_name: draftTitle.trim() || workProduct.title,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success || !json.data?.feature?.id) {
+        const parsed = extractApiError(
+          res.status,
+          json,
+          "Failed to promote structuring pack to Feature Governance.",
+        );
+        setExportNotice({ type: "error", message: parsed.message });
+        return;
+      }
+      setPromotedFeatureId(String(json.data.feature.id));
+    } catch {
+      setExportNotice({
+        type: "error",
+        message: "Network error promoting structuring pack to Feature Governance.",
+      });
+    } finally {
+      setPromotingFeature(false);
+    }
+  };
+
   const displayedMarkdown = useMemo(() => {
     const base =
       previewVersion !== null
@@ -435,7 +471,33 @@ export function WorkProductCanvas({
             ))}
           </div>
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {workProduct.workflow_type === "PRODUCT_STRUCTURING_MEMO" &&
+              (promotedFeatureId ? (
+                <Link
+                  href={`/features?featureId=${promotedFeatureId}`}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-medium transition-colors"
+                >
+                  <ShieldCheck className="h-3 w-3" />
+                  <span>Open Launch Gate</span>
+                  <ArrowUpRight className="h-3 w-3" />
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled={promotingFeature}
+                  onClick={() => void handlePromoteToFeatureGovernance()}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-[#1D4ED8] hover:bg-blue-700 text-white text-[11px] font-medium transition-colors cursor-pointer disabled:opacity-60"
+                >
+                  {promotingFeature ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <ShieldCheck className="h-3 w-3" />
+                  )}
+                  <span>Promote to Launch Gate</span>
+                </button>
+              ))}
+
             {saveStateLabel && (
               <span className="font-mono text-[10.5px] text-zinc-500 mr-1">
                 {saving ? "Saving..." : saveStateLabel}

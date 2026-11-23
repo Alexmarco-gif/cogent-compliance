@@ -7,6 +7,8 @@
 
 import { z } from "zod";
 import { createApiHandler } from "@/lib/api-handler";
+import { assertThirdLineIndependence, hasPermission } from "@/modules/auth-tenancy/rbac.guard";
+import { AuthTenancyError } from "@/modules/auth-tenancy/types";
 import { regulatoryRippleService } from "@/modules/regulatory-vault/regulatory-ripple.service";
 
 const queryRippleAlertsSchema = z.object({
@@ -15,7 +17,7 @@ const queryRippleAlertsSchema = z.object({
 
 const triggerRippleScanSchema = z.object({
   instrument_id: z.string().uuid().optional(),
-  regulator: z.enum(["CBN", "FCCPC", "ARCON", "NDPC", "SEC"]).default("CBN"),
+  regulator: z.enum(["CBN", "NFIU", "FCCPC", "ARCON", "NDPC", "SEC"]).default("CBN"),
   title: z.string().min(5, "Circular title is required"),
   summary_text: z.string().min(5, "Circular summary text is required"),
   clause_reference: z.string().optional(),
@@ -28,7 +30,7 @@ const triggerRippleScanSchema = z.object({
  */
 export const GET = createApiHandler(
   {
-    requiredPermission: "campaign.read",
+    requiredPermission: "feature.read",
     querySchema: queryRippleAlertsSchema,
   },
   async (_req, { tenant, query }) => {
@@ -42,15 +44,27 @@ export const GET = createApiHandler(
 
 /**
  * POST /api/marketing-shield/v1/ripple-alerts
- * Scans tenant Product Rate Cards and active campaigns against a regulatory circular
- * and creates Zero-Prompt Ripple Alerts + Incident Conversations.
+ * Scans tenant Product Rate Cards, active campaigns, and live Governed Features/Controls
+ * against a regulatory circular and creates Zero-Prompt Ripple Alerts + Incident Conversations.
  */
 export const POST = createApiHandler(
   {
-    requiredPermission: "campaign.create",
+    requiredPermission: "feature.read",
     bodySchema: triggerRippleScanSchema,
   },
   async (_req, { tenant, body }) => {
+    assertThirdLineIndependence(tenant, "ripple.scan");
+    if (
+      !hasPermission(tenant, "campaign.create") &&
+      !hasPermission(tenant, "feature.change.assess")
+    ) {
+      throw new AuthTenancyError(
+        "FORBIDDEN",
+        `Role ${tenant.role} lacks permission to trigger a Regulatory Ripple Scan.`,
+        403,
+      );
+    }
+
     const alerts = await regulatoryRippleService.scanTenantForCircularRipple(
       tenant.tenantId,
       {
