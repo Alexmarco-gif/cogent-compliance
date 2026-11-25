@@ -79,4 +79,14 @@ describe("Environment Configuration & Validation (src/lib/env.ts)", () => {
     expect(parsed.NEXT_PUBLIC_SUPABASE_URL).toBe("https://igrcwfojsliohdhivhby.supabase.co");
     expect(parsed.NEXT_PUBLIC_SUPABASE_ANON_KEY).toBe("sb_publishable_test_123");
   });
+
+  it("should not crash validateEnv when optional Resources URLs are empty or wrapped for neon.ts diagnostics", () => {
+    expect(() =>
+      validateEnv({
+        ...validMockEnv,
+        NEON_RESOURCES_DATABASE_URL: "psql 'postgresql://u:p@ep-x.neon.tech/neondb?sslmode=require'",
+        RESOURCES_R2_PUBLIC_URL_PREFIX: "",
+      }),
+    ).not.toThrow();
+  });
 });

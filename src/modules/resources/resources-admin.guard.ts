@@ -9,10 +9,6 @@
  */
 
 import { auth, clerkClient } from "@clerk/nextjs/server";
-import {
-  getPlatformOwnerClerkUserId,
-  getPlatformOwnerEmail,
-} from "@/modules/billing/internal-workspace.service";
 import { logger } from "@/lib/logger";
 
 type EnvLike = Record<string, string | undefined>;
@@ -21,6 +17,15 @@ function normalizeEmail(raw: string | undefined | null): string | null {
   if (!raw || typeof raw !== "string") return null;
   const cleaned = raw.trim().replace(/^['"]+|['"]+$/g, "").trim().toLowerCase();
   return cleaned.includes("@") ? cleaned : null;
+}
+
+function getPlatformOwnerEmail(env: EnvLike = process.env): string | null {
+  return normalizeEmail(env.PLATFORM_OWNER_EMAIL);
+}
+
+function getPlatformOwnerClerkUserId(env: EnvLike = process.env): string | null {
+  const raw = (env.PLATFORM_OWNER_CLERK_USER_ID || "").trim().replace(/^['"]+|['"]+$/g, "");
+  return raw.length > 0 ? raw : null;
 }
 
 export interface ClerkUserLike {

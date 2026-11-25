@@ -67,12 +67,14 @@ export const serverEnvSchema = z.object({
   // Resources Hub & Private Publishing Studio (Neon Postgres + SECOND/Separate Cloudflare R2 Account)
   // IMPORTANT: RESOURCES_R2_* belongs to a DIFFERENT Cloudflare R2 account/bucket than R2_* above.
   // Keep them strictly separate so /resources media never mixes with core tenant compliance assets.
-  NEON_RESOURCES_DATABASE_URL: z.string().url().optional(),
+  // Sanitization & URL diagnostics are handled in src/lib/neon.ts and resources-media.service.ts so
+  // copy-pasted quotes, `psql '...'`, or empty optional values never crash core SaaS routes.
+  NEON_RESOURCES_DATABASE_URL: z.string().optional(),
   RESOURCES_R2_ACCOUNT_ID: z.string().optional(),
   RESOURCES_R2_ACCESS_KEY_ID: z.string().optional(),
   RESOURCES_R2_SECRET_ACCESS_KEY: z.string().optional(),
   RESOURCES_R2_BUCKET_NAME: z.string().optional(),
-  RESOURCES_R2_PUBLIC_URL_PREFIX: z.string().url().optional(),
+  RESOURCES_R2_PUBLIC_URL_PREFIX: z.string().optional(),
 });
 
 /**

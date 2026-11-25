@@ -143,4 +143,32 @@ describe("Resources Admin Guard & Isolated Storage Config", () => {
       }),
     ).toContain("invalid value");
   });
+
+  it("ensures no Next.js App Router directory contains conflicting sibling dynamic route slug names", async () => {
+    const fs = await import("fs");
+    const path = await import("path");
+    const appDir = path.join(process.cwd(), "src", "app");
+    const conflicts: string[] = [];
+
+    const scan = (dir: string) => {
+      const subdirs = fs
+        .readdirSync(dir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory());
+
+      const dynamicSegments = subdirs
+        .map((entry) => entry.name)
+        .filter((name) => /^\[.*\]$/.test(name));
+
+      if (dynamicSegments.length > 1) {
+        conflicts.push(`${path.relative(appDir, dir) || "."}: ${dynamicSegments.join(", ")}`);
+      }
+
+      for (const entry of subdirs) {
+        scan(path.join(dir, entry.name));
+      }
+    };
+
+    scan(appDir);
+    expect(conflicts).toEqual([]);
+  });
 });
