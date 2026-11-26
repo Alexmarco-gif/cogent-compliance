@@ -27,6 +27,7 @@ import type {
   PostLaunchReviewType,
 } from "@/contracts/feature-governance.contracts";
 import { extractApiError } from "@/lib/api-client";
+import { LinkedWorkProductCard } from "@/components/work-products/LinkedWorkProductCard";
 
 interface FeatureDetailWorkspaceProps {
   dossier: FeatureDossier;
@@ -529,6 +530,13 @@ export function FeatureDetailWorkspace({
           )}
         </div>
       </div>
+
+      <LinkedWorkProductCard
+        workProductId={feature.work_product_id || null}
+        conversationId={feature.conversation_id || null}
+        fallbackTitle={feature.feature_name}
+        registerLabel="Feature Governance"
+      />
 
       {notice && (
         <div

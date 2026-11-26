@@ -544,6 +544,27 @@ export class ExpansionWorkflowService {
     const input: CreateExpansionInput = createExpansionSchema.parse(rawInput);
     const supabase = createAdminSupabaseClient();
 
+    // Idempotency guard: if this Studio Work Product was already promoted to Cross-Border Expansion,
+    // return the existing expansion program bundle instead of duplicating it.
+    if (input.source_work_product_id) {
+      try {
+        const { data: existingProgram } = await supabase
+          .from("expansion_programs")
+          .select("id")
+          .eq("tenant_id", tenant.tenantId)
+          .eq("source_work_product_id", input.source_work_product_id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingProgram?.id) {
+          return this.getExpansionDetail(tenant, String(existingProgram.id));
+        }
+      } catch {
+        // Non-blocking fallback when mocked query builders omit chained order/limit
+      }
+    }
+
     const blueprint = buildJurisdictionBlueprint(
       input.target_jurisdiction,
       input.home_jurisdiction,

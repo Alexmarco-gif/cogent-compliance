@@ -121,9 +121,14 @@ export function WorkProductCanvas({
     message: string;
   } | null>(null);
   const [promotingPolicy, setPromotingPolicy] = useState(false);
+  const [promotedPolicyId, setPromotedPolicyId] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [promotingFeature, setPromotingFeature] = useState(false);
   const [promotedFeatureId, setPromotedFeatureId] = useState<string | null>(null);
+  const [promotingDdq, setPromotingDdq] = useState(false);
+  const [promotedDdqId, setPromotedDdqId] = useState<string | null>(null);
+  const [promotingExpansion, setPromotingExpansion] = useState(false);
+  const [promotedExpansionId, setPromotedExpansionId] = useState<string | null>(null);
 
   const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
@@ -173,8 +178,18 @@ export function WorkProductCanvas({
         return;
       }
       const wp: WorkProductRecord = json.data.work_product;
+      const linked = (json.data.linked_records || {}) as {
+        ddq_id?: string | null;
+        policy_id?: string | null;
+        feature_id?: string | null;
+        expansion_id?: string | null;
+      };
       setWorkProduct(wp);
       setRevisions(json.data.revisions || []);
+      setPromotedDdqId(linked.ddq_id || null);
+      setPromotedPolicyId(linked.policy_id || null);
+      setPromotedFeatureId(linked.feature_id || null);
+      setPromotedExpansionId(linked.expansion_id || null);
       setDraftTitle(wp.title);
       setDraftMarkdown(wp.markdown_content);
       setPreviewVersion(null);
@@ -382,6 +397,13 @@ export function WorkProductCanvas({
     setPromotingFeature(true);
     setExportNotice(null);
     try {
+      if (hasLocalEdits) {
+        await persistPatch({
+          title: draftTitle,
+          markdown_content: draftMarkdown,
+          change_summary: "Saved before promoting to Feature Governance",
+        });
+      }
       const res = await fetch("/api/marketing-shield/v1/features/from-work-product", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -408,6 +430,51 @@ export function WorkProductCanvas({
       });
     } finally {
       setPromotingFeature(false);
+    }
+  };
+
+  const handlePromoteToDdq = async () => {
+    if (!workProduct || promotingDdq) return;
+    setPromotingDdq(true);
+    setExportNotice(null);
+    try {
+      if (hasLocalEdits) {
+        await persistPatch({
+          title: draftTitle,
+          markdown_content: draftMarkdown,
+          change_summary: "Saved before promoting to DDQ Operations",
+        });
+      }
+      const res = await fetch("/api/marketing-shield/v1/ddqs/from-work-product", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          work_product_id: workProduct.id,
+          title: draftTitle.trim() || workProduct.title,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success || !json.data?.engagement?.id) {
+        const parsed = extractApiError(
+          res.status,
+          json,
+          "Failed to save DDQ working material to DDQ Operations.",
+        );
+        setExportNotice({ type: "error", message: parsed.message });
+        return;
+      }
+      const newDdqId = String(json.data.engagement.id);
+      setPromotedDdqId(newDdqId);
+      if (typeof window !== "undefined") {
+        window.location.href = `/ddqs/${newDdqId}`;
+      }
+    } catch {
+      setExportNotice({
+        type: "error",
+        message: "Network error promoting DDQ working material to DDQ Operations.",
+      });
+    } finally {
+      setPromotingDdq(false);
     }
   };
 
@@ -583,128 +650,194 @@ export function WorkProductCanvas({
               </button>
             )}
 
-            {(workProduct.workflow_type === "POLICY_GAP_REDLINE" ||
-              workProduct.workflow_type === "POLICY_DRAFT_NEW") && (
-              <button
-                type="button"
-                disabled={promotingPolicy}
-                onClick={async () => {
-                  setPromotingPolicy(true);
-                  setExportNotice(null);
-                  try {
-                    const sp = (workProduct.structured_payload || {}) as Record<string, unknown>;
-                    const inferredDomain =
-                      typeof sp.policy_domain === "string" ? sp.policy_domain : "AML_CFT_CPF";
-                    const inferredTier =
-                      typeof sp.recommended_approval_tier === "string"
-                        ? sp.recommended_approval_tier
-                        : "TIER_3_BOARD";
-                    const res = await fetch("/api/marketing-shield/v1/policies", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        title: (draftTitle || workProduct.title).trim(),
-                        domain: inferredDomain,
-                        owner_department: "Compliance",
-                        approval_tier: inferredTier,
-                        change_type:
-                          workProduct.workflow_type === "POLICY_DRAFT_NEW"
-                            ? "NEW_POLICY"
-                            : "AMENDMENT",
-                        trigger_source: "REGULATORY_CHANGE",
-                        source_work_product_id: workProduct.id,
-                        markdown_content: draftMarkdown || workProduct.markdown_content,
-                      }),
-                    });
-                    const json = await res.json();
-                    if (!res.ok || !json?.success) {
-                      throw new Error(
-                        extractApiError(res.status, json, "Could not promote to Policy Workflow")
-                          .message,
-                      );
-                    }
-                    const newPolicyId = json.data?.policy?.id;
-                    if (newPolicyId && typeof window !== "undefined") {
-                      window.location.href = `/policies/${newPolicyId}`;
-                    }
-                  } catch (err) {
-                    setExportNotice({
-                      type: "error",
-                      message: (err as Error).message,
-                    });
-                  } finally {
-                    setPromotingPolicy(false);
-                  }
-                }}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white text-[11.5px] font-medium disabled:opacity-60 cursor-pointer"
-              >
-                {promotingPolicy ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
+            {workProduct.workflow_type === "SUPERVISORY_DDQ_RESPONSE" &&
+              (promotedDdqId ? (
+                <Link
+                  href={`/ddqs/${promotedDdqId}`}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11.5px] font-medium transition-colors"
+                >
                   <ShieldCheck className="h-3 w-3" />
-                )}
-                <span>Promote to Policy Workflow</span>
-              </button>
-            )}
+                  <span>Open in DDQ Operations</span>
+                  <ArrowUpRight className="h-3 w-3" />
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled={promotingDdq}
+                  onClick={() => void handlePromoteToDdq()}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white text-[11.5px] font-medium disabled:opacity-60 cursor-pointer"
+                >
+                  {promotingDdq ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <ShieldCheck className="h-3 w-3" />
+                  )}
+                  <span>Promote to DDQ Operations</span>
+                </button>
+              ))}
 
-            {workProduct.workflow_type === "CROSS_BORDER_COMPARISON" && (
-              <button
-                type="button"
-                disabled={promotingPolicy}
-                onClick={async () => {
-                  setPromotingPolicy(true);
-                  setExportNotice(null);
-                  try {
-                    const scope = (workProduct.jurisdiction_scope || []).filter(
-                      (j) => j.toUpperCase() !== "NG",
-                    );
-                    const targetCode = scope[0] || workProduct.jurisdiction_scope?.[0] || "GH";
-                    const res = await fetch("/api/marketing-shield/v1/expansions", {
-                      method: "POST",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        title: (draftTitle || workProduct.title).trim(),
-                        home_jurisdiction: "NG",
-                        target_jurisdiction: targetCode,
-                        product_scope: "PAYMENTS",
-                        operating_model: "DIRECT_LICENSE",
-                        source_work_product_id: workProduct.id,
-                        auto_populate_blueprint: true,
-                      }),
-                    });
-                    const json = await res.json();
-                    if (!res.ok || !json?.success) {
-                      throw new Error(
-                        extractApiError(
-                          res.status,
-                          json,
-                          "Could not promote to Cross-Border Expansion OS",
-                        ).message,
-                      );
-                    }
-                    const newExpansionId = json.data?.program?.id;
-                    if (newExpansionId && typeof window !== "undefined") {
-                      window.location.href = `/expansions/${newExpansionId}`;
-                    }
-                  } catch (err) {
-                    setExportNotice({
-                      type: "error",
-                      message: (err as Error).message,
-                    });
-                  } finally {
-                    setPromotingPolicy(false);
-                  }
-                }}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white text-[11.5px] font-medium disabled:opacity-60 cursor-pointer"
-              >
-                {promotingPolicy ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
+            {(workProduct.workflow_type === "POLICY_GAP_REDLINE" ||
+              workProduct.workflow_type === "POLICY_DRAFT_NEW") &&
+              (promotedPolicyId ? (
+                <Link
+                  href={`/policies/${promotedPolicyId}`}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11.5px] font-medium transition-colors"
+                >
                   <ShieldCheck className="h-3 w-3" />
-                )}
-                <span>Launch 8-Stage Expansion OS</span>
-              </button>
-            )}
+                  <span>Open in Policy Workflow</span>
+                  <ArrowUpRight className="h-3 w-3" />
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled={promotingPolicy}
+                  onClick={async () => {
+                    setPromotingPolicy(true);
+                    setExportNotice(null);
+                    try {
+                      if (hasLocalEdits) {
+                        await persistPatch({
+                          title: draftTitle,
+                          markdown_content: draftMarkdown,
+                          change_summary: "Saved before promoting to Policy Workflow",
+                        });
+                      }
+                      const sp = (workProduct.structured_payload || {}) as Record<string, unknown>;
+                      const inferredDomain =
+                        typeof sp.policy_domain === "string" ? sp.policy_domain : "AML_CFT_CPF";
+                      const inferredTier =
+                        typeof sp.recommended_approval_tier === "string"
+                          ? sp.recommended_approval_tier
+                          : "TIER_3_BOARD";
+                      const res = await fetch("/api/marketing-shield/v1/policies", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          title: (draftTitle || workProduct.title).trim(),
+                          domain: inferredDomain,
+                          owner_department: "Compliance",
+                          approval_tier: inferredTier,
+                          change_type:
+                            workProduct.workflow_type === "POLICY_DRAFT_NEW"
+                              ? "NEW_POLICY"
+                              : "AMENDMENT",
+                          trigger_source: "REGULATORY_CHANGE",
+                          source_work_product_id: workProduct.id,
+                          markdown_content: draftMarkdown || workProduct.markdown_content,
+                        }),
+                      });
+                      const json = await res.json();
+                      if (!res.ok || !json?.success) {
+                        throw new Error(
+                          extractApiError(res.status, json, "Could not promote to Policy Workflow")
+                            .message,
+                        );
+                      }
+                      const newPolicyId = json.data?.policy?.id;
+                      if (newPolicyId) {
+                        setPromotedPolicyId(String(newPolicyId));
+                        if (typeof window !== "undefined") {
+                          window.location.href = `/policies/${newPolicyId}`;
+                        }
+                      }
+                    } catch (err) {
+                      setExportNotice({
+                        type: "error",
+                        message: (err as Error).message,
+                      });
+                    } finally {
+                      setPromotingPolicy(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white text-[11.5px] font-medium disabled:opacity-60 cursor-pointer"
+                >
+                  {promotingPolicy ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <ShieldCheck className="h-3 w-3" />
+                  )}
+                  <span>Promote to Policy Workflow</span>
+                </button>
+              ))}
+
+            {workProduct.workflow_type === "CROSS_BORDER_COMPARISON" &&
+              (promotedExpansionId ? (
+                <Link
+                  href={`/expansions/${promotedExpansionId}`}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11.5px] font-medium transition-colors"
+                >
+                  <ShieldCheck className="h-3 w-3" />
+                  <span>Open in Cross-Border Expansion</span>
+                  <ArrowUpRight className="h-3 w-3" />
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled={promotingExpansion}
+                  onClick={async () => {
+                    setPromotingExpansion(true);
+                    setExportNotice(null);
+                    try {
+                      if (hasLocalEdits) {
+                        await persistPatch({
+                          title: draftTitle,
+                          markdown_content: draftMarkdown,
+                          change_summary: "Saved before promoting to Cross-Border Expansion",
+                        });
+                      }
+                      const scope = (workProduct.jurisdiction_scope || []).filter(
+                        (j) => j.toUpperCase() !== "NG",
+                      );
+                      const targetCode = scope[0] || workProduct.jurisdiction_scope?.[0] || "GH";
+                      const res = await fetch("/api/marketing-shield/v1/expansions", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          title: (draftTitle || workProduct.title).trim(),
+                          home_jurisdiction: "NG",
+                          target_jurisdiction: targetCode,
+                          product_scope: "PAYMENTS",
+                          operating_model: "DIRECT_LICENSE",
+                          source_work_product_id: workProduct.id,
+                          auto_populate_blueprint: true,
+                        }),
+                      });
+                      const json = await res.json();
+                      if (!res.ok || !json?.success) {
+                        throw new Error(
+                          extractApiError(
+                            res.status,
+                            json,
+                            "Could not promote to Cross-Border Expansion OS",
+                          ).message,
+                        );
+                      }
+                      const newExpansionId = json.data?.program?.id;
+                      if (newExpansionId) {
+                        setPromotedExpansionId(String(newExpansionId));
+                        if (typeof window !== "undefined") {
+                          window.location.href = `/expansions/${newExpansionId}`;
+                        }
+                      }
+                    } catch (err) {
+                      setExportNotice({
+                        type: "error",
+                        message: (err as Error).message,
+                      });
+                    } finally {
+                      setPromotingExpansion(false);
+                    }
+                  }}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-zinc-950 hover:bg-zinc-800 text-white text-[11.5px] font-medium disabled:opacity-60 cursor-pointer"
+                >
+                  {promotingExpansion ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <ShieldCheck className="h-3 w-3" />
+                  )}
+                  <span>Promote to Cross-Border Expansion</span>
+                </button>
+              ))}
 
             <button
               type="button"

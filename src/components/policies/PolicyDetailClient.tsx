@@ -36,6 +36,7 @@ import {
 import { CANONICAL_ROLE_CATALOG } from "@/modules/auth-tenancy/roles";
 import type { CanonicalRole } from "@/modules/auth-tenancy/types";
 import { extractApiError } from "@/lib/api-client";
+import { LinkedWorkProductCard } from "@/components/work-products/LinkedWorkProductCard";
 
 type DetailTab = "compiler" | "review" | "approvals" | "publication" | "operations";
 
@@ -316,6 +317,13 @@ export function PolicyDetailClient({ policyId }: { policyId: string }) {
             })}
           </div>
         </div>
+
+        <LinkedWorkProductCard
+          workProductId={version?.source_work_product_id || null}
+          fallbackTitle={policy.title}
+          fallbackMarkdown={version?.source_work_product_id ? version?.markdown_content || null : null}
+          registerLabel="Policy Workflow"
+        />
 
         {/* Alerts */}
         {error && (

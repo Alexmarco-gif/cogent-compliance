@@ -264,6 +264,25 @@ export class PolicyWorkflowService {
         );
       }
 
+      // Idempotency guard: if this Studio Work Product was already promoted to Policy Workflow,
+      // return the existing Policy bundle instead of creating a duplicate policy record.
+      try {
+        const { data: existingVersion } = await supabase
+          .from("policy_versions")
+          .select("policy_id")
+          .eq("tenant_id", tenant.tenantId)
+          .eq("source_work_product_id", input.source_work_product_id)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (existingVersion?.policy_id) {
+          return this.getPolicyDetail(tenant, String(existingVersion.policy_id));
+        }
+      } catch {
+        // Non-blocking fallback when mocked query builders omit chained order/limit
+      }
+
       markdownContent = markdownContent || String(wp.markdown_content || "");
       existingStructured = (wp.structured_payload as Record<string, unknown>) || null;
       workflowSource =

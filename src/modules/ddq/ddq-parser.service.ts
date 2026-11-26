@@ -587,3 +587,226 @@ export async function parseDdqFile(
 
   return parseTextDdq(buffer.toString("utf-8"), "TEXT");
 }
+
+/**
+ * Extracts structured DDQ question/answer pairs from a Chat Studio DDQ Work Product markdown document.
+ * Supports:
+ *   1. Markdown response matrices (`| Q# | Question | Draft Response | ... |`)
+ *   2. Sectioned Q&A blocks (`### Q1: ...` / `**Q1.** ...` / `1. **Question:** ...` + answer paragraphs)
+ *   3. Plain text questionnaire fallback via `parseTextDdq`
+ *   4. Single holistic working-material item fallback so the DDQ register is never empty.
+ */
+export function parseWorkProductDdqMarkdown(
+  markdown: string,
+  fallbackTitle: string
+): ParsedDdqResult {
+  const cleanMd = (markdown || "").trim();
+  if (!cleanMd) {
+    return {
+      source_format: "TEXT",
+      questions: [],
+      source_structure: { total_detected: 0 },
+    };
+  }
+
+  const lines = cleanMd.split(/\r?\n/);
+  const questions: ParsedDdqQuestion[] = [];
+  let currentSection: string | null = null;
+
+  const stripMd = (val: string) =>
+    val
+      .replace(/\\\[/g, "[")
+      .replace(/\\\]/g, "]")
+      .replace(/\*\*/g, "")
+      .replace(/`/g, "")
+      .trim();
+
+  // Pass 1: Extract structured Markdown tables containing Question & Response/Answer columns
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i]?.trim() || "";
+    if (/^#{1,3}\s+/.test(rawLine)) {
+      currentSection = stripMd(rawLine.replace(/^#{1,3}\s+/, ""));
+      continue;
+    }
+
+    if (!rawLine.startsWith("|") || !lines[i + 1]?.trim().startsWith("|")) continue;
+    const sepLine = lines[i + 1]?.trim() || "";
+    if (!/^\|[\s:|-]+\|$/.test(sepLine)) continue;
+
+    const headers = rawLine
+      .split("|")
+      .slice(1, -1)
+      .map((h) => stripMd(h).toLowerCase());
+
+    const qCol = headers.findIndex((h) => /\b(question|query|prompt|requirement|item)\b/i.test(h));
+    const aCol = headers.findIndex((h) =>
+      /\b(answer|response|draft|position|statement|disclosure)\b/i.test(h)
+    );
+    const codeCol = headers.findIndex((h) => /^(#|no\.?|id|code|ref|q#)$/i.test(h));
+
+    if (qCol >= 0 && aCol >= 0 && qCol !== aCol) {
+      let rowCursor = i + 2;
+      while (rowCursor < lines.length && questions.length < MAX_DDQ_QUESTIONS) {
+        const rowLine = lines[rowCursor]?.trim() || "";
+        if (!rowLine.startsWith("|")) break;
+        const cells = rowLine
+          .split("|")
+          .slice(1, -1)
+          .map((c) => c.trim());
+        const qText = stripMd(cells[qCol] || "");
+        const aText = (cells[aCol] || "").trim();
+        const codeText = codeCol >= 0 ? stripMd(cells[codeCol] || "") : "";
+
+        if (qText.length >= 8) {
+          const nextIdx = questions.length + 1;
+          const directCls = classifyDdqQuestion(qText, null);
+          const cls =
+            directCls.domain !== "OTHER" ? directCls : classifyDdqQuestion(qText, currentSection);
+          questions.push({
+            question_index: nextIdx,
+            question_code: codeText ? (codeText.match(/^Q/i) ? codeText : `Q${codeText}`) : `Q${nextIdx}`,
+            section_name: currentSection,
+            question_text: qText,
+            domain: cls.domain,
+            assigned_department: cls.assigned_department,
+            source_sheet_name: null,
+            source_row_number: null,
+            source_question_col: null,
+            source_answer_col: null,
+            source_evidence_col: null,
+            existing_answer: aText || null,
+          });
+        }
+        rowCursor += 1;
+      }
+      i = rowCursor - 1;
+    }
+  }
+
+  if (questions.length > 0) {
+    return {
+      source_format: "TEXT",
+      questions,
+      source_structure: { total_detected: questions.length },
+    };
+  }
+
+  // Pass 2: Extract structured Q&A heading/numbered blocks (e.g., `### Q1: ...` or `**Q1.** ...`)
+  const qaHeadingRegex =
+    /^(?:#{2,4}\s*)?(?:\*\*)?(?:Q(?:uestion)?\s*(\d+(?:\.\d+)?)|(\d+(?:\.\d+)?)[.)]\s*(?:Question|Query)?)\s*[:.-]?\s*(?:\*\*)?\s*(.+?)(?:\*\*)?$/i;
+  const answerPrefixRegex = /^(?:\*\*)?(?:Draft\s+)?(?:Response|Answer|Position|Reply)(?:\*\*)?\s*[:.-]\s*/i;
+
+  let activeSection: string | null = null;
+  let currentQ: { code: string; section: string | null; text: string; answerLines: string[] } | null = null;
+
+  const flushCurrentQ = () => {
+    if (!currentQ) return;
+    const qText = stripMd(currentQ.text);
+    if (qText.length >= 8 && questions.length < MAX_DDQ_QUESTIONS) {
+      const nextIdx = questions.length + 1;
+      const directCls = classifyDdqQuestion(qText, null);
+      const cls =
+        directCls.domain !== "OTHER" ? directCls : classifyDdqQuestion(qText, currentQ.section);
+      const answerBody = currentQ.answerLines.join("\n").trim();
+      questions.push({
+        question_index: nextIdx,
+        question_code: currentQ.code || `Q${nextIdx}`,
+        section_name: currentQ.section,
+        question_text: qText,
+        domain: cls.domain,
+        assigned_department: cls.assigned_department,
+        source_sheet_name: null,
+        source_row_number: null,
+        source_question_col: null,
+        source_answer_col: null,
+        source_evidence_col: null,
+        existing_answer: answerBody || null,
+      });
+    }
+    currentQ = null;
+  };
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      if (currentQ && currentQ.answerLines.length > 0) {
+        currentQ.answerLines.push("");
+      }
+      continue;
+    }
+
+    const qMatch = trimmed.match(qaHeadingRegex);
+    const looksLikeQuestionHeading =
+      Boolean(qMatch) &&
+      (trimmed.includes("?") ||
+        /^#{2,4}\s*(?:\*\*)?Q(?:uestion)?\s*\d+/i.test(trimmed) ||
+        /^(?:\*\*)?Q(?:uestion)?\s*\d+/i.test(trimmed));
+
+    if (looksLikeQuestionHeading && qMatch) {
+      flushCurrentQ();
+      const num = qMatch[1] || qMatch[2];
+      const qBody = (qMatch[3] || "").trim();
+      currentQ = {
+        code: num ? `Q${num}` : `Q${questions.length + 1}`,
+        section: activeSection,
+        text: qBody,
+        answerLines: [],
+      };
+      continue;
+    }
+
+    if (/^#{1,3}\s+/.test(trimmed)) {
+      const heading = stripMd(trimmed.replace(/^#{1,3}\s+/, ""));
+      // Skip meta headings inside an active answer unless it's clearly a new top-level section
+      if (/^#{1,2}\s+/.test(trimmed)) {
+        flushCurrentQ();
+        activeSection = heading;
+        continue;
+      }
+    }
+
+    if (currentQ) {
+      const cleanedLine = trimmed.replace(answerPrefixRegex, "");
+      currentQ.answerLines.push(cleanedLine);
+    }
+  }
+  flushCurrentQ();
+
+  if (questions.length > 0) {
+    return {
+      source_format: "TEXT",
+      questions,
+      source_structure: { total_detected: questions.length },
+    };
+  }
+
+  // Pass 3: Fallback to standard plain-text DDQ question detector
+  const textParsed = parseTextDdq(cleanMd, "TEXT");
+  if (textParsed.questions.length > 0) {
+    return textParsed;
+  }
+
+  // Pass 4: Holistic working-material item so the promoted DDQ register always captures the Studio draft
+  const safeTitle = fallbackTitle.trim() || "Supervisory & Partner DDQ Response";
+  const cls = classifyDdqQuestion(safeTitle, null);
+  return {
+    source_format: "TEXT",
+    questions: [
+      {
+        question_index: 1,
+        question_code: "Q1",
+        section_name: "Promoted Studio Response",
+        question_text: `${safeTitle} — Consolidated DDQ Working Response`,
+        domain: cls.domain,
+        assigned_department: cls.assigned_department,
+        source_sheet_name: null,
+        source_row_number: null,
+        source_question_col: null,
+        source_answer_col: null,
+        source_evidence_col: null,
+        existing_answer: cleanMd,
+      },
+    ],
+    source_structure: { total_detected: 1 },
+  };
+}

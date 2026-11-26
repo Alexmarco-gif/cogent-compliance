@@ -278,17 +278,26 @@ function DdqRegisterContent() {
                 No DDQ engagements registered yet
               </h3>
               <p className="text-xs text-zinc-500 max-w-lg mx-auto">
-                Upload a Sponsor Bank Excel workbook (.xlsx), Word questionnaire (.docx), PDF, or paste questions to automatically classify domains, route to departments, auto-match your Q&amp;A Library, and build a regulator-ready submission pack.
+                Promote a Supervisory &amp; Partner DDQ draft straight from Copilot Chat — or upload a Sponsor Bank Excel workbook (.xlsx), Word questionnaire (.docx), or PDF here to track questions, evidence gaps, and sign-offs.
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-zinc-950 hover:bg-zinc-800 rounded-md cursor-pointer"
-            >
-              <Upload className="w-3.5 h-3.5" />
-              <span>Upload First Questionnaire</span>
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => setModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-zinc-950 hover:bg-zinc-800 rounded-md cursor-pointer"
+              >
+                <Upload className="w-3.5 h-3.5" />
+                <span>Upload First Questionnaire</span>
+              </button>
+              <Link
+                href="/chat"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-medium text-zinc-800 bg-white hover:bg-zinc-50 border border-zinc-200 rounded-md"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-blue-600" />
+                <span>Draft DDQ in Chat</span>
+              </Link>
+            </div>
           </div>
         ) : (
           <div className="bg-white border border-zinc-200 rounded-xl overflow-hidden divide-y divide-zinc-200">
@@ -296,6 +305,9 @@ function DdqRegisterContent() {
               const total = Math.max(ddq.total_questions, 1);
               const pctAnswered = Math.round((ddq.answered_count / total) * 100);
               const pctValidated = Math.round((ddq.validated_count / total) * 100);
+              const promotedFromChat = Boolean(
+                (ddq.metadata as Record<string, unknown> | undefined)?.promoted_from_chat
+              );
 
               return (
                 <Link
@@ -313,6 +325,11 @@ function DdqRegisterContent() {
                         <span className="px-2 py-0.5 text-[10px] font-mono rounded bg-zinc-100 text-zinc-700 border border-zinc-200">
                           {ddq.source_format}
                         </span>
+                        {promotedFromChat && (
+                          <span className="px-2 py-0.5 text-[10px] font-medium rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                            Promoted from Chat
+                          </span>
+                        )}
                         <span
                           className={`px-2 py-0.5 text-[10px] font-medium rounded-full border ${
                             STATUS_BADGE[ddq.status] || STATUS_BADGE.DRAFT

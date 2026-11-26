@@ -401,6 +401,17 @@ export const createDdqEngagementSchema = z.object({
 
 export type CreateDdqEngagementInput = z.input<typeof createDdqEngagementSchema>;
 
+export const promoteWorkProductToDdqSchema = z.object({
+  work_product_id: z.string().uuid("Valid work_product_id UUID is required"),
+  title: z.string().trim().min(3).max(220).optional(),
+  requesting_institution: z.string().trim().min(2).max(200).optional(),
+  requester_type: DdqRequesterTypeSchema.optional(),
+  reference_code: z.string().trim().max(100).optional(),
+  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD").optional().nullable(),
+});
+
+export type PromoteWorkProductToDdqInput = z.input<typeof promoteWorkProductToDdqSchema>;
+
 export const updateDdqEngagementSchema = z.object({
   title: z.string().trim().min(3).max(220).optional(),
   requesting_institution: z.string().trim().min(2).max(200).optional(),

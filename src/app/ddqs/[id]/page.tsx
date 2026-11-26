@@ -41,6 +41,7 @@ import {
 } from "@/contracts/ddq.contracts";
 import type { DdqDetailPayload } from "@/modules/ddq/ddq.service";
 import { extractApiError } from "@/lib/api-client";
+import { LinkedWorkProductCard } from "@/components/work-products/LinkedWorkProductCard";
 
 type WorkbenchTab = "questions" | "matrix" | "annexures" | "signoff" | "followups";
 
@@ -495,6 +496,29 @@ function DdqWorkbenchContent() {
             </div>
           </div>
         </div>
+
+        {(() => {
+          const meta = (engagement.metadata || {}) as Record<string, unknown>;
+          const wpId =
+            typeof meta.source_work_product_id === "string" ? meta.source_work_product_id : null;
+          const convId =
+            typeof meta.source_conversation_id === "string" ? meta.source_conversation_id : null;
+          const fallbackMd =
+            typeof meta.source_markdown_content === "string" ? meta.source_markdown_content : null;
+          const fallbackTitle =
+            typeof meta.source_document_title === "string"
+              ? meta.source_document_title
+              : engagement.title;
+          return (
+            <LinkedWorkProductCard
+              workProductId={wpId}
+              conversationId={convId}
+              fallbackTitle={fallbackTitle}
+              fallbackMarkdown={fallbackMd}
+              registerLabel="DDQ Operations"
+            />
+          );
+        })()}
 
         {/* 5 Operational Tabs */}
         <div className="flex items-center gap-6 border-b border-zinc-200 overflow-x-auto">

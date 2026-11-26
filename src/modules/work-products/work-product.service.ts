@@ -300,12 +300,22 @@ export class WorkProductService {
   }
 
   /**
-   * Fetches a single Work Product and its revision history for a tenant.
+   * Fetches a single Work Product, its revision history, and any promoted operational register IDs
+   * (DDQ Operations, Policy Workflow, Feature Governance, Cross-Border Expansion) for a tenant.
    */
   public async getWorkProductWithRevisions(
     tenantId: string,
     workProductId: string
-  ): Promise<{ work_product: WorkProductRecord; revisions: WorkProductRevisionRecord[] } | null> {
+  ): Promise<{
+    work_product: WorkProductRecord;
+    revisions: WorkProductRevisionRecord[];
+    linked_records?: {
+      ddq_id: string | null;
+      policy_id: string | null;
+      feature_id: string | null;
+      expansion_id: string | null;
+    };
+  } | null> {
     const supabase = createAdminSupabaseClient();
 
     const { data: wp, error: wpErr } = await supabase
@@ -334,9 +344,70 @@ export class WorkProductService {
       });
     }
 
+    // Resolve any downstream operational records already promoted from this Studio artifact (non-blocking)
+    const linkedRecords = {
+      ddq_id: null as string | null,
+      policy_id: null as string | null,
+      feature_id: null as string | null,
+      expansion_id: null as string | null,
+    };
+
+    try {
+      const [ddqRes, policyRes, featureRes, expansionRes] = await Promise.allSettled([
+        supabase
+          .from("ddq_engagements")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .contains("metadata", { source_work_product_id: workProductId })
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("policy_versions")
+          .select("policy_id")
+          .eq("tenant_id", tenantId)
+          .eq("source_work_product_id", workProductId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("product_features")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("work_product_id", workProductId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("expansion_programs")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("source_work_product_id", workProductId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+
+      if (ddqRes.status === "fulfilled" && ddqRes.value?.data?.id) {
+        linkedRecords.ddq_id = String(ddqRes.value.data.id);
+      }
+      if (policyRes.status === "fulfilled" && policyRes.value?.data?.policy_id) {
+        linkedRecords.policy_id = String(policyRes.value.data.policy_id);
+      }
+      if (featureRes.status === "fulfilled" && featureRes.value?.data?.id) {
+        linkedRecords.feature_id = String(featureRes.value.data.id);
+      }
+      if (expansionRes.status === "fulfilled" && expansionRes.value?.data?.id) {
+        linkedRecords.expansion_id = String(expansionRes.value.data.id);
+      }
+    } catch {
+      // Non-blocking: return work product + revisions even if operational lookups fail
+    }
+
     return {
       work_product: wp as WorkProductRecord,
       revisions: (revRows || []) as WorkProductRevisionRecord[],
+      linked_records: linkedRecords,
     };
   }
 

@@ -75,6 +75,7 @@ import {
   type WorkstreamTeam,
 } from "@/contracts/expansion.contracts";
 import { extractApiError } from "@/lib/api-client";
+import { LinkedWorkProductCard } from "@/components/work-products/LinkedWorkProductCard";
 
 type WorkspaceTab =
   | "READINESS_OVERVIEW"
@@ -398,6 +399,12 @@ export function ExpansionDetailClient({ expansionId }: { expansionId: string }) 
               })}
             </div>
           </div>
+
+          <LinkedWorkProductCard
+            workProductId={program.source_work_product_id || null}
+            fallbackTitle={program.title}
+            registerLabel="Cross-Border Expansion"
+          />
 
           {actionError && (
             <div className="flex items-center justify-between rounded-xl border border-red-200 bg-red-50 p-3.5 text-xs text-red-700">

@@ -22,6 +22,7 @@ import {
   getDefaultDepartmentForDomain,
   parseDdqFile,
   parseTextDdq,
+  parseWorkProductDdqMarkdown,
   type ParsedDdqResult,
 } from "@/modules/ddq/ddq-parser.service";
 import { ddqDraftingService } from "@/modules/ddq/ddq-drafting.service";
@@ -30,6 +31,7 @@ import {
   bulkAssignQuestionsSchema,
   createDdqEngagementSchema,
   createDdqFollowupSchema,
+  promoteWorkProductToDdqSchema,
   recordDdqSignoffSchema,
   updateDdqEngagementSchema,
   updateDdqFollowupSchema,
@@ -42,9 +44,11 @@ import {
   type DdqFollowupRecord,
   type DdqQuestionEvidenceLinkRecord,
   type DdqQuestionRecord,
+  type DdqRequesterType,
   type DdqSignoffRecord,
   type DdqSignoffRole,
   type EvidenceItemRecord,
+  type PromoteWorkProductToDdqInput,
   type RecordDdqSignoffInput,
   type UpdateDdqEngagementInput,
   type UpdateDdqQuestionInput,
@@ -1239,6 +1243,216 @@ export class DdqService {
       .single();
 
     return (updated as DdqEngagementRecord) || null;
+  }
+
+  /**
+   * Promotes a persisted Chat Studio DDQ Work Product into a live DDQ Operations engagement.
+   * Idempotent: if an engagement already exists linked to `work_product_id`, returns it cleanly.
+   * Parses Q&A rows, preserves Chat-drafted answers & `[NEEDS_INTERNAL_EVIDENCE]` gap flags,
+   * and saves the full working material reference + markdown snapshot inside `engagement.metadata`.
+   */
+  public async promoteWorkProductToDdq(
+    tenantId: string,
+    userId: string,
+    rawInput: PromoteWorkProductToDdqInput
+  ): Promise<{
+    engagement: DdqEngagementRecord;
+    parsed_count: number;
+    already_existed: boolean;
+  }> {
+    const input = promoteWorkProductToDdqSchema.parse(rawInput);
+    const supabase = createAdminSupabaseClient();
+
+    const { data: wp, error: wpErr } = await supabase
+      .from("work_product_artifacts")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .eq("id", input.work_product_id)
+      .maybeSingle();
+
+    if (wpErr || !wp) {
+      throw new Error(`Work product ${input.work_product_id} not found for tenant.`);
+    }
+
+    // Idempotency check: return existing DDQ engagement if this work product was already promoted
+    const { data: existingList } = await supabase
+      .from("ddq_engagements")
+      .select("*")
+      .eq("tenant_id", tenantId)
+      .contains("metadata", { source_work_product_id: wp.id })
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const existing = Array.isArray(existingList) ? existingList[0] : null;
+    if (existing) {
+      return {
+        engagement: existing as DdqEngagementRecord,
+        parsed_count: Number(existing.total_questions || 0),
+        already_existed: true,
+      };
+    }
+
+    const title = (input.title || String(wp.title || "Supervisory & Partner DDQ Response")).slice(
+      0,
+      220
+    );
+    const markdown = String(wp.markdown_content || "");
+    const combinedCue = `${title} ${markdown.slice(0, 600)}`;
+
+    const inferredRequesterType: DdqRequesterType =
+      input.requester_type ||
+      (/\b(cbn|central bank|sec\b|ndpc|nfiu|fccpc|regulator|supervisory|examiner)\b/i.test(
+        combinedCue
+      )
+        ? "REGULATOR"
+        : /\b(investor|vc\b|private equity|series [a-d]|fund)\b/i.test(combinedCue)
+          ? "INVESTOR"
+          : /\b(acquirer|processor|switch|nibss|interswitch|visa|mastercard)\b/i.test(combinedCue)
+            ? "PAYMENT_PROCESSOR"
+            : "SPONSOR_BANK");
+
+    const inferredInstitution =
+      input.requesting_institution ||
+      (/\b(cbn|central bank of nigeria)\b/i.test(combinedCue)
+        ? "Central Bank of Nigeria (CBN)"
+        : /\b(ndpc)\b/i.test(combinedCue)
+          ? "Nigeria Data Protection Commission (NDPC)"
+          : /\b(nfiu)\b/i.test(combinedCue)
+            ? "Nigerian Financial Intelligence Unit (NFIU)"
+            : /\b(sec\b|securities and exchange)\b/i.test(combinedCue)
+              ? "Securities and Exchange Commission (SEC)"
+              : inferredRequesterType === "REGULATOR"
+                ? "Supervisory Authority"
+                : "Sponsor Bank / Partner");
+
+    const parsed = parseWorkProductDdqMarkdown(markdown, title);
+    const totalQuestions = parsed.questions.length;
+    const ddqId = crypto.randomUUID();
+    const sourceSha256 = crypto
+      .createHash("sha256")
+      .update(markdown || title, "utf8")
+      .digest("hex");
+
+    const gapPattern = /\[NEEDS_INTERNAL_EVIDENCE\]|NEEDS_INTERNAL_EVIDENCE|evidence gap|attach .*?(policy|certificate|log|report)/i;
+    const preparedRows = parsed.questions.map((q) => {
+      const draftAns = (q.existing_answer || "").trim() || null;
+      const hasGap = !draftAns || gapPattern.test(draftAns);
+      return {
+        tenant_id: tenantId,
+        ddq_id: ddqId,
+        question_index: q.question_index,
+        question_code: q.question_code,
+        section_name: q.section_name,
+        question_text: q.question_text,
+        domain: q.domain,
+        assigned_department: q.assigned_department,
+        source_sheet_name: null,
+        source_row_number: null,
+        source_question_col: null,
+        source_answer_col: null,
+        source_evidence_col: null,
+        status: hasGap ? "NEEDS_EVIDENCE" : "AI_DRAFTED",
+        answer_source: !draftAns
+          ? "NONE"
+          : hasGap
+            ? "AI_GAP_FLAGGED"
+            : "AI_EVIDENCE_GROUNDED",
+        draft_answer: draftAns,
+        grounding_classification: hasGap ? "MISSING_EVIDENCE" : "VERIFIED_EVIDENCE",
+        evidence_gap_flag: hasGap,
+      };
+    });
+
+    const answeredCount = preparedRows.filter((r) => Boolean(r.draft_answer)).length;
+    const gapCount = preparedRows.filter((r) => r.evidence_gap_flag).length;
+
+    const engagementMetadata = {
+      source_work_product_id: wp.id,
+      source_conversation_id: wp.conversation_id || null,
+      source_workflow_type: wp.workflow_type || "SUPERVISORY_DDQ_RESPONSE",
+      source_document_title: wp.title || title,
+      source_version_number: Number(wp.version_number || 1),
+      source_markdown_content: markdown,
+      promoted_from_chat: true,
+      promoted_at: new Date().toISOString(),
+    };
+
+    const { data: engagement, error: engErr } = await supabase
+      .from("ddq_engagements")
+      .insert({
+        id: ddqId,
+        tenant_id: tenantId,
+        title,
+        requesting_institution: inferredInstitution,
+        requester_type: inferredRequesterType,
+        reference_code: input.reference_code || null,
+        status: totalQuestions > 0 ? "IN_PROGRESS" : "DRAFT",
+        due_date: input.due_date ?? null,
+        source_file_name: `${title.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80)}.md`,
+        source_mime_type: "text/markdown",
+        source_sha256: sourceSha256,
+        source_format: "TEXT",
+        source_structure: parsed.source_structure,
+        total_questions: totalQuestions,
+        answered_count: answeredCount,
+        auto_matched_count: 0,
+        validated_count: 0,
+        evidence_gap_count: gapCount,
+        created_by: userId,
+        cco_owner_id: userId,
+        metadata: engagementMetadata,
+      })
+      .select("*")
+      .single();
+
+    if (engErr || !engagement) {
+      throw new Error(
+        `Failed to promote work product to DDQ engagement: ${engErr?.message || "Unknown error"}`
+      );
+    }
+
+    if (preparedRows.length > 0) {
+      for (let i = 0; i < preparedRows.length; i += 100) {
+        const slice = preparedRows.slice(i, i + 100);
+        const { error: qErr } = await supabase.from("ddq_questions").insert(slice);
+        if (qErr) {
+          throw new Error(`Failed to persist promoted DDQ questions: ${qErr.message}`);
+        }
+      }
+    }
+
+    const signoffRoles: DdqSignoffRole[] = ["CCO_MLRO", "CEO", "CISO", "CFO"];
+    await supabase.from("ddq_signoffs").insert(
+      signoffRoles.map((role) => ({
+        tenant_id: tenantId,
+        ddq_id: ddqId,
+        signoff_role: role,
+        status: "PENDING",
+      }))
+    );
+
+    await auditService.appendEvent({
+      tenantId,
+      actorId: userId,
+      actorType: "USER",
+      action: "DDQ_PROMOTED_FROM_WORK_PRODUCT",
+      entityType: "DDQ_ENGAGEMENT",
+      entityId: ddqId,
+      eventData: {
+        workProductId: wp.id,
+        conversationId: wp.conversation_id || null,
+        title,
+        totalQuestions,
+        answeredCount,
+        evidenceGapCount: gapCount,
+      },
+    });
+
+    return {
+      engagement: engagement as DdqEngagementRecord,
+      parsed_count: totalQuestions,
+      already_existed: false,
+    };
   }
 }
 

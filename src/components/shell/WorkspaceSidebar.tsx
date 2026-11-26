@@ -2,13 +2,11 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Plus,
   Search,
   BookOpen,
-  Percent,
-  CheckSquare,
   Activity,
   Settings,
   PanelLeftClose,
@@ -26,6 +24,7 @@ import {
   Building2,
   LogOut,
   ChevronUp,
+  ChevronRight,
   Globe,
   FileCheck2,
   FileText,
@@ -33,13 +32,23 @@ import {
   X,
   ClipboardCheck,
   FolderLock,
-  BookMarked,
+  Layers,
+  ShieldCheck,
+  Compass,
 } from "lucide-react";
 import { useAuth, useClerk, useUser } from "@clerk/nextjs";
 import { CogentLogo } from "@/components/brand/CogentLogo";
 import { useWorkspace } from "@/components/shell/WorkspaceProvider";
 import type { ConversationRecord } from "@/modules/conversations/conversation.service";
 import type { CommandCenterHit, SearchQuotaSnapshot } from "@/contracts/search.contracts";
+
+const OPERATIONS_NAV_ITEMS = [
+  { href: "/ddqs", label: "DDQ Operations", icon: ClipboardCheck },
+  { href: "/policies", label: "Policy Workflow", icon: FileCheck2 },
+  { href: "/features", label: "Feature Governance", icon: ShieldCheck },
+  { href: "/expansions", label: "Cross-Border Expansion", icon: Compass },
+  { href: "/drift-monitors", label: "URL Drift Monitors", icon: Activity },
+] as const;
 
 interface SubscriptionSummary {
   planName: string;
@@ -99,13 +108,14 @@ export function WorkspaceSidebar({
 }: WorkspaceSidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const activeKbTab = searchParams.get("tab") || "products";
+  const isOperationsRoute = OPERATIONS_NAV_ITEMS.some((item) => pathname.startsWith(item.href));
   const { isLoaded, isSignedIn, orgId, userId } = useAuth();
   const { signOut } = useClerk();
   const { user } = useUser();
   const workspace = useWorkspace();
 
+  const [operationsOpen, setOperationsOpen] = useState(isOperationsRoute);
+  const [opsPopoverOpen, setOpsPopoverOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [commandModalOpen, setCommandModalOpen] = useState(false);
   const [commandQuery, setCommandQuery] = useState("");
@@ -151,6 +161,13 @@ export function WorkspaceSidebar({
     .map((part) => part[0]?.toUpperCase() || "")
     .join("") || "U";
 
+  // Auto-expand Operations accordion whenever user navigates directly into an Operations register
+  useEffect(() => {
+    if (isOperationsRoute) {
+      setOperationsOpen(true);
+    }
+  }, [isOperationsRoute]);
+
   // Keyboard shortcut Cmd/Ctrl + K opens Workspace Command Search Modal
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -159,6 +176,7 @@ export function WorkspaceSidebar({
         setCommandModalOpen((prev) => !prev);
       } else if (e.key === "Escape") {
         setUserMenuOpen(false);
+        setOpsPopoverOpen(false);
         setCommandModalOpen(false);
       }
     };
@@ -225,13 +243,16 @@ export function WorkspaceSidebar({
     }
   }, [collapsed]);
 
-  // Close user menu and thread options menu on outside click
+  // Close user menu, collapsed Operations popover, and thread options menu on outside click
   useEffect(() => {
-    if (!userMenuOpen && !menuOpenId) return;
+    if (!userMenuOpen && !menuOpenId && !opsPopoverOpen) return;
     const onMouseDown = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       if (userMenuOpen && !target?.closest("[data-user-menu-root]")) {
         setUserMenuOpen(false);
+      }
+      if (opsPopoverOpen && !target?.closest("[data-ops-popover-root]")) {
+        setOpsPopoverOpen(false);
       }
       if (menuOpenId && !target?.closest("[data-thread-menu-root]")) {
         setMenuOpenId(null);
@@ -240,7 +261,7 @@ export function WorkspaceSidebar({
     };
     document.addEventListener("mousedown", onMouseDown);
     return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [userMenuOpen, menuOpenId]);
+  }, [userMenuOpen, menuOpenId, opsPopoverOpen]);
 
   const handleAvatarFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -572,7 +593,7 @@ export function WorkspaceSidebar({
 
         {/* Scrollable Navigation + History */}
         <div className="flex-1 overflow-y-auto px-2.5 space-y-5 pb-3">
-          {/* Group 1: Workspace */}
+          {/* Group 1: Core Workspace (Option 1: Streamlined 4-item navigation) */}
           <div className="space-y-0.5">
             <div className="px-2.5 pb-1 text-[11px] font-medium text-zinc-400">
               Workspace
@@ -590,7 +611,7 @@ export function WorkspaceSidebar({
                 )}`}
               >
                 <Plus className="h-4 w-4 text-zinc-500 shrink-0" />
-                <span>New Audit</span>
+                <span>New Chat</span>
               </button>
             ) : (
               <Link
@@ -600,19 +621,9 @@ export function WorkspaceSidebar({
                 className={navLinkClass(pathname === "/chat")}
               >
                 <Plus className="h-4 w-4 text-zinc-500 shrink-0" />
-                <span>New Audit</span>
+                <span>New Chat</span>
               </Link>
             )}
-
-            <Link
-              href="/ddqs"
-              prefetch={true}
-              onClick={onCloseMobile}
-              className={navLinkClass(pathname.startsWith("/ddqs"))}
-            >
-              <ClipboardCheck className="h-4 w-4 text-zinc-500 shrink-0" />
-              <span>DDQ Operations</span>
-            </Link>
 
             <Link
               href="/search"
@@ -625,111 +636,61 @@ export function WorkspaceSidebar({
             </Link>
 
             <Link
-              href="/knowledge-base?tab=evidence"
+              href="/knowledge-base"
               prefetch={true}
               onClick={onCloseMobile}
-              className={navLinkClass(
-                pathname === "/knowledge-base" && activeKbTab === "evidence",
-              )}
+              className={navLinkClass(pathname.startsWith("/knowledge-base"))}
             >
               <FolderLock className="h-4 w-4 text-zinc-500 shrink-0" />
-              <span>Evidence Vault</span>
+              <span>Knowledge Vault</span>
             </Link>
 
-            <Link
-              href="/knowledge-base?tab=qa-library"
-              prefetch={true}
-              onClick={onCloseMobile}
-              className={navLinkClass(
-                pathname === "/knowledge-base" && activeKbTab === "qa-library",
+            {/* Collapsible Operations Drawer (Saved Chat Working Materials & Registers) */}
+            <div className="pt-0.5">
+              <button
+                type="button"
+                aria-expanded={operationsOpen}
+                onClick={() => setOperationsOpen((prev) => !prev)}
+                className={`w-full justify-between cursor-pointer ${navLinkClass(
+                  isOperationsRoute && !operationsOpen,
+                )}`}
+              >
+                <span className="flex items-center gap-2.5 min-w-0">
+                  <Layers className="h-4 w-4 text-zinc-500 shrink-0" />
+                  <span className="truncate">Operations</span>
+                </span>
+                <ChevronRight
+                  className={`h-3.5 w-3.5 text-zinc-400 shrink-0 transition-transform duration-150 ${
+                    operationsOpen ? "rotate-90" : ""
+                  }`}
+                />
+              </button>
+
+              {operationsOpen && (
+                <div className="mt-0.5 ml-3 pl-2.5 border-l border-zinc-200 space-y-0.5">
+                  {OPERATIONS_NAV_ITEMS.map((item) => {
+                    const ItemIcon = item.icon;
+                    const active = pathname.startsWith(item.href);
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        prefetch={true}
+                        onClick={onCloseMobile}
+                        className={`flex items-center gap-2 px-2 py-1.5 rounded-md text-[12.5px] transition-colors ${
+                          active
+                            ? "bg-zinc-200/70 text-zinc-950 font-medium"
+                            : "text-zinc-600 hover:bg-zinc-200/50 hover:text-zinc-950"
+                        }`}
+                      >
+                        <ItemIcon className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+                        <span className="truncate">{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
               )}
-            >
-              <BookMarked className="h-4 w-4 text-zinc-500 shrink-0" />
-              <span>Approved Q&amp;A Library</span>
-            </Link>
-
-            <Link
-              href="/knowledge-base?tab=playbooks"
-              prefetch={true}
-              onClick={onCloseMobile}
-              className={navLinkClass(
-                pathname === "/knowledge-base" && activeKbTab === "playbooks",
-              )}
-            >
-              <BookOpen className="h-4 w-4 text-zinc-500 shrink-0" />
-              <span>Knowledge &amp; Playbooks</span>
-            </Link>
-
-            <Link
-              href="/knowledge-base?tab=products"
-              prefetch={true}
-              onClick={onCloseMobile}
-              className={navLinkClass(
-                pathname === "/knowledge-base" && activeKbTab === "products",
-              )}
-            >
-              <Percent className="h-4 w-4 text-zinc-500 shrink-0" />
-              <span>Product Rate Cards</span>
-            </Link>
-          </div>
-
-          {/* Group 2: Governance */}
-          <div className="space-y-0.5">
-            <div className="px-2.5 pb-1 text-[11px] font-medium text-zinc-400">
-              Governance
             </div>
-
-            <Link
-              href="/policies"
-              prefetch={true}
-              onClick={onCloseMobile}
-              className={navLinkClass(pathname.startsWith("/policies"))}
-            >
-              <FileCheck2 className="h-4 w-4 text-zinc-500 shrink-0" />
-              <span>Policy Workflow</span>
-            </Link>
-
-            <Link
-              href="/features"
-              prefetch={true}
-              onClick={onCloseMobile}
-              className={navLinkClass(pathname.startsWith("/features"))}
-            >
-              <FileCheck2 className="h-4 w-4 text-zinc-500 shrink-0" />
-              <span>Feature Governance</span>
-            </Link>
-
-            <Link
-              href="/expansions"
-              prefetch={true}
-              onClick={onCloseMobile}
-              className={navLinkClass(pathname.startsWith("/expansions"))}
-            >
-              <Globe className="h-4 w-4 text-zinc-500 shrink-0" />
-              <span>Cross-Border Expansion</span>
-            </Link>
-
-            <Link
-              href="/knowledge-base?tab=rules"
-              prefetch={true}
-              onClick={onCloseMobile}
-              className={navLinkClass(
-                pathname === "/knowledge-base" && activeKbTab === "rules",
-              )}
-            >
-              <CheckSquare className="h-4 w-4 text-zinc-500 shrink-0" />
-              <span>Compliance Rules</span>
-            </Link>
-
-            <Link
-              href="/drift-monitors"
-              prefetch={true}
-              onClick={onCloseMobile}
-              className={navLinkClass(pathname.startsWith("/drift-monitors"))}
-            >
-              <Activity className="h-4 w-4 text-zinc-500 shrink-0" />
-              <span>URL Drift Monitors</span>
-            </Link>
           </div>
 
           {/* Group 3: Recent Threads (persisted across all workspace views) */}
@@ -1047,8 +1008,8 @@ export function WorkspaceSidebar({
             type="button"
             onClick={onNewAudit}
             className={iconNavClass(pathname === "/chat" && !activeConversationId)}
-            title="New Audit"
-            aria-label="New Audit"
+            title="New Chat"
+            aria-label="New Chat"
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -1056,21 +1017,12 @@ export function WorkspaceSidebar({
           <Link
             href="/chat?new=1"
             className={iconNavClass(pathname === "/chat")}
-            title="New Audit"
-            aria-label="New Audit"
+            title="New Chat"
+            aria-label="New Chat"
           >
             <Plus className="h-4 w-4" />
           </Link>
         )}
-
-        <Link
-          href="/ddqs"
-          className={iconNavClass(pathname.startsWith("/ddqs"))}
-          title="DDQ Operations"
-          aria-label="DDQ Operations"
-        >
-          <ClipboardCheck className="h-4 w-4" />
-        </Link>
 
         <Link
           href="/search"
@@ -1082,78 +1034,53 @@ export function WorkspaceSidebar({
         </Link>
 
         <Link
-          href="/knowledge-base?tab=evidence"
-          className={iconNavClass(pathname === "/knowledge-base" && activeKbTab === "evidence")}
-          title="Evidence Vault"
-          aria-label="Evidence Vault"
+          href="/knowledge-base"
+          className={iconNavClass(pathname.startsWith("/knowledge-base"))}
+          title="Knowledge Vault"
+          aria-label="Knowledge Vault"
         >
           <FolderLock className="h-4 w-4" />
         </Link>
 
-        <Link
-          href="/knowledge-base?tab=qa-library"
-          className={iconNavClass(pathname === "/knowledge-base" && activeKbTab === "qa-library")}
-          title="Approved Q&A Library"
-          aria-label="Approved Q&A Library"
-        >
-          <BookMarked className="h-4 w-4" />
-        </Link>
+        <div data-ops-popover-root className="relative">
+          <button
+            type="button"
+            onClick={() => setOpsPopoverOpen((prev) => !prev)}
+            className={iconNavClass(isOperationsRoute || opsPopoverOpen)}
+            title="Operations"
+            aria-label="Operations"
+            aria-expanded={opsPopoverOpen}
+          >
+            <Layers className="h-4 w-4" />
+          </button>
 
-        <Link
-          href="/knowledge-base?tab=playbooks"
-          className={iconNavClass(pathname === "/knowledge-base" && activeKbTab === "playbooks")}
-          title="Knowledge & Playbooks"
-          aria-label="Knowledge and Playbooks"
-        >
-          <BookOpen className="h-4 w-4" />
-        </Link>
-
-        <Link
-          href="/knowledge-base?tab=products"
-          className={iconNavClass(pathname === "/knowledge-base" && activeKbTab === "products")}
-          title="Product Rate Cards"
-          aria-label="Product Rate Cards"
-        >
-          <Percent className="h-4 w-4" />
-        </Link>
-
-        <div className="w-6 h-px bg-zinc-200 my-1" />
-
-        <Link
-          href="/policies"
-          className={iconNavClass(pathname.startsWith("/policies"))}
-          title="Policy Workflow"
-          aria-label="Policy Workflow"
-        >
-          <FileCheck2 className="h-4 w-4" />
-        </Link>
-
-        <Link
-          href="/expansions"
-          className={iconNavClass(pathname.startsWith("/expansions"))}
-          title="Cross-Border Expansion"
-          aria-label="Cross-Border Expansion"
-        >
-          <Globe className="h-4 w-4" />
-        </Link>
-
-        <Link
-          href="/knowledge-base?tab=rules"
-          className={iconNavClass(pathname === "/knowledge-base" && activeKbTab === "rules")}
-          title="Compliance Rules"
-          aria-label="Compliance Rules"
-        >
-          <CheckSquare className="h-4 w-4" />
-        </Link>
-
-        <Link
-          href="/drift-monitors"
-          className={iconNavClass(pathname.startsWith("/drift-monitors"))}
-          title="URL Drift Monitors"
-          aria-label="URL Drift Monitors"
-        >
-          <Activity className="h-4 w-4" />
-        </Link>
+          {opsPopoverOpen && (
+            <div className="absolute left-full top-0 ml-2 w-56 rounded-lg border border-zinc-200 bg-white shadow-lg py-1.5 z-40">
+              <div className="px-3 py-1 text-[10.5px] font-medium uppercase tracking-wider text-zinc-400">
+                Operations
+              </div>
+              {OPERATIONS_NAV_ITEMS.map((item) => {
+                const ItemIcon = item.icon;
+                const active = pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    onClick={() => setOpsPopoverOpen(false)}
+                    className={`flex items-center gap-2 px-3 py-1.5 text-[12.5px] transition-colors ${
+                      active
+                        ? "bg-zinc-100 text-zinc-950 font-medium"
+                        : "text-zinc-700 hover:bg-zinc-100 hover:text-zinc-950"
+                    }`}
+                  >
+                    <ItemIcon className="h-3.5 w-3.5 text-zinc-500 shrink-0" />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Bottom: Settings + User Avatar (no Org icon, no email) */}
