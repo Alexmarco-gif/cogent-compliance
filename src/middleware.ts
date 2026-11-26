@@ -17,6 +17,7 @@ const isAlwaysPublicRoute = createRouteMatcher([
   "/platform(.*)",
   "/solutions(.*)",
   "/resources(.*)",
+  "/blog(.*)",
   "/company(.*)",
   "/legal(.*)",
   "/robots.txt",
