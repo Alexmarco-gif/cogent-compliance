@@ -27,6 +27,7 @@ import {
   Pencil,
   X,
   ExternalLink,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import type {
@@ -106,6 +107,8 @@ export interface AdaptiveMessageRendererProps {
     report: StructuredComplianceReport
   ) => void;
   onOpenWorkProduct?: (workProductId: string, artifactType?: string) => void;
+  onCreateDocument?: () => Promise<void> | void;
+  isCreatingDocument?: boolean;
   onApplyCompliantRewrite?: (rewrittenCopy: string) => Promise<boolean | void> | boolean | void;
   onApproveAndSealDossier?: (rewrittenCopy: string) => Promise<boolean | void> | boolean | void;
   isStreaming?: boolean;
@@ -339,6 +342,8 @@ export function AdaptiveMessageRenderer({
   onEditMessage,
   onOpenArtifactCanvas,
   onOpenWorkProduct,
+  onCreateDocument,
+  isCreatingDocument = false,
   isStreaming,
 }: AdaptiveMessageRendererProps) {
   const [copiedAnswer, setCopiedAnswer] = React.useState(false);
@@ -1050,7 +1055,9 @@ export function AdaptiveMessageRenderer({
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="font-mono text-[10px] font-semibold uppercase tracking-wider text-zinc-600">
-                    {workProductRef.workflow_type.replace(/_/g, " ")}
+                    {workProductRef.workflow_type === "GENERAL_COMPLIANCE_DOCUMENT"
+                      ? "COMPLIANCE DOCUMENT"
+                      : workProductRef.workflow_type.replace(/_/g, " ")}
                   </span>
                   <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-white border border-zinc-200 text-zinc-700">
                     v{workProductRef.version_number}
@@ -1171,7 +1178,7 @@ export function AdaptiveMessageRenderer({
             )}
           </div>
 
-          {workProductRef && onOpenWorkProduct && (
+          {workProductRef && onOpenWorkProduct ? (
             <button
               type="button"
               onClick={() =>
@@ -1182,7 +1189,29 @@ export function AdaptiveMessageRenderer({
               <span>Open Work Product</span>
               <ArrowUpRight className="h-3.5 w-3.5" />
             </button>
-          )}
+          ) : onCreateDocument && sanitizedMarkdown.length >= 120 ? (
+            <button
+              type="button"
+              disabled={isCreatingDocument}
+              onClick={() => {
+                void onCreateDocument();
+              }}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-zinc-200 bg-white hover:bg-zinc-50 hover:border-zinc-300 text-[11.5px] font-medium text-zinc-700 hover:text-zinc-950 transition-colors cursor-pointer disabled:opacity-60"
+              title="Open this response as an editable, downloadable Word (.docx) & PDF document"
+            >
+              {isCreatingDocument ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Creating document...</span>
+                </>
+              ) : (
+                <>
+                  <FileText className="h-3.5 w-3.5" />
+                  <span>Create Document</span>
+                </>
+              )}
+            </button>
+          ) : null}
         </div>
       )}
 

@@ -105,6 +105,8 @@ export const COMPLIANCE_OFFICER_IDENTITY: AgentIdentityProfile = {
       "<prior_turn_audit_summary>",
       "<policy_gap_redline_execution_blueprint>",
       "<supervisory_ddq_synthesis_directives>",
+      "<prior_uploaded_document_context>",
+      "<fetched_live_url_content>",
     ],
   },
 };

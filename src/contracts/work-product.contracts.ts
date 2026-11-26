@@ -14,6 +14,7 @@ export const WORKFLOW_TYPES = [
   "SUPERVISORY_DDQ_RESPONSE",
   "CROSS_BORDER_COMPARISON",
   "CAMPAIGN_COMPLIANCE_KIT",
+  "GENERAL_COMPLIANCE_DOCUMENT",
 ] as const;
 export type WorkflowType = (typeof WORKFLOW_TYPES)[number];
 
@@ -27,11 +28,22 @@ export const WORK_PRODUCT_ARTIFACT_TYPES = [
   "cbn_kfs_statement",
   "arcon_vetting_memo",
   "audit_dossier_summary",
+  "compliance_document",
 ] as const;
 export type WorkProductArtifactType = (typeof WORK_PRODUCT_ARTIFACT_TYPES)[number];
 
 export const WORK_PRODUCT_STATUSES = ["DRAFT", "REVIEWED", "FINALIZED", "ARCHIVED"] as const;
 export type WorkProductStatus = (typeof WORK_PRODUCT_STATUSES)[number];
+
+const optionalNonEmptyString = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+  z.string().min(1).optional()
+);
+
+const optionalHttpUrl = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? undefined : v),
+  z.string().url().optional()
+);
 
 export const workProductCitationSchema = z.object({
   source_class: z.enum(["VERIFIED_OFFICIAL_SOURCE", "INTERNAL_PLAYBOOK", "LIVE_WEB_INTELLIGENCE"]),
@@ -39,10 +51,10 @@ export const workProductCitationSchema = z.object({
   regulator: z.string().optional(),
   instrument_title: z.string().optional(),
   clause_reference: z.string().optional(),
-  regulatory_clause_id: z.string().uuid().optional(),
-  knowledge_rule_id: z.string().uuid().optional(),
-  live_web_retrieval_id: z.string().uuid().optional(),
-  retrieved_url: z.string().url().optional(),
+  regulatory_clause_id: optionalNonEmptyString,
+  knowledge_rule_id: optionalNonEmptyString,
+  live_web_retrieval_id: optionalNonEmptyString,
+  retrieved_url: optionalHttpUrl,
   trust_tier: z.string().optional(),
   retrieved_at: z.string().optional(),
 });

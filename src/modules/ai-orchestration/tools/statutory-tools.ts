@@ -808,7 +808,7 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "upsert_work_product_artifact",
     description:
-      "Persists or updates an editable compliance work product deliverable (Statutory Structuring Memo, Policy Gap Redline, Supervisory DDQ Response, or Cross-Border Matrix) in the right-hand 50/50 Studio Canvas with SHA-256 sealing and version history.",
+      "Persists or updates an editable, downloadable (PDF/DOCX/MD) compliance document or work product deliverable in the right-hand 50/50 Studio Canvas with SHA-256 sealing and version history. Supports BOTH specialized workflows (Statutory Structuring Memo, Policy Gap Redline, Net-New Policy, Supervisory DDQ Response, Cross-Border Matrix) AND any ad-hoc compliance document (GENERAL_COMPLIANCE_DOCUMENT / compliance_document: executive briefs, memos, circular summaries, compliance checklists, contract reviews, regulator letters, incident reports, risk registers, training guides).",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -819,12 +819,12 @@ export const STATUTORY_TOOL_DECLARATIONS: FunctionDeclaration[] = [
         workflow_type: {
           type: Type.STRING,
           description:
-            "One of: PRODUCT_STRUCTURING_MEMO, POLICY_GAP_REDLINE, POLICY_DRAFT_NEW, SUPERVISORY_DDQ_RESPONSE, CROSS_BORDER_COMPARISON, CAMPAIGN_COMPLIANCE_KIT.",
+            "One of: GENERAL_COMPLIANCE_DOCUMENT, PRODUCT_STRUCTURING_MEMO, POLICY_GAP_REDLINE, POLICY_DRAFT_NEW, SUPERVISORY_DDQ_RESPONSE, CROSS_BORDER_COMPARISON, CAMPAIGN_COMPLIANCE_KIT. Use GENERAL_COMPLIANCE_DOCUMENT for any ad-hoc compliance document requested outside a preset workflow.",
         },
         artifact_type: {
           type: Type.STRING,
           description:
-            "One of: statutory_structuring_memo, policy_gap_redline, policy_draft_document, supervisory_ddq_response, cross_border_matrix, compliant_ad_rewrite, cbn_kfs_statement, arcon_vetting_memo, audit_dossier_summary.",
+            "One of: compliance_document, statutory_structuring_memo, policy_gap_redline, policy_draft_document, supervisory_ddq_response, cross_border_matrix, compliant_ad_rewrite, cbn_kfs_statement, arcon_vetting_memo, audit_dossier_summary. Use compliance_document with GENERAL_COMPLIANCE_DOCUMENT.",
         },
         title: {
           type: Type.STRING,
@@ -2643,13 +2643,15 @@ export class StatutoryToolExecutor {
   ): Promise<Record<string, unknown>> {
     const workflowType = (WORKFLOW_TYPES as readonly string[]).includes(args.workflow_type)
       ? (args.workflow_type as WorkflowType)
-      : "PRODUCT_STRUCTURING_MEMO";
+      : "GENERAL_COMPLIANCE_DOCUMENT";
 
     const artifactType = (WORK_PRODUCT_ARTIFACT_TYPES as readonly string[]).includes(
       args.artifact_type
     )
       ? (args.artifact_type as WorkProductArtifactType)
-      : "statutory_structuring_memo";
+      : workflowType === "GENERAL_COMPLIANCE_DOCUMENT"
+        ? "compliance_document"
+        : "statutory_structuring_memo";
 
     const jurisdictions: SearchJurisdiction[] = (
       args.jurisdiction_scope && args.jurisdiction_scope.length > 0

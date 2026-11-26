@@ -46,6 +46,7 @@ const WORKFLOW_LABELS: Record<WorkflowType, string> = {
   SUPERVISORY_DDQ_RESPONSE: "Supervisory / Partner DDQ",
   CROSS_BORDER_COMPARISON: "Cross-Border Expansion Matrix",
   CAMPAIGN_COMPLIANCE_KIT: "Campaign Compliance Kit",
+  GENERAL_COMPLIANCE_DOCUMENT: "Compliance Document",
 };
 
 const STATUS_STYLE: Record<WorkProductStatus, string> = {

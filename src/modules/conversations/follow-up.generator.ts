@@ -51,10 +51,14 @@ function defaultBadgeForWorkflow(wf?: WorkflowType): string {
       return "Audit Kit";
     case "POLICY_GAP_REDLINE":
       return "Policy Redline";
+    case "POLICY_DRAFT_NEW":
+      return "New Policy";
     case "SUPERVISORY_DDQ_RESPONSE":
       return "DDQ Draft";
     case "CROSS_BORDER_COMPARISON":
       return "Matrix";
+    case "GENERAL_COMPLIANCE_DOCUMENT":
+      return "Document";
     case "PRODUCT_STRUCTURING_MEMO":
     default:
       return "Work Product";

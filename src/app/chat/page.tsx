@@ -138,6 +138,45 @@ function describeStoredMessageContent(m: MessageRecord): string {
   return m.content;
 }
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isMarketingAttachmentUpload(params: {
+  text: string;
+  workflowHint?: WorkflowType;
+  attachments: Array<PendingAttachment | MessageAttachmentChip>;
+}): boolean {
+  if (params.workflowHint === "CAMPAIGN_COMPLIANCE_KIT") return true;
+  if (params.workflowHint) return false;
+
+  const filenames = params.attachments.map((a) => a.filename || "");
+  const mimeTypes = params.attachments.map((a) => a.mimeType || "");
+  const extracted = params.attachments
+    .map((a) => ("extractedText" in a && a.extractedText ? a.extractedText : ""))
+    .join("\n");
+
+  const hasPromptMarketingCue =
+    /\b(?:flyer|banner|poster|billboard|ad\s+copy|promo(?:tional)?\s+(?:copy|material|asset|campaign)|campaign\s+(?:asset|copy|creative|flyer|banner|clearance)|marketing\s+(?:asset|copy|creative|flyer|campaign)|social\s+(?:media\s+)?(?:ad|post|caption)|instagram\s+(?:ad|post|caption)|tiktok\s+(?:ad|script)|influencer\s+(?:script|skit)|sms\s+(?:blast|promo|ad)|play\s*store|app\s*store|landing\s*page|arcon\s+asp)\b/i.test(
+      params.text,
+    );
+  if (hasPromptMarketingCue) return true;
+
+  const hasPromoExtractedClaim =
+    /\b(?:0%\s*interest|zero\s+interest|instant\s+(?:loan|cash|credit)|no\s+collateral|guaranteed\s+returns?|100%\s*risk[- ]?free|apply\s+now|loan\s+in\s+\d+\s*(?:min|minute))\b/i.test(
+      extracted,
+    );
+  if (hasPromoExtractedClaim) return true;
+
+  const hasImageAttachment =
+    mimeTypes.some((m) => m.toLowerCase().startsWith("image/")) ||
+    filenames.some((f) => /\.(?:jpg|jpeg|png|webp)$/i.test(f));
+  const explicitNonMarketingCue =
+    /\b(?:circular|gazette|contract|agreement|sla|nda|dpa|letter|invoice|receipt|certificate|license|licence|board\s+minutes|audit\s+report|risk\s+register)\b/i.test(
+      `${params.text} ${filenames.join(" ")}`,
+    );
+
+  return hasImageAttachment && !explicitNonMarketingCue;
+}
+
 function ChatWorkspaceContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -206,6 +245,7 @@ function ChatWorkspaceContent() {
   const [canvasActiveTab, setCanvasActiveTab] =
     useState<ComplianceArtifactType>("compliant_ad_rewrite");
   const [showArtifactCanvas, setShowArtifactCanvas] = useState(false);
+  const [creatingDocMessageId, setCreatingDocMessageId] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const activeConvIdRef = useRef<string | null>(null);
@@ -974,21 +1014,31 @@ function ChatWorkspaceContent() {
     setMessages((prev) => [...prev, userMsg, assistantMsg]);
     setIsStreaming(true);
 
+    const isMarketingAttachment =
+      attachmentAssetIds.length > 0 &&
+      isMarketingAttachmentUpload({
+        text,
+        workflowHint: effectiveWorkflowHint,
+        attachments: attachedAssets,
+      });
+
     if (!currentConvId) {
       const topicTitle = deriveConversationTopicTitle(text, {
         productName: selectedProduct?.product_name,
         attachmentName: attachedAssets[0]?.filename,
       });
       const resolvedContextType =
-        effectiveWorkflowHint === "POLICY_GAP_REDLINE"
+        effectiveWorkflowHint === "POLICY_GAP_REDLINE" ||
+        effectiveWorkflowHint === "POLICY_DRAFT_NEW"
           ? "POLICY_REDLINE"
           : effectiveWorkflowHint === "SUPERVISORY_DDQ_RESPONSE"
             ? "DDQ_RESPONSE"
             : effectiveWorkflowHint === "CROSS_BORDER_COMPARISON"
               ? "CROSS_BORDER"
-              : effectiveWorkflowHint === "PRODUCT_STRUCTURING_MEMO"
+              : effectiveWorkflowHint === "PRODUCT_STRUCTURING_MEMO" ||
+                  effectiveWorkflowHint === "GENERAL_COMPLIANCE_DOCUMENT"
                 ? "WORKFLOW_RESEARCH"
-                : selectedProduct || attachmentAssetIds.length > 0
+                : selectedProduct || isMarketingAttachment
                   ? "CAMPAIGN"
                   : "GENERAL";
       try {
@@ -1036,7 +1086,7 @@ function ChatWorkspaceContent() {
       return false;
     }
 
-    if (attachmentAssetIds.length > 0 && !activeCampaign) {
+    if (isMarketingAttachment && !activeCampaign) {
       const firstFilename = attachedAssets[0]?.filename || "Campaign Asset";
       const baseTitle = firstFilename.replace(/\.[^/.]+$/, "").trim();
       const campaignName = baseTitle.length >= 3 ? baseTitle : `${baseTitle || "Campaign"} Asset`;
@@ -1552,10 +1602,100 @@ function ChatWorkspaceContent() {
   const handleOpenWorkProduct = (workProductId: string, artifactType?: string) => {
     setActiveWorkProductId(workProductId);
     setCanvasActiveTab(
-      (artifactType as ComplianceArtifactType) || "statutory_structuring_memo",
+      (artifactType as ComplianceArtifactType) || "compliance_document",
     );
     setShowArtifactCanvas(true);
     setShowInspector(false);
+  };
+
+  const handleCreateDocumentFromMessage = async (msg: DisplayMessage) => {
+    if (creatingDocMessageId || !msg.content || msg.content.trim().length < 20) return;
+    setCreatingDocMessageId(msg.id);
+    setChatError(null);
+    try {
+      const headingMatch = msg.content.match(/^#{1,4}\s+(.+)$/m)?.[1];
+      const rawTitle = (
+        headingMatch?.replace(/\*+/g, "").trim() ||
+        activeConversation?.title ||
+        "Compliance Brief"
+      ).slice(0, 180);
+      const safeTitle = rawTitle.length >= 3 ? rawTitle : "Compliance Document";
+
+      const mappedCitations = (msg.citations || []).map((c) => ({
+        source_class: c.source_class,
+        badge_label:
+          c.badge_label ||
+          (c.source_class === "VERIFIED_OFFICIAL_SOURCE"
+            ? "Verified Statutory Vault"
+            : c.source_class === "INTERNAL_PLAYBOOK"
+              ? "Internal Playbook Rule"
+              : "Live Web Intelligence"),
+        ...(c.regulator ? { regulator: c.regulator } : {}),
+        instrument_title: c.instrument_title || c.page_title || c.rule_title || "Compliance Source",
+        ...(c.clause_reference ? { clause_reference: c.clause_reference } : {}),
+        ...(c.regulatory_clause_id ? { regulatory_clause_id: c.regulatory_clause_id } : {}),
+        ...(c.knowledge_rule_id ? { knowledge_rule_id: c.knowledge_rule_id } : {}),
+        ...(c.live_web_retrieval_id ? { live_web_retrieval_id: c.live_web_retrieval_id } : {}),
+        ...(c.retrieved_url && /^https?:\/\//i.test(c.retrieved_url)
+          ? { retrieved_url: c.retrieved_url }
+          : {}),
+        ...(c.trust_tier ? { trust_tier: c.trust_tier } : {}),
+      }));
+
+      const currentConvId = activeConvId ?? activeConvIdRef.current;
+      const res = await fetch("/api/marketing-shield/v1/work-products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...(currentConvId && UUID_PATTERN.test(currentConvId)
+            ? { conversation_id: currentConvId }
+            : {}),
+          ...(UUID_PATTERN.test(msg.id) ? { message_id: msg.id } : {}),
+          workflow_type: "GENERAL_COMPLIANCE_DOCUMENT",
+          artifact_type: "compliance_document",
+          title: safeTitle,
+          jurisdiction_scope:
+            searchJurisdictions && searchJurisdictions.length > 0 ? searchJurisdictions : ["NG"],
+          markdown_content: msg.content,
+          citations: mappedCitations,
+          status: "DRAFT",
+          change_summary: "Created document from Compliance Copilot response",
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json.success || !json.data?.work_product) {
+        applyApiFailure(res.status, json, "Failed to create compliance document.");
+        return;
+      }
+
+      const wp = json.data.work_product as {
+        id: string;
+        artifact_type: string;
+        workflow_type: string;
+        title: string;
+        version_number: number;
+      };
+      const bannerRef: WorkProductBannerRef = {
+        work_product_id: wp.id,
+        artifact_type: wp.artifact_type,
+        workflow_type: wp.workflow_type,
+        title: wp.title,
+        version_number: wp.version_number,
+      };
+
+      setMessages((prev) =>
+        prev.map((m) => (m.id === msg.id ? { ...m, workProductRef: bannerRef } : m)),
+      );
+      setActiveWorkProductId(wp.id);
+      setCanvasActiveTab((wp.artifact_type as ComplianceArtifactType) || "compliance_document");
+      setShowArtifactCanvas(true);
+      setShowInspector(false);
+    } catch (err) {
+      console.error("Failed to create document from chat message", err);
+      setChatError("Unable to create document right now. Please try again.");
+    } finally {
+      setCreatingDocMessageId(null);
+    }
   };
 
   if (!clerkLoaded || !isSignedIn || !orgId || !onboardingReady) {
@@ -1780,6 +1920,12 @@ function ChatWorkspaceContent() {
                   onEditMessage={handleEditMessage}
                   onOpenArtifactCanvas={handleOpenArtifactCanvas}
                   onOpenWorkProduct={handleOpenWorkProduct}
+                  onCreateDocument={
+                    msg.role === "ASSISTANT" && !msg.workProductRef
+                      ? () => handleCreateDocumentFromMessage(msg)
+                      : undefined
+                  }
+                  isCreatingDocument={creatingDocMessageId === msg.id}
                   onApplyCompliantRewrite={handleApplyCompliantRewrite}
                   onApproveAndSealDossier={handleApproveAndSealDossier}
                 />

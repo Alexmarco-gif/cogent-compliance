@@ -58,6 +58,7 @@ export const CAMPAIGN_CLEARANCE_PACK: WorkflowPackDefinition = {
     "fetch_live_url_content",
     "recall_institutional_precedents",
     "search_nigerian_regulations",
+    "upsert_work_product_artifact",
   ],
   maxToolRounds: 3,
   temperature: 0.2,

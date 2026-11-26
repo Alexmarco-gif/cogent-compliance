@@ -78,6 +78,7 @@ const WORKFLOW_LABELS: Record<WorkflowType, string> = {
   SUPERVISORY_DDQ_RESPONSE: "Supervisory DDQ",
   CROSS_BORDER_COMPARISON: "Cross-Border Matrix",
   CAMPAIGN_COMPLIANCE_KIT: "Campaign Clearance",
+  GENERAL_COMPLIANCE_DOCUMENT: "Compliance Document",
 };
 
 export interface ChatComposerProps {
@@ -342,9 +343,14 @@ export function ChatComposer({
     const currentAttachments = [...pendingAttachments];
     const attachmentAssetIds = currentAttachments.map((a) => a.assetId);
     const attachmentNames = currentAttachments.map((a) => a.filename).join(", ");
+    const allImageAttachments =
+      currentAttachments.length > 0 &&
+      currentAttachments.every((a) => a.mimeType.startsWith("image/"));
     const text =
       content.trim() ||
-      `Review the attached document/asset (${attachmentNames}) and generate the appropriate compliance deliverable.`;
+      (allImageAttachments
+        ? `Review the attached creative asset (${attachmentNames}) for CBN, FCCPC, and ARCON compliance.`
+        : `Analyze the attached document (${attachmentNames}), summarize all key compliance obligations, risks, and action items, and prepare a structured compliance deliverable.`);
 
     // Clear composer immediately for responsive UX (preserve previewUrl for sent message card)
     setContent("");

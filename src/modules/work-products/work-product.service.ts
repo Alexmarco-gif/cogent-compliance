@@ -138,30 +138,87 @@ export class WorkProductService {
     }
 
     // Insert new work product artifact
-    const { data: inserted, error: insErr } = await supabase
+    const baseInsertPayload = {
+      ...(input.work_product_id ? { id: input.work_product_id } : {}),
+      tenant_id: tenantId,
+      conversation_id: input.conversation_id ?? null,
+      message_id: input.message_id ?? null,
+      workflow_type: input.workflow_type,
+      artifact_type: input.artifact_type,
+      title: input.title,
+      jurisdiction_scope: input.jurisdiction_scope,
+      markdown_content: sanitizedMarkdown,
+      structured_payload: input.structured_payload,
+      citations: validation.sanitized_citations,
+      evidence_gaps: validation.evidence_gaps,
+      guardrail_report: validation.guardrail_report,
+      version_number: 1,
+      status: input.status,
+      source_hash_sha256: sourceHash,
+      created_by: userId,
+      updated_by: userId,
+    };
+
+    let effectiveStructuredPayload: Record<string, unknown> = input.structured_payload;
+    let { data: inserted, error: insErr } = await supabase
       .from("work_product_artifacts")
-      .insert({
-        ...(input.work_product_id ? { id: input.work_product_id } : {}),
-        tenant_id: tenantId,
-        conversation_id: input.conversation_id ?? null,
-        message_id: input.message_id ?? null,
-        workflow_type: input.workflow_type,
-        artifact_type: input.artifact_type,
-        title: input.title,
-        jurisdiction_scope: input.jurisdiction_scope,
-        markdown_content: sanitizedMarkdown,
-        structured_payload: input.structured_payload,
-        citations: validation.sanitized_citations,
-        evidence_gaps: validation.evidence_gaps,
-        guardrail_report: validation.guardrail_report,
-        version_number: 1,
-        status: input.status,
-        source_hash_sha256: sourceHash,
-        created_by: userId,
-        updated_by: userId,
-      })
+      .insert(baseInsertPayload)
       .select("*")
       .single();
+
+    // Zero-downtime pre-migration fallback: if migration 20261126000001_general_compliance_document.sql
+    // has not yet been applied in Supabase, Postgres returns code 23514 (check_violation) for
+    // GENERAL_COMPLIANCE_DOCUMENT / compliance_document. Persist safely under the universal
+    // PRODUCT_STRUCTURING_MEMO / statutory_structuring_memo type while preserving requested metadata.
+    const isCheckConstraintViolation = Boolean(
+      insErr &&
+        (insErr.code === "23514" ||
+          /check constraint|work_product_artifacts_(workflow|artifact)_type_check/i.test(
+            insErr.message || ""
+          ))
+    );
+    const isAdHocGeneralDocument =
+      input.workflow_type === "GENERAL_COMPLIANCE_DOCUMENT" ||
+      input.artifact_type === "compliance_document";
+
+    if (isCheckConstraintViolation && isAdHocGeneralDocument) {
+      logger.warn(
+        "Pending migration 20261126000001_general_compliance_document.sql; persisting ad-hoc compliance document with compatible fallback type",
+        {
+          tenantId,
+          requestedWorkflowType: input.workflow_type,
+          requestedArtifactType: input.artifact_type,
+          errorCode: insErr?.code,
+        }
+      );
+
+      effectiveStructuredPayload = {
+        ...input.structured_payload,
+        ad_hoc_document: true,
+        requested_workflow_type: input.workflow_type,
+        requested_artifact_type: input.artifact_type,
+      };
+
+      const fallbackInsert = await supabase
+        .from("work_product_artifacts")
+        .insert({
+          ...baseInsertPayload,
+          workflow_type:
+            input.workflow_type === "GENERAL_COMPLIANCE_DOCUMENT"
+              ? "PRODUCT_STRUCTURING_MEMO"
+              : input.workflow_type,
+          artifact_type:
+            input.artifact_type === "compliance_document"
+              ? "statutory_structuring_memo"
+              : input.artifact_type,
+          structured_payload: effectiveStructuredPayload,
+        })
+        .select("*")
+        .single();
+
+      inserted = fallbackInsert.data;
+      insErr = fallbackInsert.error;
+    }
 
     if (insErr || !inserted) {
       logger.error("Failed to insert work product artifact", {
@@ -177,7 +234,7 @@ export class WorkProductService {
       work_product_id: inserted.id,
       version_number: 1,
       markdown_content: sanitizedMarkdown,
-      structured_payload: input.structured_payload,
+      structured_payload: effectiveStructuredPayload,
       change_summary: input.change_summary || "Initial draft synthesized",
       edited_by: userId,
       source_hash_sha256: sourceHash,

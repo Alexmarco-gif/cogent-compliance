@@ -257,6 +257,7 @@ const WORKFLOW_ARTIFACT_TABS = new Set<ComplianceArtifactType>([
   "policy_draft_document",
   "supervisory_ddq_response",
   "cross_border_matrix",
+  "compliance_document",
 ]);
 
 export function ArtifactCanvasDrawer({

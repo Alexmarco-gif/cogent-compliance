@@ -97,10 +97,11 @@ export class AssetExtractorService {
     let segments: ExtractedSegment[] = [];
 
     if (declaredMime === "application/pdf") {
-      extractionMethod = "PDF_PARSER";
       const pdfResult = await this.extractPdf(buffer);
+      extractionMethod = pdfResult.usedOcr ? "OCR" : "PDF_PARSER";
       extractedText = pdfResult.text;
       pageCount = pdfResult.pageCount;
+      confidence = pdfResult.usedOcr ? 0.91 : 0.95;
       segments = pdfResult.segments;
     } else if (
       declaredMime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -200,19 +201,34 @@ export class AssetExtractorService {
   }
 
   /**
-   * PDF parsing using unpdf.
+   * PDF parsing using unpdf with automatic Gemini native PDF OCR fallback for scanned
+   * or image-based PDFs (such as stamped regulatory circulars, signed letters, and contracts).
    */
   private async extractPdf(buffer: Buffer): Promise<{
     text: string;
     pageCount: number;
     segments: ExtractedSegment[];
+    usedOcr?: boolean;
   }> {
+    let parsedText = "";
+    let pageCount = 1;
+
     try {
       const parsed = await extractPdfText(new Uint8Array(buffer));
-      const fullText = Array.isArray(parsed.text) ? parsed.text.join("\n\n") : String(parsed.text);
-      const pageCount = parsed.totalPages || 1;
+      parsedText = (Array.isArray(parsed.text) ? parsed.text.join("\n\n") : String(parsed.text || "")).trim();
+      pageCount = parsed.totalPages || 1;
+    } catch (err) {
+      logger.warn("unpdf extraction encountered error; attempting Gemini PDF OCR fallback", {
+        error: (err as Error).message,
+      });
+    }
 
-      const lines = fullText
+    const meaningfulChars = parsedText.replace(/[^a-zA-Z0-9]/g, "").length;
+    const isLikelyBinaryPdfHeader = parsedText.startsWith("%PDF-");
+
+    // If unpdf returned strong legible text, segment and return immediately (fast path)
+    if (meaningfulChars >= 80 && !isLikelyBinaryPdfHeader) {
+      const lines = parsedText
         .split(/\n\s*\n/)
         .map((l) => l.trim())
         .filter((l) => l.length > 0);
@@ -226,34 +242,115 @@ export class AssetExtractorService {
       }));
 
       return {
-        text: fullText,
+        text: parsedText,
         pageCount,
-        segments: segments.length > 0 ? segments : [{
-          segmentIndex: 0,
-          textContent: fullText,
-          pageNumber: 1,
-          sourceType: "DIRECT_TEXT",
-          confidence: 0.95,
-        }],
+        segments:
+          segments.length > 0
+            ? segments
+            : [
+                {
+                  segmentIndex: 0,
+                  textContent: parsedText,
+                  pageNumber: 1,
+                  sourceType: "DIRECT_TEXT",
+                  confidence: 0.95,
+                },
+              ],
+        usedOcr: false,
       };
+    }
+
+    // Scanned / image-only PDF fallback via Gemini native PDF document vision
+    const MAX_INLINE_PDF_OCR_BYTES = 18 * 1024 * 1024;
+    if (buffer.length > 0 && buffer.length <= MAX_INLINE_PDF_OCR_BYTES) {
+      const ocrText = await this.extractPdfViaGeminiOcr(buffer);
+      if (ocrText && ocrText.replace(/[^a-zA-Z0-9]/g, "").length >= 20) {
+        const blocks = ocrText
+          .split(/\n\s*\n/)
+          .map((b) => b.trim())
+          .filter((b) => b.length > 0);
+
+        const segments: ExtractedSegment[] = blocks.map((block, idx) => ({
+          segmentIndex: idx,
+          textContent: block,
+          pageNumber: 1,
+          sourceType: "OCR",
+          confidence: 0.91,
+        }));
+
+        return {
+          text: ocrText,
+          pageCount,
+          segments:
+            segments.length > 0
+              ? segments
+              : [
+                  {
+                    segmentIndex: 0,
+                    textContent: ocrText,
+                    pageNumber: 1,
+                    sourceType: "OCR",
+                    confidence: 0.9,
+                  },
+                ],
+          usedOcr: true,
+        };
+      }
+    }
+
+    // Final graceful fallback: keep whatever legible text unpdf extracted, or readable plain UTF-8 if non-binary
+    let fallbackText = parsedText;
+    if (!fallbackText) {
+      const rawUtf8 = buffer.toString("utf-8").trim();
+      const looksBinaryPdf =
+        rawUtf8.startsWith("%PDF-") || /[\x00-\x08\x0E-\x1F]/.test(rawUtf8.slice(0, 512));
+      fallbackText = looksBinaryPdf ? "" : rawUtf8;
+    }
+
+    return {
+      text: fallbackText,
+      pageCount,
+      segments: fallbackText
+        ? [
+            {
+              segmentIndex: 0,
+              textContent: fallbackText,
+              pageNumber: 1,
+              sourceType: "DIRECT_TEXT",
+              confidence: 0.85,
+            },
+          ]
+        : [],
+      usedOcr: false,
+    };
+  }
+
+  /**
+   * Transcribes scanned or image-based PDFs via Gemini multimodal document understanding.
+   */
+  private async extractPdfViaGeminiOcr(buffer: Buffer): Promise<string> {
+    try {
+      const { AI_MODELS } = await import("@/lib/ai/config");
+      const response = await geminiService.generateText({
+        prompt: `Extract ALL legible text from this PDF document faithfully and completely.
+Preserve document headings, section/clause numbers, circular reference codes, dates, tables (as clean Markdown tables), bullet points, numerical figures, currency amounts, and fine-print footnotes verbatim.
+Do not summarize, omit sections, or add commentary—return only the extracted document text.`,
+        model: AI_MODELS.FLASH,
+        imageInlineData: {
+          mimeType: "application/pdf",
+          data: buffer.toString("base64"),
+        },
+        temperature: 0.1,
+        context: {
+          taskType: "OCR_EXTRACTION",
+        },
+      });
+      return (response.text || "").trim();
     } catch (err) {
-      logger.warn("unpdf extraction encountered error, using string fallback", {
+      logger.warn("Gemini PDF OCR fallback failed softly", {
         error: (err as Error).message,
       });
-      const fallbackText = buffer.toString("utf-8");
-      return {
-        text: fallbackText,
-        pageCount: 1,
-        segments: [
-          {
-            segmentIndex: 0,
-            textContent: fallbackText,
-            pageNumber: 1,
-            sourceType: "DIRECT_TEXT",
-            confidence: 0.85,
-          },
-        ],
-      };
+      return "";
     }
   }
 

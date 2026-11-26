@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { createApiHandler } from "@/lib/api-handler";
+import { createAdminSupabaseClient } from "@/lib/supabase";
 import {
   createWorkProductSchema,
   WORKFLOW_TYPES,
@@ -54,6 +55,45 @@ export const POST = createApiHandler(
         status: context.body.status ?? "DRAFT",
       }
     );
+
+    // If created from an existing chat message ("Save as Document"), attach the work product
+    // reference to that message's metadata so the Studio card persists across reloads.
+    if (context.body.message_id) {
+      try {
+        const supabase = createAdminSupabaseClient();
+        const { data: existingMsg } = await supabase
+          .from("marketing_messages")
+          .select("id, metadata")
+          .eq("tenant_id", context.tenant.tenantId)
+          .eq("id", context.body.message_id)
+          .maybeSingle();
+
+        if (existingMsg) {
+          const prevMeta = ((existingMsg.metadata || {}) as Record<string, unknown>);
+          const wp = result.workProduct;
+          await supabase
+            .from("marketing_messages")
+            .update({
+              metadata: {
+                ...prevMeta,
+                work_product_id: wp.id,
+                work_product: {
+                  work_product_id: wp.id,
+                  artifact_type: wp.artifact_type,
+                  workflow_type: wp.workflow_type,
+                  title: wp.title,
+                  version_number: wp.version_number,
+                },
+              },
+            })
+            .eq("tenant_id", context.tenant.tenantId)
+            .eq("id", context.body.message_id);
+        }
+      } catch {
+        // Non-blocking: the work product itself is already persisted
+      }
+    }
+
     return {
       work_product: result.workProduct,
       created: result.created,

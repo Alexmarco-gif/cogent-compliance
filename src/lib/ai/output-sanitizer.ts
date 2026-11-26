@@ -19,6 +19,8 @@ export const INTERNAL_CONTEXT_TAG_NAMES = [
   "workspace_product_context",
   "active_thread_audit_context",
   "prior_turn_audit_summary",
+  "prior_uploaded_document_context",
+  "fetched_live_url_content",
 ] as const;
 
 const INTERNAL_TAG_GROUP = INTERNAL_CONTEXT_TAG_NAMES.join("|");

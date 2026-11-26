@@ -196,3 +196,177 @@ describe("WorkProductService inline version deduplication", () => {
     expect(res.revision.version_number).toBe(2);
   });
 });
+
+describe("WorkProductService GENERAL_COMPLIANCE_DOCUMENT persistence & pre-migration fallback", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("persists GENERAL_COMPLIANCE_DOCUMENT / compliance_document natively when DB migration is applied", async () => {
+    const insertedPayloads: Record<string, unknown>[] = [];
+    const revisionPayloads: Record<string, unknown>[] = [];
+
+    mockSupabaseFrom.mockImplementation((table: string) => {
+      if (table === "work_product_artifacts") {
+        return {
+          insert: (payload: Record<string, unknown>) => {
+            insertedPayloads.push(payload);
+            return {
+              select: () => ({
+                single: async () => ({
+                  data: {
+                    id: "wp_general_1",
+                    ...payload,
+                    last_exported_at: null,
+                    created_at: "2026-11-26T00:00:00.000Z",
+                    updated_at: "2026-11-26T00:00:00.000Z",
+                  },
+                  error: null,
+                }),
+              }),
+            };
+          },
+        };
+      }
+      if (table === "work_product_revisions") {
+        return {
+          insert: async (payload: Record<string, unknown>) => {
+            revisionPayloads.push(payload);
+            return { data: null, error: null };
+          },
+        };
+      }
+      return {};
+    });
+
+    const service = new WorkProductService();
+    const res = await service.upsertWorkProduct("tenant_1", "user_1", {
+      workflow_type: "GENERAL_COMPLIANCE_DOCUMENT",
+      artifact_type: "compliance_document",
+      title: "Ad-Hoc CBN Circular Compliance Brief",
+      markdown_content: "# CBN Circular Brief\n\nDetailed compliance obligations and timeline.",
+      structured_payload: { source: "chat_followup" },
+    });
+
+    expect(res.created).toBe(true);
+    expect(insertedPayloads).toHaveLength(1);
+    expect(res.workProduct.workflow_type).toBe("GENERAL_COMPLIANCE_DOCUMENT");
+    expect(res.workProduct.artifact_type).toBe("compliance_document");
+    expect(revisionPayloads).toHaveLength(1);
+    expect(revisionPayloads[0]?.structured_payload).toEqual({ source: "chat_followup" });
+  });
+
+  it("gracefully falls back on Postgres 23514 check constraint violation when migration is pending", async () => {
+    const insertedPayloads: Record<string, unknown>[] = [];
+    const revisionPayloads: Record<string, unknown>[] = [];
+    let attempt = 0;
+
+    mockSupabaseFrom.mockImplementation((table: string) => {
+      if (table === "work_product_artifacts") {
+        return {
+          insert: (payload: Record<string, unknown>) => {
+            attempt += 1;
+            insertedPayloads.push(payload);
+            return {
+              select: () => ({
+                single: async () => {
+                  if (attempt === 1) {
+                    return {
+                      data: null,
+                      error: {
+                        code: "23514",
+                        message:
+                          'new row for relation "work_product_artifacts" violates check constraint "work_product_artifacts_workflow_type_check"',
+                      },
+                    };
+                  }
+                  return {
+                    data: {
+                      id: "wp_fallback_1",
+                      ...payload,
+                      last_exported_at: null,
+                      created_at: "2026-11-26T00:00:00.000Z",
+                      updated_at: "2026-11-26T00:00:00.000Z",
+                    },
+                    error: null,
+                  };
+                },
+              }),
+            };
+          },
+        };
+      }
+      if (table === "work_product_revisions") {
+        return {
+          insert: async (payload: Record<string, unknown>) => {
+            revisionPayloads.push(payload);
+            return { data: null, error: null };
+          },
+        };
+      }
+      return {};
+    });
+
+    const service = new WorkProductService();
+    const res = await service.upsertWorkProduct("tenant_1", "user_1", {
+      workflow_type: "GENERAL_COMPLIANCE_DOCUMENT",
+      artifact_type: "compliance_document",
+      title: "Ad-Hoc Compliance Checklist",
+      markdown_content: "# Ad-Hoc Checklist\n\n- Action item 1\n- Action item 2",
+      structured_payload: { generated_from: "chat_action_button" },
+    });
+
+    expect(res.created).toBe(true);
+    expect(insertedPayloads).toHaveLength(2);
+    expect(insertedPayloads[0]?.workflow_type).toBe("GENERAL_COMPLIANCE_DOCUMENT");
+    expect(insertedPayloads[1]?.workflow_type).toBe("PRODUCT_STRUCTURING_MEMO");
+    expect(insertedPayloads[1]?.artifact_type).toBe("statutory_structuring_memo");
+    expect(res.workProduct.structured_payload).toEqual({
+      generated_from: "chat_action_button",
+      ad_hoc_document: true,
+      requested_workflow_type: "GENERAL_COMPLIANCE_DOCUMENT",
+      requested_artifact_type: "compliance_document",
+    });
+    expect(revisionPayloads).toHaveLength(1);
+    expect(revisionPayloads[0]?.structured_payload).toEqual(res.workProduct.structured_payload);
+  });
+
+  it("still throws on non-constraint database errors instead of silently retrying", async () => {
+    const insertedPayloads: Record<string, unknown>[] = [];
+
+    mockSupabaseFrom.mockImplementation((table: string) => {
+      if (table === "work_product_artifacts") {
+        return {
+          insert: (payload: Record<string, unknown>) => {
+            insertedPayloads.push(payload);
+            return {
+              select: () => ({
+                single: async () => ({
+                  data: null,
+                  error: {
+                    code: "42501",
+                    message: "permission denied for table work_product_artifacts",
+                  },
+                }),
+              }),
+            };
+          },
+        };
+      }
+      return {};
+    });
+
+    const service = new WorkProductService();
+    await expect(
+      service.upsertWorkProduct("tenant_1", "user_1", {
+        workflow_type: "GENERAL_COMPLIANCE_DOCUMENT",
+        artifact_type: "compliance_document",
+        title: "Permission Error Case",
+        markdown_content: "# Permission Error\n\nShould propagate database error cleanly.",
+      })
+    ).rejects.toThrow(/Failed to persist work product: permission denied/);
+
+    expect(insertedPayloads).toHaveLength(1);
+  });
+});
+
